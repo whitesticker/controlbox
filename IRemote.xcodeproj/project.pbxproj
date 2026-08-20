@@ -14,8 +14,19 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000002 /* IRemote */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000000000000000000011 /* Exceptions for "IRemote" folder in "IRemote" target */,
+			);
 			path = IRemote;
 			sourceTree = "<group>";
+		};
+		A10000000000000000000011 /* Exceptions for "IRemote" folder in "IRemote" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppIcon.iconset,
+				Info.plist,
+			);
+			target = A10000000000000000000006 /* IRemote */;
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -134,7 +145,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nICONSET=\"${SRCROOT}/IRemote/Assets.xcassets/AppIcon.appiconset\"\nTMP=\"${TEMP_DIR}/AppIcon.iconset\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AppIcon.icns\"\nrm -rf \"$TMP\"\nmkdir -p \"$TMP\"\ncp \"$ICONSET\"/icon_*.png \"$TMP/\"\niconutil -c icns \"$TMP\" -o \"$DEST\"\n";
+			shellScript = "set -euo pipefail\n# Launchpad and System Settings follow CFBundleIconName / Assets.car.\n# Xcode 26's actool emits a Tahoe catalog icon that Sequoia draws as a square.\n# Finder uses this .icns (pre-rounded, transparent corners), so ship that as the only app icon.\nICONSET=\"${SRCROOT}/IRemote/AppIcon.iconset\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AppIcon.icns\"\niconutil -c icns \"$ICONSET\" -o \"$DEST\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -196,7 +207,6 @@
 		A1000000000000000000000E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
@@ -206,6 +216,7 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IRemote/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = VibeRemote;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
@@ -218,7 +229,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.iremote.app;
 				PRODUCT_NAME = VibeRemote;
 				REGISTER_APP_GROUPS = YES;
@@ -232,7 +243,6 @@
 		A1000000000000000000000F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
@@ -242,6 +252,7 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IRemote/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = VibeRemote;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
@@ -254,7 +265,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.iremote.app;
 				PRODUCT_NAME = VibeRemote;
 				REGISTER_APP_GROUPS = YES;
