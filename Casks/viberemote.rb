@@ -1,6 +1,6 @@
 cask "viberemote" do
-  version "0.1.0"
-  sha256 "3872e836fa98eb4f99ae0b5c4bb5be3d17afb20e3eae258a7bbe7c8c3ab01c70"
+  version "0.1.1"
+  sha256 "d90ea234792465edfca6e16614b500db25bd4e9baf1fb26236d18f2aba959a2e"
 
   url "https://github.com/whitesticker/viberemote/releases/download/v#{version}/VibeRemote-#{version}.zip"
   name "VibeRemote"
