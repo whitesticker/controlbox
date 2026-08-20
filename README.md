@@ -9,9 +9,7 @@ macOS 14+ is required. Accessibility permission is required to inject input.
 ## Install with Homebrew
 
 ```bash
-brew tap whitesticker/viberemote
-brew trust --cask whitesticker/viberemote/viberemote
-brew install --cask viberemote
+brew install --cask whitesticker/viberemote/viberemote
 ```
 
 Then open **VibeRemote**, enable it in **System Settings → Privacy & Security → Accessibility**, and relaunch if macOS asks.
