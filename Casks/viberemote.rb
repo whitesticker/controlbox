@@ -7,7 +7,7 @@ cask "viberemote" do
   desc "Control your Mac with a DualSense or Apple TV remote"
   homepage "https://github.com/whitesticker/viberemote"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "VibeRemote.app"
 

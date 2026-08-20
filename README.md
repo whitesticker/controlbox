@@ -10,6 +10,7 @@ macOS 14+ is required. Accessibility permission is required to inject input.
 
 ```bash
 brew tap whitesticker/viberemote
+brew trust --cask whitesticker/viberemote/viberemote
 brew install --cask viberemote
 ```
 
