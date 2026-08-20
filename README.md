@@ -9,7 +9,7 @@ macOS 14+ is required. Accessibility permission is required to inject input.
 ## Install with Homebrew
 
 ```bash
-brew tap whitesticker/viberemote https://github.com/whitesticker/viberemote.git
+brew tap whitesticker/viberemote
 brew install --cask viberemote
 ```
 
