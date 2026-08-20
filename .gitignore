@@ -1,0 +1,9 @@
+.DS_Store
+.derived/
+.probe/
+xcuserdata/
+*.xcuserstate
+build/
+DerivedData/
+*.zip
+dist/
