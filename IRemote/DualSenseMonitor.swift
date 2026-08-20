@@ -181,6 +181,7 @@ final class DualSenseMonitor {
 
     private var controller: GCController?
     private var pollTimer: Timer?
+    private var controlActivity: NSObjectProtocol?
     private var previousButtons: [String: Bool] = [:]
     private var observers: [NSObjectProtocol] = []
     private var lastAudioProbe = Date.distantPast
@@ -203,6 +204,7 @@ final class DualSenseMonitor {
         appleTVTouch.start()
         appleTVBattery.start()
         loadDeviceRecords()
+        updateControlActivity()
         refreshAccessibilityTrust()
         refreshAudioInputs()
         refreshDevices()
@@ -250,19 +252,20 @@ final class DualSenseMonitor {
         GCController.startWirelessControllerDiscovery(completionHandler: nil)
         attachPreferredController()
 
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
                 self?.capture()
             }
         }
-        if let pollTimer {
-            RunLoop.main.add(pollTimer, forMode: .common)
-        }
+        timer.tolerance = 0
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 
     func stop() {
         pollTimer?.invalidate()
         pollTimer = nil
+        endControlActivity()
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         hidBattery.stop()
@@ -840,6 +843,32 @@ final class DualSenseMonitor {
             UserDefaults.standard.set(data, forKey: Self.deviceRecordsDefaultsKey)
         }
         UserDefaults.standard.set(selectedDeviceID, forKey: Self.selectedDeviceDefaultsKey)
+        updateControlActivity()
+    }
+
+    private func updateControlActivity() {
+        let needsActivity = deviceRecords.contains { $0.controlEnabled }
+        if needsActivity {
+            if controlActivity == nil {
+                controlActivity = ProcessInfo.processInfo.beginActivity(
+                    options: [
+                        .userInitiated,
+                        .latencyCritical,
+                        .idleSystemSleepDisabled,
+                    ],
+                    reason: "VibeRemote is posting controller input"
+                )
+            }
+            return
+        }
+        endControlActivity()
+    }
+
+    private func endControlActivity() {
+        if let controlActivity {
+            ProcessInfo.processInfo.endActivity(controlActivity)
+            self.controlActivity = nil
+        }
     }
 
     private func persistSuppressedDevices() {
