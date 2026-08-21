@@ -1,6 +1,8 @@
 import AppKit
+import CoreGraphics
 import Foundation
 import GameController
+import IOKit.hid
 import IRemoteControl
 import Observation
 
@@ -107,9 +109,15 @@ final class DualSenseMonitor {
     var connectedDevices: [ConnectedBluetoothDevice] = []
     var selectedDeviceID: String?
     var appleTVSnapshot = AppleTVRemoteSnapshot()
+    var mxMasterSnapshot = MXMasterSnapshot()
     var deviceRecords: [DeviceRecord] = []
     var accessibilityTrusted = false
+    var inputMonitoringTrusted = false
     let controlEngine = ControlEngine()
+
+    var allPermissionsGranted: Bool {
+        accessibilityTrusted && inputMonitoringTrusted
+    }
     private var suppressedDeviceKeys: Set<String> = []
 
     var selectedDevice: ConnectedBluetoothDevice? {
@@ -132,7 +140,10 @@ final class DualSenseMonitor {
 
     var selectedProfile: MappingProfile {
         selectedRecord?.selectedProfile
-            ?? MappingProfile.makeDefault(isAppleTVRemote: selectedKind == .appleTVRemote)
+            ?? MappingProfile.makeDefault(
+                isAppleTVRemote: selectedKind == .appleTVRemote,
+                isMXMaster: selectedKind == .logitechMXMaster
+            )
     }
 
     var sidebarDevices: [SidebarDevice] {
@@ -187,6 +198,7 @@ final class DualSenseMonitor {
     private var lastAudioProbe = Date.distantPast
     private var lastBatteryProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
+    private var lastDeviceProbe = Date.distantPast
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
     private let haptics = DualSenseHaptics()
@@ -194,6 +206,8 @@ final class DualSenseMonitor {
     private let appleTVReader = AppleTVRemoteHIDReader()
     private let appleTVTouch = AppleTVTouchReader()
     private let appleTVBattery = AppleTVBatteryReader()
+    private let mxMasterReader = LogitechMXMasterReader()
+    private let mouseScrollTap = MouseScrollTap()
 
     func start() {
         guard !didStart else { return }
@@ -203,11 +217,13 @@ final class DualSenseMonitor {
         appleTVReader.start()
         appleTVTouch.start()
         appleTVBattery.start()
+        mxMasterReader.start()
         loadDeviceRecords()
         updateControlActivity()
-        refreshAccessibilityTrust()
+        refreshPermissions()
         refreshAudioInputs()
         refreshDevices()
+        lastDeviceProbe = Date()
 
         observers.append(
             NotificationCenter.default.addObserver(
@@ -244,7 +260,7 @@ final class DualSenseMonitor {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.refreshAccessibilityTrust()
+                    self?.refreshPermissions()
                 }
             }
         )
@@ -272,6 +288,8 @@ final class DualSenseMonitor {
         appleTVReader.stop()
         appleTVTouch.stop()
         appleTVBattery.stop()
+        mxMasterReader.stop()
+        mouseScrollTap.stop()
         haptics.detach()
         GCController.stopWirelessControllerDiscovery()
     }
@@ -361,6 +379,40 @@ final class DualSenseMonitor {
         }
     }
 
+    func setPointerSpeed(_ speed: Double) {
+        updateSelectedProfile { $0.pointerSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setWheelScrollSpeed(_ speed: Double) {
+        updateSelectedProfile { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setThumbScrollSpeed(_ speed: Double) {
+        updateSelectedProfile { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setNaturalScrolling(_ enabled: Bool) {
+        updateSelectedProfile { $0.naturalScrolling = enabled }
+    }
+
+    func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
+        updateSelectedProfile { $0.setGestureSet(.named(preset), for: button) }
+    }
+
+    func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
+        updateSelectedProfile { $0.setGestureAction(action, slot: slot, for: button) }
+    }
+
+    private func updateSelectedProfile(_ mutate: (inout MappingProfile) -> Void) {
+        updateSelectedRecord { record in
+            guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
+            mutate(&profile)
+            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
+                record.profiles[index] = profile
+            }
+        }
+    }
+
     func setButtonAction(_ action: ControlAction, for button: DeviceButton) {
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
@@ -396,7 +448,8 @@ final class DualSenseMonitor {
         updateSelectedRecord { record in
             let profile = MappingProfile.makeDefault(
                 name: "Untitled",
-                isAppleTVRemote: record.isAppleTVRemote
+                isAppleTVRemote: record.isAppleTVRemote,
+                isMXMaster: record.isMXMaster
             )
             record.profiles.append(profile)
             record.selectedProfileID = profile.id
@@ -441,19 +494,26 @@ final class DualSenseMonitor {
 
     func promptForAccessibility() {
         controlEngine.promptForAccessibility()
-        refreshAccessibilityTrust()
+        refreshPermissions()
+    }
+
+    func promptForInputMonitoring() {
+        if IOHIDRequestAccess(kIOHIDRequestTypeListenEvent) == false {
+            _ = CGRequestListenEventAccess()
+        }
+        refreshPermissions()
     }
 
     func openAccessibilitySettings() {
-        let urls = [
-            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-        ]
-        for string in urls {
-            if let url = URL(string: string), NSWorkspace.shared.open(url) {
-                return
-            }
-        }
+        openPrivacySettings(anchors: [
+            "Privacy_Accessibility"
+        ])
+    }
+
+    func openInputMonitoringSettings() {
+        openPrivacySettings(anchors: [
+            "Privacy_ListenEvent"
+        ])
     }
 
     func relaunchApp() {
@@ -466,11 +526,33 @@ final class DualSenseMonitor {
         }
     }
 
-    func refreshAccessibilityTrust() {
+    func refreshPermissions() {
         lastTrustProbe = Date()
-        let trusted = controlEngine.isAccessibilityTrusted
-        if accessibilityTrusted != trusted {
-            accessibilityTrusted = trusted
+        let accessibility = controlEngine.isAccessibilityTrusted
+        if accessibilityTrusted != accessibility {
+            accessibilityTrusted = accessibility
+        }
+        let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        if inputMonitoringTrusted != inputMonitoring {
+            inputMonitoringTrusted = inputMonitoring
+        }
+    }
+
+    func refreshAccessibilityTrust() {
+        refreshPermissions()
+    }
+
+    private func openPrivacySettings(anchors: [String]) {
+        let prefixes = [
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?",
+            "x-apple.systempreferences:com.apple.preference.security?"
+        ]
+        for anchor in anchors {
+            for prefix in prefixes {
+                if let url = URL(string: prefix + anchor), NSWorkspace.shared.open(url) {
+                    return
+                }
+            }
         }
     }
 
@@ -534,7 +616,7 @@ final class DualSenseMonitor {
             return
         }
 
-        if selected.deviceKind == .appleTVRemote {
+        if selected.deviceKind == .appleTVRemote || selected.deviceKind == .logitechMXMaster {
             if controller != nil {
                 controller = nil
                 haptics.detach()
@@ -576,15 +658,23 @@ final class DualSenseMonitor {
     private func capture() {
         if Date().timeIntervalSince(lastAudioProbe) > 2 {
             refreshAudioInputs()
-            refreshDevices()
+            mergeMXMasterStatus()
             lastAudioProbe = Date()
         }
+        if Date().timeIntervalSince(lastDeviceProbe) > 15, !isMenuTracking {
+            refreshDevices()
+            lastDeviceProbe = Date()
+        }
         if Date().timeIntervalSince(lastTrustProbe) > 0.6 {
-            refreshAccessibilityTrust()
+            refreshPermissions()
         }
 
         if selectedKind == .appleTVRemote {
             captureAppleTV()
+            return
+        }
+        if selectedKind == .logitechMXMaster {
+            captureMXMaster()
             return
         }
 
@@ -700,6 +790,15 @@ final class DualSenseMonitor {
         ingestControl(ControlFrameBuilder.make(from: next))
     }
 
+    private func captureMXMaster() {
+        mxMasterReader.pollGesturePointer()
+        let next = mxMasterReader.current
+        mxMasterSnapshot = next
+        ingestControl(ControlFrameBuilder.make(from: next))
+        _ = mxMasterReader.consumePendingGesture()
+        mxMasterReader.consumePendingScroll()
+    }
+
     private func ingestControl(_ frame: ControlFrame) {
         guard let deviceID = selectedDeviceID else { return }
         ensureRecord(for: deviceID)
@@ -708,6 +807,19 @@ final class DualSenseMonitor {
         engine.profile = record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
+        if record.isMXMaster {
+            mxMasterReader.injectEnabled = record.controlEnabled
+            mxMasterReader.wheelsEnabled = accessibilityTrusted
+            mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
+            mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
+            mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
+            mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
+            mouseScrollTap.verticalScale = 0.12 + record.selectedProfile.resolvedWheelScrollSpeed * 2.88
+            mouseScrollTap.horizontalScale = 0.12 + record.selectedProfile.resolvedThumbScrollSpeed * 2.88
+            mouseScrollTap.setActive(accessibilityTrusted)
+        } else {
+            mouseScrollTap.setActive(false)
+        }
         engine.process(frame, hostIsActive: NSApp.isActive)
     }
 
@@ -805,7 +917,10 @@ final class DualSenseMonitor {
                 var next = record
                 next.remembered = true
                 if next.profiles.isEmpty {
-                    let profile = MappingProfile.makeDefault(isAppleTVRemote: next.isAppleTVRemote)
+                    let profile = MappingProfile.makeDefault(
+                        isAppleTVRemote: next.isAppleTVRemote,
+                        isMXMaster: next.isMXMaster
+                    )
                     next.profiles = [profile]
                     next.selectedProfileID = profile.id
                 }
@@ -1023,6 +1138,28 @@ final class DualSenseMonitor {
 
     private func refreshDevices() {
         var devices = BluetoothDeviceCatalog.availableDevices()
+        let mx = mxMasterReader.current
+        if mx.connected {
+            if let index = devices.firstIndex(where: {
+                $0.deviceKind == .logitechMXMaster || namesMatch($0.name, mx.name)
+            }) {
+                devices[index].deviceKind = .logitechMXMaster
+                devices[index].isConnected = true
+                devices[index].name = mx.name
+                devices[index].detail = mx.status
+            } else {
+                devices.append(
+                    ConnectedBluetoothDevice(
+                        id: "mx:\(mx.name)",
+                        name: mx.name,
+                        address: "HID++",
+                        deviceKind: .logitechMXMaster,
+                        detail: mx.status,
+                        isConnected: true
+                    )
+                )
+            }
+        }
         for index in devices.indices {
             if let record = matchingRecord(for: devices[index]) {
                 devices[index].id = record.id
@@ -1045,6 +1182,26 @@ final class DualSenseMonitor {
             ensureRecord(for: selectedDeviceID)
         }
         persistDeviceRecords()
+    }
+
+    private var isMenuTracking: Bool {
+        NSApp.windows.contains { window in
+            let name = NSStringFromClass(type(of: window))
+            return name.contains("NSMenu") || name.contains("Popup")
+        }
+    }
+
+    private func mergeMXMasterStatus() {
+        let mx = mxMasterReader.current
+        guard mx.connected else { return }
+        if let index = connectedDevices.firstIndex(where: {
+            $0.deviceKind == .logitechMXMaster || namesMatch($0.name, mx.name)
+        }) {
+            connectedDevices[index].deviceKind = .logitechMXMaster
+            connectedDevices[index].isConnected = true
+            connectedDevices[index].name = mx.name
+            connectedDevices[index].detail = mx.status
+        }
     }
 
     private func refreshAudioInputs() {

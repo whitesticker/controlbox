@@ -4,6 +4,9 @@ import SwiftUI
 struct DeviceProfilePane: View {
     @Bindable var monitor: DualSenseMonitor
     @Environment(\.openWindow) private var openWindow
+    @State private var customizingButton: DeviceButton?
+    @State private var customizingGestureButton: DeviceButton?
+    @State private var customizingGestureSlot: GestureSlot?
 
     var body: some View {
         NavigationStack {
@@ -19,6 +22,9 @@ struct DeviceProfilePane: View {
                             }
                         }
                         LabeledContent("Type", value: record.kind.title)
+                        if record.isMXMaster {
+                            LabeledContent("HID++", value: monitor.mxMasterSnapshot.status)
+                        }
                         if !record.address.isEmpty {
                             LabeledContent("Address", value: record.address)
                         }
@@ -29,34 +35,6 @@ struct DeviceProfilePane: View {
                         Toggle("Allow while VibeRemote is focused", isOn: controlWhileFocusedBinding)
                     } footer: {
                         Text("Sends this device’s inputs to the Mac. Injection is skipped while VibeRemote is frontmost unless you enable the second switch.")
-                    }
-
-                    Section {
-                        LabeledContent("System permission") {
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(monitor.accessibilityTrusted ? Palette.good : Palette.bad)
-                                    .frame(width: 8, height: 8)
-                                Text(monitor.accessibilityTrusted ? "Allowed" : "Not allowed")
-                            }
-                        }
-                        if !monitor.accessibilityTrusted {
-                            Button("Request Accessibility Access…") {
-                                monitor.promptForAccessibility()
-                            }
-                            Button("Open System Settings") {
-                                monitor.openAccessibilitySettings()
-                            }
-                            Button("Relaunch VibeRemote") {
-                                monitor.relaunchApp()
-                            }
-                        }
-                    } header: {
-                        Text("Accessibility")
-                    } footer: {
-                        Text(monitor.accessibilityTrusted
-                             ? "This running copy of VibeRemote can inject keyboard, pointer, and scroll events."
-                             : "macOS does not apply a new Accessibility grant until the app relaunches. Enable VibeRemote in Privacy & Security → Accessibility, then click Relaunch. Rebuilds can leave extra VibeRemote entries — turn on the one that is running now.")
                     }
 
                     Section("Profile") {
@@ -89,17 +67,39 @@ struct DeviceProfilePane: View {
 
                     analogSection(for: record)
 
+                    Section {
+                        speedSlider("Pointer speed", value: pointerSpeedBinding)
+                        speedSlider(
+                            record.isMXMaster ? "Wheel speed" : "Scroll speed",
+                            value: wheelSpeedBinding
+                        )
+                        if record.isMXMaster {
+                            speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
+                        }
+                        Picker("Scroll direction", selection: scrollDirectionBinding) {
+                            Text("Natural").tag("natural")
+                            Text("Standard").tag("standard")
+                        }
+                        .pickerStyle(.radioGroup)
+                    } header: {
+                        Text("Pointer & scroll")
+                    } footer: {
+                        if record.isMXMaster {
+                            Text("Pointer speed is sent to the mouse as DPI. Wheel speed, thumb-wheel speed, and direction intercept the wheel on this Mac (Accessibility must be allowed). Control this Mac is only required for buttons and gestures.")
+                        } else {
+                            Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
+                        }
+                    }
+
                     ForEach(buttonGroups(for: record)) { group in
                         Section {
                             ForEach(group.buttons, id: \.self) { button in
                                 if button == .clickSelect {
                                     selectRow(for: record)
+                                } else if record.isMXMaster {
+                                    mxActionRow(label(for: button), button: button, record: record)
                                 } else {
-                                    Picker(label(for: button), selection: actionBinding(for: button)) {
-                                        ForEach(ControlActionOption.options(including: record.selectedProfile.bindings[button] ?? .none)) { option in
-                                            Text(option.title).tag(option.id)
-                                        }
-                                    }
+                                    actionRow(label(for: button), button: button, current: record.selectedProfile.bindings[button] ?? .none)
                                 }
                             }
                         } header: {
@@ -107,6 +107,8 @@ struct DeviceProfilePane: View {
                         } footer: {
                             if group.id == "clickpad" {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
+                            } else if group.id == "buttons" {
+                                Text("Assign Gestures to any button. Hold that button and move the mouse for the four directions. A tap without moving is Click.")
                             }
                         }
                     }
@@ -131,6 +133,16 @@ struct DeviceProfilePane: View {
                 }
                 .formStyle(.grouped)
                 .navigationTitle(record.name)
+                .onChange(of: monitor.selectedDeviceID) { _, _ in
+                    customizingButton = nil
+                    customizingGestureButton = nil
+                    customizingGestureSlot = nil
+                }
+                .onChange(of: record.selectedProfileID) { _, _ in
+                    customizingButton = nil
+                    customizingGestureButton = nil
+                    customizingGestureSlot = nil
+                }
             } else {
                 ContentUnavailableView(
                     "Select a Device",
@@ -147,7 +159,9 @@ struct DeviceProfilePane: View {
 
     @ViewBuilder
     private func analogSection(for record: DeviceRecord) -> some View {
-        if record.isAppleTVRemote {
+        if record.isMXMaster {
+            EmptyView()
+        } else if record.isAppleTVRemote {
             Section {
                 Toggle("Clickpad", isOn: analogToggle(.appleTVClickpad, on: .pointer))
                 Toggle("Clickwheel", isOn: analogToggle(.appleTVWheel, on: .scroll))
@@ -183,12 +197,118 @@ struct DeviceProfilePane: View {
         }
     }
 
+    @ViewBuilder
     private func analogPicker(_ title: String, source: AnalogSource) -> some View {
         Picker(title, selection: analogBinding(source)) {
             ForEach([AnalogMode.off, .pointer, .scroll], id: \.self) { mode in
                 Text(mode.title).tag(mode)
             }
         }
+    }
+
+    @ViewBuilder
+    private func actionRow(_ title: String, button: DeviceButton, current: ControlAction) -> some View {
+        Picker(title, selection: actionBinding(for: button)) {
+            mappingOptions
+        }
+        if showsRecorder(for: button, current: current) {
+            LabeledContent("Shortcut") {
+                shortcutRecorder(for: button, current: current)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mxActionRow(_ title: String, button: DeviceButton, record: DeviceRecord) -> some View {
+        let current = record.selectedProfile.bindings[button] ?? .none
+        Picker(title, selection: actionBinding(for: button)) {
+            Text("Gestures").tag("gestures")
+            Divider()
+            mappingOptions
+        }
+        if current == .gestures {
+            gestureEditor(for: button, record: record)
+        } else if showsRecorder(for: button, current: current) {
+            LabeledContent("Shortcut") {
+                shortcutRecorder(for: button, current: current)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func gestureEditor(for button: DeviceButton, record: DeviceRecord) -> some View {
+        let set = record.selectedProfile.gestureSet(for: button) ?? .named(.windowNavigation)
+        gestureNestedRow {
+            Picker("Preset", selection: gesturePresetBinding(for: button, current: set.preset)) {
+                ForEach(GesturePreset.allCases, id: \.self) { preset in
+                    Text(preset.title).tag(preset)
+                }
+            }
+        }
+        ForEach(GestureSlot.allCases, id: \.self) { slot in
+            gestureNestedRow {
+                Picker(slot.title, selection: gestureSlotBinding(for: button, slot: slot)) {
+                    mappingOptions
+                }
+            }
+            if showsGestureRecorder(for: button, slot: slot, current: set.action(for: slot)) {
+                gestureNestedRow {
+                    LabeledContent("Shortcut") {
+                        gestureShortcutRecorder(for: button, slot: slot, current: set.action(for: slot))
+                    }
+                }
+            }
+        }
+    }
+
+    private func gestureNestedRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Capsule()
+                .fill(Palette.accent.opacity(0.45))
+                .frame(width: 3, height: 14)
+            content()
+        }
+        .padding(.leading, 22)
+        .listRowInsets(EdgeInsets(top: 5, leading: 36, bottom: 5, trailing: 16))
+    }
+
+    @ViewBuilder
+    private var mappingOptions: some View {
+        ForEach(ControlAction.catalog) { option in
+            Text(option.title).tag(option.id)
+        }
+        Divider()
+        Text("Custom Shortcut…").tag(ControlActionOption.customID)
+    }
+
+    private func showsRecorder(for button: DeviceButton, current: ControlAction) -> Bool {
+        customizingButton == button || current.catalogID == ControlActionOption.customID
+    }
+
+    private func customShortcut(from action: ControlAction) -> (UInt16, UInt64)? {
+        if case .key(let key, let flags) = action, action.catalogID == ControlActionOption.customID {
+            return (key, flags)
+        }
+        return nil
+    }
+
+    private func shortcutRecorder(for button: DeviceButton, current: ControlAction) -> ShortcutRecorderField {
+        ShortcutRecorderField(
+            shortcut: customShortcut(from: current),
+            isRecording: customizingButton == button,
+            onBegin: { customizingButton = button },
+            onRecord: { key, flags in
+                customizingButton = nil
+                monitor.setButtonAction(.key(virtualKey: key, flags: flags), for: button)
+            },
+            onClear: {
+                customizingButton = nil
+                monitor.setButtonAction(.none, for: button)
+            },
+            onCancel: {
+                customizingButton = nil
+            }
+        )
     }
 
     @ViewBuilder
@@ -210,17 +330,18 @@ struct DeviceProfilePane: View {
     }
 
     private func selectPicker(caption: String, button: DeviceButton, current: ControlAction) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        VStack(alignment: .trailing, spacing: 6) {
             Text(caption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Picker(caption, selection: actionBinding(for: button)) {
-                ForEach(ControlActionOption.options(including: current)) { option in
-                    Text(option.title).tag(option.id)
-                }
+                mappingOptions
             }
             .labelsHidden()
-            .frame(maxWidth: 136)
+            .frame(maxWidth: 168)
+            if showsRecorder(for: button, current: current) {
+                shortcutRecorder(for: button, current: current)
+            }
         }
     }
 
@@ -301,8 +422,52 @@ struct DeviceProfilePane: View {
         )
     }
 
+    private var pointerSpeedBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedPointerSpeed },
+            set: { monitor.setPointerSpeed($0) }
+        )
+    }
+
+    private var wheelSpeedBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedWheelScrollSpeed },
+            set: { monitor.setWheelScrollSpeed($0) }
+        )
+    }
+
+    private var thumbSpeedBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedThumbScrollSpeed },
+            set: { monitor.setThumbScrollSpeed($0) }
+        )
+    }
+
+    private var scrollDirectionBinding: Binding<String> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedNaturalScrolling ? "natural" : "standard" },
+            set: { monitor.setNaturalScrolling($0 == "natural") }
+        )
+    }
+
+    @ViewBuilder
+    private func speedSlider(_ title: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(value: value, in: 0...1)
+        }
+    }
+
     private func buttonGroups(for record: DeviceRecord) -> [DeviceButtonGroup] {
-        record.isAppleTVRemote ? DeviceButton.appleTVGroups : DeviceButton.dualSenseGroups
+        if record.isMXMaster { return DeviceButton.mxMasterGroups }
+        if record.isAppleTVRemote { return DeviceButton.appleTVGroups }
+        return DeviceButton.dualSenseGroups
     }
 
     private func label(for button: DeviceButton) -> String {
@@ -320,8 +485,84 @@ struct DeviceProfilePane: View {
 
     private func actionBinding(for button: DeviceButton) -> Binding<String> {
         Binding(
-            get: { (monitor.selectedProfile.bindings[button] ?? .none).catalogID },
-            set: { monitor.setButtonAction(ControlAction.fromCatalogID($0), for: button) }
+            get: {
+                if customizingButton == button {
+                    return ControlActionOption.customID
+                }
+                return (monitor.selectedProfile.bindings[button] ?? .none).catalogID
+            },
+            set: { id in
+                if id == ControlActionOption.customID {
+                    customizingButton = button
+                    return
+                }
+                if customizingButton == button {
+                    customizingButton = nil
+                }
+                monitor.setButtonAction(ControlAction.fromCatalogID(id), for: button)
+            }
+        )
+    }
+
+    private func gesturePresetBinding(for button: DeviceButton, current: GesturePreset) -> Binding<GesturePreset> {
+        Binding(
+            get: { current },
+            set: { monitor.setGesturePreset($0, for: button) }
+        )
+    }
+
+    private func gestureSlotBinding(for button: DeviceButton, slot: GestureSlot) -> Binding<String> {
+        Binding(
+            get: {
+                if customizingGestureButton == button, customizingGestureSlot == slot {
+                    return ControlActionOption.customID
+                }
+                return (monitor.selectedProfile.gestureSet(for: button) ?? .named(.windowNavigation))
+                    .action(for: slot)
+                    .catalogID
+            },
+            set: { id in
+                if id == ControlActionOption.customID {
+                    customizingGestureButton = button
+                    customizingGestureSlot = slot
+                    return
+                }
+                if customizingGestureButton == button, customizingGestureSlot == slot {
+                    customizingGestureButton = nil
+                    customizingGestureSlot = nil
+                }
+                monitor.setGestureAction(ControlAction.fromCatalogID(id), slot: slot, for: button)
+            }
+        )
+    }
+
+    private func showsGestureRecorder(for button: DeviceButton, slot: GestureSlot, current: ControlAction) -> Bool {
+        (customizingGestureButton == button && customizingGestureSlot == slot)
+            || current.catalogID == ControlActionOption.customID
+    }
+
+    private func gestureShortcutRecorder(for button: DeviceButton, slot: GestureSlot, current: ControlAction) -> ShortcutRecorderField {
+        ShortcutRecorderField(
+            shortcut: customShortcut(from: current),
+            isRecording: customizingGestureButton == button && customizingGestureSlot == slot,
+            onBegin: {
+                customizingGestureButton = button
+                customizingGestureSlot = slot
+            },
+            onRecord: { key, flags in
+                customizingGestureButton = nil
+                customizingGestureSlot = nil
+                monitor.setGestureAction(.key(virtualKey: key, flags: flags), slot: slot, for: button)
+            },
+            onClear: {
+                customizingGestureButton = nil
+                customizingGestureSlot = nil
+                monitor.setGestureAction(.none, slot: slot, for: button)
+            },
+            onCancel: {
+                customizingGestureButton = nil
+                customizingGestureSlot = nil
+            }
         )
     }
 }

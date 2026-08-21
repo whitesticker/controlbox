@@ -11,6 +11,14 @@ let package = Package(
         .library(name: "IRemoteControl", targets: ["IRemoteControl"])
     ],
     targets: [
-        .target(name: "IRemoteControl")
+        .target(
+            name: "IRemoteControl",
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("CoreAudio"),
+                .linkedFramework("CoreGraphics")
+            ]
+        )
     ]
 )

@@ -13,6 +13,16 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var pointerAcceleration: Bool?
     public var pointerAccelerationAmount: Double?
     public var stickyTargeting: Bool?
+    public var pointerSpeed: Double?
+    public var wheelScrollSpeed: Double?
+    public var thumbScrollSpeed: Double?
+    public var naturalScrolling: Bool?
+    public var gestureSets: [DeviceButton: GestureSet]?
+
+    public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
+    public var resolvedWheelScrollSpeed: Double { Self.clampSpeed(wheelScrollSpeed) }
+    public var resolvedThumbScrollSpeed: Double { Self.clampSpeed(thumbScrollSpeed) }
+    public var resolvedNaturalScrolling: Bool { naturalScrolling ?? true }
 
     public init(
         id: String = UUID().uuidString,
@@ -26,7 +36,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         appleTVWheel: AnalogMode = .off,
         pointerAcceleration: Bool? = true,
         pointerAccelerationAmount: Double? = 0.3,
-        stickyTargeting: Bool? = false
+        stickyTargeting: Bool? = false,
+        pointerSpeed: Double? = 0.5,
+        wheelScrollSpeed: Double? = 0.5,
+        thumbScrollSpeed: Double? = 0.5,
+        naturalScrolling: Bool? = true,
+        gestureSets: [DeviceButton: GestureSet]? = nil
     ) {
         self.id = id
         self.name = name
@@ -40,6 +55,15 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.pointerAcceleration = pointerAcceleration
         self.pointerAccelerationAmount = pointerAccelerationAmount
         self.stickyTargeting = stickyTargeting
+        self.pointerSpeed = pointerSpeed
+        self.wheelScrollSpeed = wheelScrollSpeed
+        self.thumbScrollSpeed = thumbScrollSpeed
+        self.naturalScrolling = naturalScrolling
+        self.gestureSets = gestureSets
+    }
+
+    private static func clampSpeed(_ value: Double?) -> Double {
+        min(max(value ?? 0.5, 0), 1)
     }
 
     public func mode(for source: AnalogSource) -> AnalogMode {
@@ -64,6 +88,60 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
     public mutating func setBinding(_ action: ControlAction, for button: DeviceButton) {
         bindings[button] = action
+        if action != .gestures {
+            gestureSets?[button] = nil
+            if gestureSets?.isEmpty == true {
+                gestureSets = nil
+            }
+        } else if gestureSets?[button] == nil {
+            setGestureSet(.named(.windowNavigation), for: button)
+        }
+    }
+
+    public var mxGestureOwners: Set<DeviceButton> {
+        var owners = Set((gestureSets ?? [:]).keys)
+        for (button, action) in bindings where action == .gestures {
+            owners.insert(button)
+        }
+        if owners.isEmpty, bindings[.mxGesture] != nil || bindings[.mxGestureUp] != nil {
+            owners.insert(.mxHaptic)
+        }
+        return owners
+    }
+
+    public func gestureSet(for button: DeviceButton) -> GestureSet? {
+        if let set = gestureSets?[button] { return set }
+        if button == .mxHaptic, (gestureSets ?? [:]).isEmpty {
+            return GestureSet(
+                preset: .custom,
+                click: bindings[.mxGesture] ?? .missionControl,
+                up: bindings[.mxGestureUp] ?? .missionControl,
+                down: bindings[.mxGestureDown] ?? .appExpose,
+                left: bindings[.mxGestureLeft] ?? .spaceLeft,
+                right: bindings[.mxGestureRight] ?? .spaceRight
+            )
+        }
+        return nil
+    }
+
+    public func action(forGesture slot: GestureSlot, owner: DeviceButton) -> ControlAction {
+        if let set = gestureSet(for: owner) {
+            return set.action(for: slot)
+        }
+        return bindings[slot.deviceButton] ?? .none
+    }
+
+    public mutating func setGestureSet(_ set: GestureSet, for button: DeviceButton) {
+        bindings[button] = .gestures
+        var sets = gestureSets ?? [:]
+        sets[button] = set
+        gestureSets = sets
+    }
+
+    public mutating func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
+        var set = gestureSet(for: button) ?? GestureSet.named(.custom)
+        set.setAction(action, for: slot)
+        setGestureSet(set, for: button)
     }
 
     public func duplicated(as name: String? = nil) -> MappingProfile {
@@ -79,11 +157,28 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             appleTVWheel: appleTVWheel,
             pointerAcceleration: pointerAcceleration,
             pointerAccelerationAmount: pointerAccelerationAmount,
-            stickyTargeting: stickyTargeting
+            stickyTargeting: stickyTargeting,
+            pointerSpeed: pointerSpeed,
+            wheelScrollSpeed: wheelScrollSpeed,
+            thumbScrollSpeed: thumbScrollSpeed,
+            naturalScrolling: naturalScrolling,
+            gestureSets: gestureSets
         )
     }
 
-    public static func makeDefault(name: String = "Default", isAppleTVRemote: Bool) -> MappingProfile {
+    public static func makeDefault(
+        name: String = "Default",
+        isAppleTVRemote: Bool,
+        isMXMaster: Bool = false
+    ) -> MappingProfile {
+        if isMXMaster {
+            return MappingProfile(
+                name: name,
+                summary: "Assign Gestures to any button, then hold and move. A tap without moving is Click.",
+                bindings: mxMasterBindings,
+                gestureSets: [.mxHaptic: .named(.windowNavigation)]
+            )
+        }
         if isAppleTVRemote {
             return MappingProfile(
                 name: name,
@@ -103,6 +198,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         )
     }
 }
+
+private let mxMasterBindings: [DeviceButton: ControlAction] = [
+    .mxHaptic: .gestures,
+    .mxBack: .browserBack,
+    .mxForward: .browserForward
+]
 
 private let appleTVBindings: [DeviceButton: ControlAction] = [
     .playPause: .mediaPlayPause,

@@ -115,6 +115,10 @@ enum EventPoster {
         event.post(tap: .cghidEventTap)
     }
 
+    static func system(_ action: ControlAction) {
+        SystemNavigation.perform(action)
+    }
+
     private static func clampToDisplays(_ point: CGPoint) -> CGPoint {
         var bounds = CGRect.null
         for screen in NSScreen.screens {
@@ -133,6 +137,8 @@ enum MediaKey {
     static let soundDown: Int32 = 1
     static let mute: Int32 = 7
     static let play: Int32 = 16
+    static let next: Int32 = 17
+    static let previous: Int32 = 18
 }
 
 private enum MouseClickState {

@@ -7,6 +7,7 @@ enum DeviceKind: String, Codable, Equatable {
     case dualSense
     case dualSenseEdge
     case appleTVRemote
+    case logitechMXMaster
     case unsupported
 
     var isSupported: Bool { self != .unsupported }
@@ -16,6 +17,7 @@ enum DeviceKind: String, Codable, Equatable {
         case .dualSense: return "PS5 DualSense"
         case .dualSenseEdge: return "PS5 DualSense Edge"
         case .appleTVRemote: return "Apple TV Remote"
+        case .logitechMXMaster: return "MX Master"
         case .unsupported: return "Not supported yet"
         }
     }
@@ -39,6 +41,11 @@ enum DeviceSupport {
     static let dualSenseEdgeProductID = 0x0DF2
     static let appleVendorID = 0x004C
     static let appleTVRemoteProductIDs: Set<Int> = [0x0314, 0x0315, 0x0266, 0x0267]
+    static let logitechVendorID = 0x046D
+    static let mxMasterProductIDs: Set<Int> = [
+        0xB019, 0xB023, 0xB034, 0xB042, 0xB366,
+        0x4069, 0x4082
+    ]
 
     static func classify(name: String, vendorID: Int?, productID: Int?) -> DeviceKind {
         if vendorID == sonyVendorID {
@@ -47,6 +54,12 @@ enum DeviceSupport {
         }
         if vendorID == appleVendorID, let productID, appleTVRemoteProductIDs.contains(productID) {
             return .appleTVRemote
+        }
+        if isMXMasterName(name) || (vendorID == logitechVendorID && isMXMasterName(name)) {
+            return .logitechMXMaster
+        }
+        if vendorID == logitechVendorID, let productID, mxMasterProductIDs.contains(productID), isMXMasterName(name) {
+            return .logitechMXMaster
         }
 
         let lowered = name.lowercased()
@@ -58,12 +71,23 @@ enum DeviceSupport {
         if name.uppercased() == "DJ7FTR0Y17FC" {
             return .appleTVRemote
         }
+        if isMXMasterName(name) { return .logitechMXMaster }
         return .unsupported
+    }
+
+    static func isMXMasterName(_ name: String) -> Bool {
+        name.lowercased().contains("mx master")
     }
 }
 
 enum BluetoothDeviceCatalog {
     static func availableDevices() -> [ConnectedBluetoothDevice] {
+        autoreleasepool {
+            loadAvailableDevices()
+        }
+    }
+
+    private static func loadAvailableDevices() -> [ConnectedBluetoothDevice] {
         let hid = HIDNameIndex.load()
         var devices: [ConnectedBluetoothDevice] = []
         var seen = Set<String>()

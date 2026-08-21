@@ -4,6 +4,7 @@ struct ContentView: View {
     @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
+    @State private var showPermissions = false
 
     var body: some View {
         NavigationSplitView {
@@ -25,6 +26,24 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     Divider()
                     Button {
+                        showPermissions = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Label("Permissions", systemImage: "lock.shield")
+                            Spacer(minLength: 8)
+                            Circle()
+                                .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
+                                .frame(width: 8, height: 8)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(showPermissions ? Color.accentColor.opacity(0.14) : Color.clear)
+                    Divider()
+                    Button {
                         showAddDevice = true
                     } label: {
                         Label("Add Device…", systemImage: "plus")
@@ -42,7 +61,11 @@ struct ContentView: View {
                 AddDeviceSheet(monitor: monitor)
             }
         } detail: {
-            DeviceProfilePane(monitor: monitor)
+            if showPermissions {
+                PrivacyPane(monitor: monitor)
+            } else {
+                DeviceProfilePane(monitor: monitor)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .foregroundStyle(Palette.primaryText(colorScheme))
@@ -51,8 +74,11 @@ struct ContentView: View {
 
     private var deviceSelection: Binding<String?> {
         Binding(
-            get: { monitor.selectedDeviceID },
-            set: { monitor.selectDevice(id: $0) }
+            get: { showPermissions ? nil : monitor.selectedDeviceID },
+            set: {
+                showPermissions = false
+                monitor.selectDevice(id: $0)
+            }
         )
     }
 }
@@ -61,7 +87,13 @@ private struct DeviceSidebarRow: View {
     let device: SidebarDevice
 
     var body: some View {
-        Label {
+        HStack(spacing: 8) {
+            SettingsGlyph(
+                symbol: device.symbol,
+                tint: device.kind == .appleTVRemote
+                    ? Color(red: 0.35, green: 0.34, blue: 0.84)
+                    : Color(red: 0.20, green: 0.48, blue: 0.96)
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                     .lineLimit(1)
@@ -69,20 +101,10 @@ private struct DeviceSidebarRow: View {
                     .font(.caption)
                     .foregroundStyle(device.isConnected ? Palette.good : .secondary)
             }
-        } icon: {
-            ZStack(alignment: .bottomTrailing) {
-                SettingsGlyph(
-                    symbol: device.symbol,
-                    tint: device.kind == .appleTVRemote
-                        ? Color(red: 0.35, green: 0.34, blue: 0.84)
-                        : Color(red: 0.20, green: 0.48, blue: 0.96)
-                )
-                Circle()
-                    .fill(device.isConnected ? Palette.good : Color.secondary.opacity(0.55))
-                    .frame(width: 8, height: 8)
-                    .overlay(Circle().stroke(.background, lineWidth: 1.5))
-                    .offset(x: 2, y: 2)
-            }
+            Spacer(minLength: 8)
+            Circle()
+                .fill(device.isConnected ? Palette.good : Color.secondary.opacity(0.55))
+                .frame(width: 8, height: 8)
         }
     }
 }
@@ -117,6 +139,8 @@ struct CalibrationWindow: View {
                     AppleTVSidebar(snapshot: monitor.appleTVSnapshot)
                         .frame(width: 360)
                 }
+            } else if monitor.selectedKind == .logitechMXMaster {
+                MXMasterCalibrationView(snapshot: monitor.mxMasterSnapshot)
             } else {
                 HeaderBar(snapshot: monitor.snapshot)
                 HStack(alignment: .top, spacing: 18) {
@@ -140,6 +164,9 @@ struct CalibrationWindow: View {
     private var isLive: Bool {
         if monitor.selectedKind == .appleTVRemote {
             return monitor.appleTVSnapshot.connected
+        }
+        if monitor.selectedKind == .logitechMXMaster {
+            return monitor.mxMasterSnapshot.connected
         }
         return monitor.snapshot.connected
     }

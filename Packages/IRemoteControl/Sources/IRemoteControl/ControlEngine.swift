@@ -26,6 +26,7 @@ public final class ControlEngine: @unchecked Sendable {
     private var wheelGestureLatched = false
     private var volumeRepeatAt = Date.distantPast
     private var volumeRepeatButton: DeviceButton?
+    private var liveGesture = LiveGestureState()
 
     public init(profile: MappingProfile = MappingProfile.makeDefault(isAppleTVRemote: false)) {
         self.profile = profile
@@ -55,6 +56,7 @@ public final class ControlEngine: @unchecked Sendable {
         wheelGestureLatched = false
         volumeRepeatAt = .distantPast
         volumeRepeatButton = nil
+        liveGesture.cancel()
         clearSelectHold()
         StickyTargeting.hide()
     }
@@ -63,22 +65,24 @@ public final class ControlEngine: @unchecked Sendable {
         var stickyActive = false
         defer { StickyTargeting.sync(active: stickyActive) }
 
+        guard EventPoster.isTrusted() else {
+            clearSelectHold()
+            return
+        }
+
+        pointerSpeed = 4 + profile.resolvedPointerSpeed * 24
+        scrollSpeed = 0.08 + profile.resolvedWheelScrollSpeed * 0.72
+        postInjectedScroll(frame)
+
         guard enabled else {
             previousButtons = frame.buttons
             lastAnalog = frame.analog
             clearSelectHold()
             return
         }
-        guard !hostIsActive || postsWhenHostIsActive else {
-            previousButtons = frame.buttons
-            lastAnalog = frame.analog
-            clearSelectHold()
-            return
-        }
-        guard EventPoster.isTrusted() else {
-            clearSelectHold()
-            return
-        }
+
+        let injectAll = !hostIsActive || postsWhenHostIsActive
+        processGesture(frame, injectAll: injectAll)
 
         stickyActive = profile.stickyTargeting == true
             && AnalogSource.allCases.contains { profile.mode(for: $0) == .pointer }
@@ -90,15 +94,28 @@ public final class ControlEngine: @unchecked Sendable {
             && button != .volumeDown {
             let wasPressed = previousButtons[button] ?? false
             if pressed != wasPressed {
-                perform(profile.bindings[button] ?? .none, down: pressed)
+                let action = profile.bindings[button] ?? .none
+                if injectAll || action.isSystemNavigation {
+                    perform(action, down: pressed)
+                }
             }
         }
         applyVolumeRepeat(
             upPressed: frame.buttons[.volumeUp] ?? false,
-            downPressed: frame.buttons[.volumeDown] ?? false
+            downPressed: frame.buttons[.volumeDown] ?? false,
+            enabled: injectAll
         )
-        applySelectClick(pressed: frame.buttons[.clickSelect] ?? false)
+        if injectAll {
+            applySelectClick(pressed: frame.buttons[.clickSelect] ?? false)
+        } else {
+            clearSelectHold()
+        }
         previousButtons = frame.buttons
+
+        guard injectAll else {
+            lastAnalog = frame.analog
+            return
+        }
 
         let selectPressed = frame.buttons[.clickSelect] ?? false
         if selectPressed {
@@ -127,7 +144,11 @@ public final class ControlEngine: @unchecked Sendable {
         }
     }
 
-    private func applyVolumeRepeat(upPressed: Bool, downPressed: Bool) {
+    private func applyVolumeRepeat(upPressed: Bool, downPressed: Bool, enabled: Bool = true) {
+        guard enabled else {
+            volumeRepeatButton = nil
+            return
+        }
         let held: DeviceButton?
         if upPressed, !downPressed {
             held = .volumeUp
@@ -276,13 +297,13 @@ public final class ControlEngine: @unchecked Sendable {
             let dead: Float = 0.18
             let dy = abs(sample.y) > dead ? Double(-sample.y) : 0
             let dx = abs(sample.x) > dead ? Double(sample.x) : 0
-            EventPoster.scroll(deltaY: dy * scrollSpeed * 24, deltaX: dx * scrollSpeed * 24, continuous: true)
+            EventPoster.scroll(deltaY: dy * scrollSpeed * 24 * scrollSign, deltaX: dx * scrollSpeed * 24 * scrollSign, continuous: true)
         case .dualSenseTouchpad, .appleTVClickpad:
             guard sample.active, let previous = lastAnalog[source], previous.active else { return }
             let dy = Double(sample.y - previous.y) * (source == .dualSenseTouchpad ? -1 : 1)
             EventPoster.scroll(
-                deltaY: dy * scrollSpeed * 420,
-                deltaX: Double(sample.x - previous.x) * scrollSpeed * 420,
+                deltaY: dy * scrollSpeed * 420 * scrollSign,
+                deltaX: Double(sample.x - previous.x) * scrollSpeed * 420 * scrollSign,
                 continuous: true
             )
         case .appleTVWheel:
@@ -343,7 +364,56 @@ public final class ControlEngine: @unchecked Sendable {
         guard abs(scrollPixelRemainderY) >= 0.4 else { return }
         let emit = scrollPixelRemainderY
         scrollPixelRemainderY = 0
-        EventPoster.scroll(deltaY: emit, continuous: true)
+        EventPoster.scroll(deltaY: emit * scrollSign, continuous: true)
+    }
+
+    private var scrollSign: Double {
+        profile.resolvedNaturalScrolling ? 1.0 : -1.0
+    }
+
+    private func processGesture(_ frame: ControlFrame, injectAll: Bool) {
+        let owner = frame.gestureOwner ?? liveGesture.owner ?? .mxHaptic
+        let set = profile.gestureSet(for: owner)
+        let allow = injectAll
+            || set?.click.isSystemNavigation == true
+            || set?.up.isSystemNavigation == true
+            || set?.down.isSystemNavigation == true
+            || set?.left.isSystemNavigation == true
+            || set?.right.isSystemNavigation == true
+            || set?.up.isLiveVolume == true
+            || set?.down.isLiveVolume == true
+
+        if frame.gestureActive {
+            guard allow else { return }
+            if let opened = liveGesture.handleMove(x: frame.gestureX, y: frame.gestureY, owner: owner, set: set) {
+                perform(opened, down: true)
+                perform(opened, down: false)
+            }
+            return
+        }
+
+        let consumed = liveGesture.consumed
+        let followUp = liveGesture.end()
+        if let followUp {
+            perform(followUp, down: true)
+            perform(followUp, down: false)
+            return
+        }
+
+        guard let slotButton = frame.gestureSlot,
+              let slot = GestureSlot.slot(for: slotButton)
+        else { return }
+        if consumed { return }
+        let action = profile.action(forGesture: slot, owner: owner)
+        guard injectAll || action.isSystemNavigation else { return }
+        perform(action, down: true)
+        perform(action, down: false)
+    }
+
+    private func postInjectedScroll(_ frame: ControlFrame) {
+        let dy = frame.scrollY * (0.35 + profile.resolvedWheelScrollSpeed * 4.2) * scrollSign
+        let dx = frame.scrollX * (0.35 + profile.resolvedThumbScrollSpeed * 4.2) * scrollSign
+        EventPoster.scroll(deltaY: dy, deltaX: dx, continuous: true)
     }
 
     private func volume(source: AnalogSource, sample: AnalogSample, wheelDegrees: Double) {
@@ -363,7 +433,7 @@ public final class ControlEngine: @unchecked Sendable {
 
     private func perform(_ action: ControlAction, down: Bool) {
         switch action {
-        case .none:
+        case .none, .gestures:
             return
         case .key(let virtualKey, let flags):
             EventPoster.key(virtualKey, flags: CGEventFlags(rawValue: flags), down: down)
@@ -375,6 +445,10 @@ public final class ControlEngine: @unchecked Sendable {
             EventPoster.media(MediaKey.soundDown, down: down)
         case .mediaMute:
             EventPoster.media(MediaKey.mute, down: down)
+        case .mediaNext:
+            EventPoster.media(MediaKey.next, down: down)
+        case .mediaPrevious:
+            EventPoster.media(MediaKey.previous, down: down)
         case .mouseLeft:
             if profile.stickyTargeting == true,
                !EventPoster.wouldBeDoubleClick(right: false),
@@ -391,6 +465,140 @@ public final class ControlEngine: @unchecked Sendable {
                 return
             }
             EventPoster.mouseClick(right: true, down: down)
+        case .missionControl:
+            if down { EventPoster.system(.missionControl) }
+        case .appExpose:
+            if down { EventPoster.system(.appExpose) }
+        case .showDesktop:
+            if down { EventPoster.system(.showDesktop) }
+        case .spaceLeft:
+            if down { EventPoster.system(.spaceLeft) }
+        case .spaceRight:
+            if down { EventPoster.system(.spaceRight) }
+        case .browserBack:
+            EventPoster.key(33, flags: .maskCommand, down: down)
+        case .browserForward:
+            EventPoster.key(30, flags: .maskCommand, down: down)
+        case .switchApplication:
+            if down { EventPoster.system(.switchApplication) }
+        case .switchApplicationBack:
+            if down { EventPoster.system(.switchApplicationBack) }
+        case .screenCapture:
+            EventPoster.key(21, flags: [.maskCommand, .maskShift], down: down)
+        case .closeWindow:
+            EventPoster.key(13, flags: .maskCommand, down: down)
         }
+    }
+}
+
+private struct LiveGestureState {
+    enum Axis {
+        case horizontal
+        case vertical
+    }
+
+    var owner: DeviceButton?
+    var consumed = false
+    private var lastX = 0.0
+    private var lastY = 0.0
+    private var hasSample = false
+    private var axis: Axis?
+    private var space = DockSwipe.Session()
+    private var volumeHold = 0.0
+    private var openedAppExpose = false
+
+    mutating func handleMove(x: Double, y: Double, owner: DeviceButton, set: GestureSet?) -> ControlAction? {
+        self.owner = owner
+        defer {
+            lastX = x
+            lastY = y
+            hasSample = true
+        }
+        guard hasSample else { return nil }
+        let dx = x - lastX
+        let dy = y - lastY
+        guard let set else { return nil }
+
+        if axis == nil, hypot(x, y) >= 28 {
+            axis = abs(x) >= abs(y) ? .horizontal : .vertical
+        }
+        guard let axis else { return nil }
+
+        switch axis {
+        case .horizontal:
+            applySpace(dx: dx, set: set)
+            return nil
+        case .vertical:
+            return applyVertical(dy: dy, set: set)
+        }
+    }
+
+    mutating func end() -> ControlAction? {
+        let offset = space.offset
+        space.end()
+        let closeExpose = openedAppExpose && offset > -0.18
+        let openExpose = !openedAppExpose && offset <= -0.28
+        resetTracking()
+        consumed = false
+        if closeExpose || openExpose {
+            return .appExpose
+        }
+        return nil
+    }
+
+    mutating func cancel() {
+        space.cancel()
+        consumed = false
+        resetTracking()
+    }
+
+    private mutating func resetTracking() {
+        owner = nil
+        lastX = 0
+        lastY = 0
+        hasSample = false
+        axis = nil
+        volumeHold = 0
+        openedAppExpose = false
+    }
+
+    private mutating func applySpace(dx: Double, set: GestureSet) {
+        let action = dx >= 0 ? set.right : set.left
+        guard action.isLiveSpace else { return }
+        let magnitude = abs(dx) / (DockSwipe.horizontalSpan * 0.7)
+        let signed = action == .spaceRight ? magnitude : -magnitude
+        space.add(signed, axis: .horizontal)
+        consumed = true
+    }
+
+    private mutating func applyVertical(dy: Double, set: GestureSet) -> ControlAction? {
+        let action = dy < 0 ? set.up : set.down
+        if action.isLiveMissionSwipe, set.preset == .windowNavigation {
+            let magnitude = abs(dy) / DockSwipe.verticalSwipeSpan
+            let signed = action == .missionControl ? magnitude : -magnitude
+            space.add(signed, axis: .vertical)
+            consumed = true
+            if action == .appExpose, !openedAppExpose, space.offset <= -0.28 {
+                openedAppExpose = true
+                return .appExpose
+            }
+            return nil
+        }
+        applyVolume(dy: dy, set: set)
+        return nil
+    }
+
+    private mutating func applyVolume(dy: Double, set: GestureSet) {
+        let action = dy < 0 ? set.up : set.down
+        guard action.isLiveVolume else { return }
+        let pixels = abs(dy)
+        let amount = pixels / DockSwipe.verticalSpan
+        volumeHold += action == .mediaVolumeUp ? amount : -amount
+        guard abs(volumeHold) >= 0.001 else { return }
+        if let level = SystemVolume.adjust(by: volumeHold) {
+            VolumeHUD.show(level: level)
+        }
+        volumeHold = 0
+        consumed = true
     }
 }

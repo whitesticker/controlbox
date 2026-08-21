@@ -59,4 +59,24 @@ enum ControlFrameBuilder {
             wheelDegrees: snapshot.wheelDegrees
         )
     }
+
+    static func make(from snapshot: MXMasterSnapshot) -> ControlFrame {
+        var buttons: [DeviceButton: Bool] = [
+            .mxBack: snapshot.back,
+            .mxForward: snapshot.forward,
+            .mxSmartShift: snapshot.smartShift,
+            .mxModeShift: snapshot.modeShift,
+            .mxHaptic: snapshot.haptic
+        ]
+        return ControlFrame(
+            buttons: buttons,
+            scrollY: snapshot.pendingScrollY,
+            scrollX: snapshot.pendingScrollX,
+            gestureSlot: snapshot.pendingGesture,
+            gestureOwner: snapshot.pendingGestureOwner ?? snapshot.liveGestureOwner,
+            gestureActive: snapshot.gestureDown || snapshot.haptic,
+            gestureX: snapshot.gestureDX,
+            gestureY: snapshot.gestureDY
+        )
+    }
 }

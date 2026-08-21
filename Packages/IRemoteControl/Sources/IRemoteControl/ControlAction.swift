@@ -9,38 +9,77 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
     case mediaMute
     case mouseLeft
     case mouseRight
+    case missionControl
+    case appExpose
+    case showDesktop
+    case spaceLeft
+    case spaceRight
+    case browserBack
+    case browserForward
+    case gestures
+    case mediaNext
+    case mediaPrevious
+    case switchApplication
+    case switchApplicationBack
+    case screenCapture
+    case closeWindow
 
     public var title: String {
         switch self {
         case .none: return "None"
         case .key(let virtualKey, let flags):
-            if flags != 0 { return "Key \(virtualKey)" }
-            switch virtualKey {
-            case 126: return "Arrow Up"
-            case 125: return "Arrow Down"
-            case 123: return "Arrow Left"
-            case 124: return "Arrow Right"
-            case 36: return "Return"
-            case 53: return "Escape"
-            case 49: return "Space"
-            case 48: return "Tab"
-            case 51: return "Delete"
-            case 58: return "Left Option"
-            case 61: return "Right Option"
-            case 55: return "Left Command"
-            case 54: return "Right Command"
-            case 56: return "Left Shift"
-            case 60: return "Right Shift"
-            case 59: return "Left Control"
-            case 62: return "Right Control"
-            default: return "Key \(virtualKey)"
-            }
+            return ShortcutFormatter.describe(virtualKey: virtualKey, flags: flags)
         case .mediaPlayPause: return "Play/Pause"
         case .mediaVolumeUp: return "Volume Up"
         case .mediaVolumeDown: return "Volume Down"
         case .mediaMute: return "Mute"
         case .mouseLeft: return "Left click"
         case .mouseRight: return "Right click"
+        case .missionControl: return "Mission Control"
+        case .appExpose: return "App Expose"
+        case .showDesktop: return "Show Desktop"
+        case .spaceLeft: return "Previous desktop"
+        case .spaceRight: return "Next desktop"
+        case .browserBack: return "Back"
+        case .browserForward: return "Forward"
+        case .gestures: return "Gestures"
+        case .mediaNext: return "Next track"
+        case .mediaPrevious: return "Previous track"
+        case .switchApplication: return "Next application"
+        case .switchApplicationBack: return "Previous application"
+        case .screenCapture: return "Screen capture"
+        case .closeWindow: return "Close window"
+        }
+    }
+
+    public var isSystemNavigation: Bool {
+        switch self {
+        case .missionControl, .appExpose, .showDesktop, .spaceLeft, .spaceRight,
+             .switchApplication, .switchApplicationBack:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isLiveVolume: Bool {
+        switch self {
+        case .mediaVolumeUp, .mediaVolumeDown: return true
+        default: return false
+        }
+    }
+
+    var isLiveSpace: Bool {
+        switch self {
+        case .spaceLeft, .spaceRight: return true
+        default: return false
+        }
+    }
+
+    var isLiveMissionSwipe: Bool {
+        switch self {
+        case .missionControl, .appExpose: return true
+        default: return false
         }
     }
 }
@@ -57,14 +96,16 @@ public struct ControlActionOption: Identifiable, Hashable, Sendable {
     }
 
     public static let unknownID = "unknown"
+    public static let customID = "custom"
 
     public static func options(including action: ControlAction) -> [ControlActionOption] {
-        if ControlAction.catalog.contains(where: { $0.action == action }) {
-            return ControlAction.catalog
+        var items = ControlAction.catalog
+        if case .key = action, ControlAction.catalog.contains(where: { $0.action == action }) == false {
+            items.append(ControlActionOption(id: customID, title: action.title, action: action))
+        } else {
+            items.append(ControlActionOption(id: customID, title: "Custom Shortcut…", action: .none))
         }
-        return ControlAction.catalog + [
-            ControlActionOption(id: unknownID, title: action.title, action: action)
-        ]
+        return items
     }
 }
 
@@ -121,6 +162,19 @@ public extension ControlAction {
         .init(id: "none", title: "None", action: .none),
         .init(id: "mouseLeft", title: "Left click", action: .mouseLeft),
         .init(id: "mouseRight", title: "Right click", action: .mouseRight),
+        .init(id: "missionControl", title: "Mission Control", action: .missionControl),
+        .init(id: "appExpose", title: "App Expose", action: .appExpose),
+        .init(id: "showDesktop", title: "Show Desktop", action: .showDesktop),
+        .init(id: "spaceLeft", title: "Previous desktop", action: .spaceLeft),
+        .init(id: "spaceRight", title: "Next desktop", action: .spaceRight),
+        .init(id: "browserBack", title: "Back", action: .browserBack),
+        .init(id: "browserForward", title: "Forward", action: .browserForward),
+        .init(id: "switchApplication", title: "Next application", action: .switchApplication),
+        .init(id: "switchApplicationBack", title: "Previous application", action: .switchApplicationBack),
+        .init(id: "screenCapture", title: "Screen capture", action: .screenCapture),
+        .init(id: "closeWindow", title: "Close window", action: .closeWindow),
+        .init(id: "mediaNext", title: "Next track", action: .mediaNext),
+        .init(id: "mediaPrevious", title: "Previous track", action: .mediaPrevious),
         .init(id: "leftOption", title: "Left Option", action: .leftOptionKey),
         .init(id: "rightOption", title: "Right Option", action: .rightOptionKey),
         .init(id: "leftCommand", title: "Left Command", action: .leftCommandKey),
@@ -145,10 +199,18 @@ public extension ControlAction {
     ]
 
     var catalogID: String {
-        Self.catalog.first { $0.action == self }?.id ?? ControlActionOption.unknownID
+        if self == .gestures { return "gestures" }
+        if let id = Self.catalog.first(where: { $0.action == self })?.id {
+            return id
+        }
+        if case .key = self {
+            return ControlActionOption.customID
+        }
+        return ControlActionOption.unknownID
     }
 
-    static func fromCatalogID(_ id: String) -> ControlAction {
+    public static func fromCatalogID(_ id: String) -> ControlAction {
+        if id == "gestures" { return .gestures }
         switch id {
         case "option": return .leftOptionKey
         case "command": return .leftCommandKey

@@ -9,6 +9,10 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
     case back, tv, siri, mute, playPause, power
     case volumeUp, volumeDown
     case clickSelect, clickSelectLong, clickUp, clickDown, clickLeft, clickRight
+    case mxGesture, mxGestureUp, mxGestureDown, mxGestureLeft, mxGestureRight
+    case mxBack, mxForward, mxSmartShift, mxModeShift, mxHaptic
+    case mxLeft, mxRight, mxMiddle
+    case mxWheelUp, mxWheelDown, mxThumbLeft, mxThumbRight
 
     public var title: String {
         switch self {
@@ -44,6 +48,23 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         case .clickDown: return "Clickpad Down"
         case .clickLeft: return "Clickpad Left"
         case .clickRight: return "Clickpad Right"
+        case .mxGesture: return "Gesture tap"
+        case .mxGestureUp: return "Gesture up"
+        case .mxGestureDown: return "Gesture down"
+        case .mxGestureLeft: return "Gesture left"
+        case .mxGestureRight: return "Gesture right"
+        case .mxBack: return "Back"
+        case .mxForward: return "Forward"
+        case .mxSmartShift: return "Mode shift"
+        case .mxModeShift: return "DPI"
+        case .mxHaptic: return "Haptic"
+        case .mxLeft: return "Left click"
+        case .mxRight: return "Right click"
+        case .mxMiddle: return "Middle click"
+        case .mxWheelUp: return "Wheel up"
+        case .mxWheelDown: return "Wheel down"
+        case .mxThumbLeft: return "Thumb wheel left"
+        case .mxThumbRight: return "Thumb wheel right"
         }
     }
 
@@ -76,6 +97,14 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
             id: "power",
             title: "Power",
             buttons: [.power]
+        )
+    ]
+
+    public static let mxMasterGroups: [DeviceButtonGroup] = [
+        DeviceButtonGroup(
+            id: "buttons",
+            title: "Buttons",
+            buttons: [.mxHaptic, .mxBack, .mxForward, .mxSmartShift, .mxModeShift, .mxMiddle, .mxLeft, .mxRight]
         )
     ]
 
@@ -139,14 +168,35 @@ public struct ControlFrame: Equatable, Sendable {
     public var buttons: [DeviceButton: Bool]
     public var analog: [AnalogSource: AnalogSample]
     public var wheelDegrees: Double
+    public var scrollY: Double
+    public var scrollX: Double
+    public var gestureSlot: DeviceButton?
+    public var gestureOwner: DeviceButton?
+    public var gestureActive: Bool
+    public var gestureX: Double
+    public var gestureY: Double
 
     public init(
         buttons: [DeviceButton: Bool] = [:],
         analog: [AnalogSource: AnalogSample] = [:],
-        wheelDegrees: Double = 0
+        wheelDegrees: Double = 0,
+        scrollY: Double = 0,
+        scrollX: Double = 0,
+        gestureSlot: DeviceButton? = nil,
+        gestureOwner: DeviceButton? = nil,
+        gestureActive: Bool = false,
+        gestureX: Double = 0,
+        gestureY: Double = 0
     ) {
         self.buttons = buttons
         self.analog = analog
         self.wheelDegrees = wheelDegrees
+        self.scrollY = scrollY
+        self.scrollX = scrollX
+        self.gestureSlot = gestureSlot
+        self.gestureOwner = gestureOwner
+        self.gestureActive = gestureActive
+        self.gestureX = gestureX
+        self.gestureY = gestureY
     }
 }
