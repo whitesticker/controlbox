@@ -14,7 +14,7 @@ brew install --cask whitesticker/viberemote/viberemote
 
 Then open **VibeRemote**, enable it in **System Settings → Privacy & Security → Accessibility**, and relaunch if macOS asks.
 
-The first launch of an ad-hoc signed build may need **Right-click → Open**.
+The first launch of an ad-hoc signed Homebrew build may need **Right-click → Open**.
 
 ## Build from source
 
@@ -22,6 +22,8 @@ The first launch of an ad-hoc signed build may need **Right-click → Open**.
 xcodebuild -project IRemote.xcodeproj -scheme IRemote -configuration Release -derivedDataPath .derived build
 open .derived/Build/Products/Release/VibeRemote.app
 ```
+
+Local builds are signed with the Apple Development certificate so Accessibility and Input Monitoring stay granted across rebuilds. Grant those once for the signed build; you should not need to remove and re-add VibeRemote after that.
 
 ## Privacy
 

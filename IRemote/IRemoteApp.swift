@@ -16,7 +16,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        monitor.start()
+        DispatchQueue.main.async { [monitor] in
+            monitor.start()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        monitor.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

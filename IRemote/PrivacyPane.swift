@@ -61,7 +61,7 @@ struct PrivacyPane: View {
                             monitor.relaunchApp()
                         }
                     } footer: {
-                        Text("After you enable VibeRemote in System Settings, relaunch so this running copy picks up the new permission. Rebuilds can leave extra VibeRemote entries — turn on the one that is running now.")
+                        Text("After you enable VibeRemote in System Settings, relaunch so this running copy picks up the new permission. Debug builds are signed with your Apple Development certificate, so later rebuilds keep the same grant. Remove leftover ad-hoc VibeRemote rows if macOS still shows more than one.")
                     }
                 }
             }

@@ -1,6 +1,5 @@
 import Foundation
 import GameController
-import IOBluetooth
 import IOKit.hid
 
 enum DeviceKind: String, Codable, Equatable {
@@ -43,7 +42,7 @@ enum DeviceSupport {
     static let appleTVRemoteProductIDs: Set<Int> = [0x0314, 0x0315, 0x0266, 0x0267]
     static let logitechVendorID = 0x046D
     static let mxMasterProductIDs: Set<Int> = [
-        0xB019, 0xB023, 0xB034, 0xB042, 0xB366,
+        0xB019, 0xB023, 0xB034, 0xB042, 0xB043, 0xB366,
         0x4069, 0x4082
     ]
 
@@ -55,10 +54,7 @@ enum DeviceSupport {
         if vendorID == appleVendorID, let productID, appleTVRemoteProductIDs.contains(productID) {
             return .appleTVRemote
         }
-        if isMXMasterName(name) || (vendorID == logitechVendorID && isMXMasterName(name)) {
-            return .logitechMXMaster
-        }
-        if vendorID == logitechVendorID, let productID, mxMasterProductIDs.contains(productID), isMXMasterName(name) {
+        if vendorID == logitechVendorID, let productID, mxMasterProductIDs.contains(productID) {
             return .logitechMXMaster
         }
 
@@ -92,52 +88,22 @@ enum BluetoothDeviceCatalog {
         var devices: [ConnectedBluetoothDevice] = []
         var seen = Set<String>()
 
-        if let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
-            for device in paired {
-                let name = device.name ?? device.addressString ?? "Unknown device"
-                let address = (device.addressString ?? "").uppercased()
-                let connected = device.isConnected()
-                let hidMatch = hid.match(name: name)
-                let kind = DeviceSupport.classify(
-                    name: name,
-                    vendorID: hidMatch?.vendorID,
-                    productID: hidMatch?.productID
-                )
-                if !connected && !kind.isSupported { continue }
-
-                let id = address.isEmpty ? name : address
-                guard seen.insert(id).inserted else { continue }
-                seen.insert(name.lowercased())
-                devices.append(
-                    ConnectedBluetoothDevice(
-                        id: id,
-                        name: name,
-                        address: address.isEmpty ? "Bluetooth" : address,
-                        deviceKind: kind,
-                        detail: kind.isSupported ? kind.title : "VibeRemote cannot use this device yet",
-                        isConnected: connected
-                    )
-                )
-            }
-        }
-
-        for record in hid.records where record.vendorID == DeviceSupport.sonyVendorID {
+        for record in hid.records {
             let kind = DeviceSupport.classify(
                 name: record.product,
                 vendorID: record.vendorID,
                 productID: record.productID
             )
-            guard kind == .dualSense || kind == .dualSenseEdge else { continue }
+            guard kind.isSupported else { continue }
             let name = record.product.isEmpty ? kind.title : record.product
-            if seen.contains(name.lowercased()) { continue }
-            let id = "hid:\(record.vendorID):\(record.productID):\(name)"
-            guard seen.insert(id).inserted else { continue }
+            let identity = "\(record.vendorID):\(record.productID):\(name.lowercased())"
+            guard seen.insert(identity).inserted else { continue }
             seen.insert(name.lowercased())
             devices.append(
                 ConnectedBluetoothDevice(
-                    id: id,
+                    id: "hid:\(identity)",
                     name: name,
-                    address: "USB",
+                    address: "HID",
                     deviceKind: kind,
                     detail: kind.title,
                     isConnected: true
@@ -199,6 +165,12 @@ private struct HIDNameIndex {
                 kIOHIDProductIDKey as String: productID
             ])
         }
+        for productID in DeviceSupport.mxMasterProductIDs {
+            matching.append([
+                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
+                kIOHIDProductIDKey as String: productID
+            ])
+        }
         IOHIDManagerSetDeviceMatchingMultiple(manager, matching as CFArray)
         IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         defer { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
@@ -213,22 +185,6 @@ private struct HIDNameIndex {
             }
         }
         return HIDNameIndex(records: records)
-    }
-
-    func match(name: String) -> HIDRecord? {
-        if let exact = records.first(where: { $0.product.caseInsensitiveCompare(name) == .orderedSame }) {
-            return exact
-        }
-        if name.lowercased().contains("dualsense") {
-            return records.first { $0.vendorID == DeviceSupport.sonyVendorID }
-        }
-        if DeviceSupport.classify(name: name, vendorID: nil, productID: nil) == .appleTVRemote {
-            return records.first {
-                $0.vendorID == DeviceSupport.appleVendorID
-                    && DeviceSupport.appleTVRemoteProductIDs.contains($0.productID)
-            }
-        }
-        return nil
     }
 
     private static func stringProperty(_ key: String, device: IOHIDDevice) -> String? {

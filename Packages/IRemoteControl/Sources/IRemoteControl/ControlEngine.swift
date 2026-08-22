@@ -70,8 +70,8 @@ public final class ControlEngine: @unchecked Sendable {
             return
         }
 
-        pointerSpeed = 4 + profile.resolvedPointerSpeed * 24
-        scrollSpeed = 0.08 + profile.resolvedWheelScrollSpeed * 0.72
+        pointerSpeed = 4 + profile.appliedPointerSpeed * 24
+        scrollSpeed = 0.08 + profile.appliedWheelScrollSpeed * 0.72
         postInjectedScroll(frame)
 
         guard enabled else {
@@ -411,8 +411,8 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func postInjectedScroll(_ frame: ControlFrame) {
-        let dy = frame.scrollY * (0.35 + profile.resolvedWheelScrollSpeed * 4.2) * scrollSign
-        let dx = frame.scrollX * (0.35 + profile.resolvedThumbScrollSpeed * 4.2) * scrollSign
+        let dy = frame.scrollY * (0.35 + profile.appliedWheelScrollSpeed * 4.2) * scrollSign
+        let dx = frame.scrollX * (0.35 + profile.appliedThumbScrollSpeed * 4.2) * scrollSign
         EventPoster.scroll(deltaY: dy, deltaX: dx, continuous: true)
     }
 

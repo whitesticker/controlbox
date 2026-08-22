@@ -57,6 +57,8 @@ final class LogitechMXMasterReader {
 
     private var hidppManager: IOHIDManager?
     private var mouseManager: IOHIDManager?
+    private var clickTap: CFMachPort?
+    private var clickSource: CFRunLoopSource?
     private var hidppDevice: IOHIDDevice?
     private var queuedHIDPP: [IOHIDDevice] = []
     private let lock = NSLock()
@@ -72,8 +74,10 @@ final class LogitechMXMasterReader {
     private var activeGestureCID: UInt16?
     private var lastDivertedNative: Set<UInt16> = []
     private var ignoreNextRawXY = false
-    private var lastHapticArm = Date.distantPast
     private var pressed = Set<UInt16>()
+    private var running = false
+    private var recoverAttempts = 0
+    private var recoverWork: DispatchWorkItem?
     private var controls: [ControlInfo] = []
     private var extraCIDs: [UInt16: String] = [:]
     private var gestureOrigin = CGPoint.zero
@@ -128,11 +132,18 @@ final class LogitechMXMasterReader {
     }
 
     func start() {
+        running = true
         startHIDPP()
-        startMouse()
+        startClickProbe()
     }
 
     func stop() {
+        running = false
+        recoverWork?.cancel()
+        recoverWork = nil
+        recoverAttempts = 0
+        unlockCursor()
+        restoreNativeReporting()
         if let hidppDevice {
             IOHIDDeviceUnscheduleFromRunLoop(hidppDevice, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         }
@@ -144,10 +155,17 @@ final class LogitechMXMasterReader {
             IOHIDManagerUnscheduleFromRunLoop(mouseManager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
             IOHIDManagerClose(mouseManager, IOOptionBits(kIOHIDOptionsTypeNone))
         }
+        if let clickSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), clickSource, .commonModes)
+        }
+        if let clickTap {
+            CFMachPortInvalidate(clickTap)
+        }
+        clickSource = nil
+        clickTap = nil
         hidppManager = nil
         mouseManager = nil
         hidppDevice = nil
-        unlockCursor()
         queuedHIDPP.removeAll()
         ready = false
         pending = nil
@@ -163,7 +181,10 @@ final class LogitechMXMasterReader {
         naturalScrolling = true
         injectEnabled = false
         wheelsEnabled = false
-        for buffer in hidppBuffers.values {
+        for (id, buffer) in hidppBuffers {
+            if let device = hidppDevice, ObjectIdentifier(device) == id {
+                IOHIDDeviceRegisterInputReportCallback(device, buffer, 64, nil, nil)
+            }
             buffer.deallocate()
         }
         hidppBuffers.removeAll()
@@ -258,9 +279,8 @@ final class LogitechMXMasterReader {
     }
 
     func pollGesturePointer() {
-        maybeRearmHaptic()
+        let down = activeGestureCID != nil
         lock.lock()
-        let down = snapshot.haptic || snapshot.gestureDown
         let skipCursor = usingRawXY
         lock.unlock()
         guard down else {
@@ -305,35 +325,52 @@ final class LogitechMXMasterReader {
             [
                 kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
                 kIOHIDDeviceUsagePageKey as String: 0xFF00
+            ],
+            [
+                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
+                kIOHIDPrimaryUsagePageKey as String: 0xFF43
+            ],
+            [
+                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
+                kIOHIDDeviceUsagePageKey as String: 0xFF43
             ]
         ]
         IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(mgr, { context, _, _, device in
             guard let context else { return }
-            Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue().attachHIDPP(device)
+            let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
+            DispatchQueue.main.async {
+                reader.takeUnretainedValue().attachHIDPP(device)
+            }
         }, pointer)
         IOHIDManagerRegisterDeviceRemovalCallback(mgr, { context, _, _, device in
             guard let context else { return }
-            Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue().detachHIDPP(device)
+            let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
+            DispatchQueue.main.async {
+                reader.takeUnretainedValue().detachHIDPP(device)
+            }
         }, pointer)
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        var opened = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
-        if opened != kIOReturnSuccess {
-            opened = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
+        _ = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
         hidppManager = mgr
-        if let copied = IOHIDManagerCopyDevices(mgr) {
-            var devices: [IOHIDDevice] = []
-            for case let item as IOHIDDevice in (copied as NSSet) {
-                devices.append(item)
-            }
-            devices.sort { lhs, rhs in
-                isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
-            }
-            for device in devices {
-                attachHIDPP(device)
-            }
+        DispatchQueue.main.async { [weak self] in
+            self?.scanHIDPP()
+        }
+    }
+
+    private func scanHIDPP() {
+        guard let hidppManager, hidppDevice == nil else { return }
+        guard let copied = IOHIDManagerCopyDevices(hidppManager) else { return }
+        var devices: [IOHIDDevice] = []
+        for case let item as IOHIDDevice in (copied as NSSet) {
+            devices.append(item)
+        }
+        devices.sort { lhs, rhs in
+            isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
+        }
+        for device in devices {
+            attachHIDPP(device)
         }
     }
 
@@ -361,9 +398,103 @@ final class LogitechMXMasterReader {
         mouseManager = mgr
     }
 
+    private func startClickProbe() {
+        guard clickTap == nil else { return }
+        let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+        let pointer = Unmanaged.passUnretained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .tailAppendEventTap,
+            options: .listenOnly,
+            eventsOfInterest: mask,
+            callback: { _, type, event, context in
+                guard let context else { return Unmanaged.passUnretained(event) }
+                Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
+                    .handleClickEvent(type: type, event: event)
+                return Unmanaged.passUnretained(event)
+            },
+            userInfo: pointer
+        ) else { return }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        clickTap = tap
+        clickSource = source
+    }
+
+    private func handleClickEvent(type: CGEventType, event: CGEvent) {
+        let now = Date()
+        var logs: [(String, Bool)] = []
+        lock.lock()
+        switch type {
+        case .leftMouseDown, .leftMouseUp:
+            let down = type == .leftMouseDown
+            if snapshot.left != down {
+                snapshot.left = down
+                logs.append(("Left", down))
+            }
+        case .rightMouseDown, .rightMouseUp:
+            let down = type == .rightMouseDown
+            if snapshot.right != down {
+                snapshot.right = down
+                logs.append(("Right", down))
+            }
+        case .otherMouseDown, .otherMouseUp:
+            let down = type == .otherMouseDown
+            let button = event.getIntegerValueField(.mouseEventButtonNumber)
+            if button == 2, snapshot.middle != down {
+                snapshot.middle = down
+                logs.append(("Middle", down))
+            } else if button == 3, !ready, snapshot.back != down {
+                snapshot.back = down
+                logs.append(("Back", down))
+            } else if button == 4, !ready, snapshot.forward != down {
+                snapshot.forward = down
+                logs.append(("Forward", down))
+            }
+        case .scrollWheel:
+            let dy = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
+            let dx = event.getDoubleValueField(.scrollWheelEventDeltaAxis2)
+            if dy > 0 {
+                snapshot.wheelUp = true
+                snapshot.wheelDown = false
+                wheelPulseUntil = now.addingTimeInterval(0.18)
+                logs.append(("Wheel up", true))
+            } else if dy < 0 {
+                snapshot.wheelDown = true
+                snapshot.wheelUp = false
+                wheelPulseUntil = now.addingTimeInterval(0.18)
+                logs.append(("Wheel down", true))
+            }
+            if dx > 0 {
+                snapshot.thumbRight = true
+                snapshot.thumbLeft = false
+                thumbPulseUntil = now.addingTimeInterval(0.18)
+                logs.append(("Thumb wheel right", true))
+            } else if dx < 0 {
+                snapshot.thumbLeft = true
+                snapshot.thumbRight = false
+                thumbPulseUntil = now.addingTimeInterval(0.18)
+                logs.append(("Thumb wheel left", true))
+            }
+        default:
+            break
+        }
+        lock.unlock()
+        for (label, pressed) in logs {
+            logEvent(label, pressed: pressed)
+        }
+    }
+
     private func attachHIDPP(_ incoming: IOHIDDevice) {
-        if incoming == hidppDevice { return }
-        if queuedHIDPP.contains(where: { $0 == incoming }) { return }
+        if isSameDevice(incoming, hidppDevice) { return }
+        if queuedHIDPP.contains(where: { isSameDevice(incoming, $0) }) { return }
         if hidppDevice == nil {
             beginProbe(incoming)
             return
@@ -375,6 +506,11 @@ final class LogitechMXMasterReader {
             return
         }
         queuedHIDPP.append(incoming)
+    }
+
+    private func isSameDevice(_ lhs: IOHIDDevice, _ rhs: IOHIDDevice?) -> Bool {
+        guard let rhs else { return false }
+        return CFEqual(lhs, rhs)
     }
 
     private func beginProbe(_ device: IOHIDDevice) {
@@ -400,8 +536,11 @@ final class LogitechMXMasterReader {
             64,
             { context, _, _, _, _, report, length in
                 guard let context else { return }
-                Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
-                    .handleReport(report, length: length)
+                let bytes = Array(UnsafeBufferPointer(start: report, count: length))
+                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
+                DispatchQueue.main.async {
+                    reader.takeUnretainedValue().handleReport(bytes)
+                }
             },
             pointer
         )
@@ -409,21 +548,26 @@ final class LogitechMXMasterReader {
     }
 
     private func teardownHIDPP(_ device: IOHIDDevice, keepQueued: Bool) {
+        releaseReportBuffer(device)
         IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        if let buffer = hidppBuffers.removeValue(forKey: ObjectIdentifier(device)) {
-            buffer.deallocate()
-        }
+        _ = IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
         if !keepQueued {
-            queuedHIDPP.removeAll { $0 == device }
+            queuedHIDPP.removeAll { isSameDevice(device, $0) }
+        }
+    }
+
+    private func releaseReportBuffer(_ device: IOHIDDevice) {
+        guard let buffer = hidppBuffers.removeValue(forKey: ObjectIdentifier(device)) else { return }
+        IOHIDDeviceRegisterInputReportCallback(device, buffer, 64, nil, nil)
+        DispatchQueue.main.async {
+            buffer.deallocate()
         }
     }
 
     private func detachHIDPP(_ incoming: IOHIDDevice) {
-        queuedHIDPP.removeAll { $0 == incoming }
-        if hidppDevice != incoming {
-            if let buffer = hidppBuffers.removeValue(forKey: ObjectIdentifier(incoming)) {
-                buffer.deallocate()
-            }
+        queuedHIDPP.removeAll { isSameDevice(incoming, $0) }
+        if !isSameDevice(incoming, hidppDevice) {
+            releaseReportBuffer(incoming)
             return
         }
         teardownHIDPP(incoming, keepQueued: false)
@@ -437,6 +581,40 @@ final class LogitechMXMasterReader {
         snapshot.status = "MX Master disconnected"
         lock.unlock()
         probeNextHIDPP(failed: "MX Master disconnected")
+    }
+
+    private func notePipeDropped(_ reason: String) {
+        guard running else { return }
+        ready = false
+        hidppQueue.removeAll()
+        pending = nil
+        if let current = hidppDevice {
+            teardownHIDPP(current, keepQueued: true)
+            hidppDevice = nil
+        }
+        setStatus(reason)
+        scheduleRecover()
+    }
+
+    private func scheduleRecover() {
+        guard running, hidppManager != nil else { return }
+        recoverWork?.cancel()
+        let delay: TimeInterval = recoverAttempts < 3 ? 1.0 : 5.0
+        recoverAttempts += 1
+        let work = DispatchWorkItem { [weak self] in
+            self?.retryHIDPP()
+        }
+        recoverWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func retryHIDPP() {
+        guard running, hidppManager != nil else { return }
+        if hidppDevice != nil { return }
+        scanHIDPP()
+        if hidppDevice == nil {
+            scheduleRecover()
+        }
     }
 
     private func failHIDPPAndTryNext(_ message: String) {
@@ -455,6 +633,7 @@ final class LogitechMXMasterReader {
             return
         }
         setStatus(message)
+        scheduleRecover()
     }
 
     private func popBestQueued() -> IOHIDDevice? {
@@ -645,12 +824,13 @@ final class LogitechMXMasterReader {
         guard let reprogIndex else { return }
         extraCIDs.removeAll()
         var jobs: [(UInt16, UInt8, UInt8)] = [
-            (0x01A0, 0x33, 0x03)
+            (0x01A0, Self.gestureReportingFlags, Self.gestureReportingFlags)
         ]
         for control in controls where control.divertable {
             if Self.nativeClickCIDs.contains(control.cid), !gestureCIDs.contains(control.cid) { continue }
             if Self.wheelCIDs.contains(control.cid) { continue }
             if control.cid == 0x01A0 { continue }
+            if control.rawXY, !gestureCIDs.contains(control.cid) { continue }
             jobs.append((control.cid, Self.reportingFlags(for: control), 0))
             if Self.button(for: control.cid) == nil, !gestureCIDs.contains(control.cid) {
                 extraCIDs[control.cid] = Self.title(for: control.cid, task: control.task)
@@ -659,7 +839,9 @@ final class LogitechMXMasterReader {
         divert(jobs: jobs, reprogIndex: reprogIndex) { [weak self] in
             guard let self else { return }
             self.ready = true
-            self.lastHapticArm = Date()
+            self.recoverAttempts = 0
+            self.recoverWork?.cancel()
+            self.recoverWork = nil
             self.lookupMotionFeatures {
                 self.lastWheelConfig = nil
                 self.lastPointerSpeed = -1
@@ -667,23 +849,6 @@ final class LogitechMXMasterReader {
                 self.applyWheelRouting()
                 self.setStatus("Connected. Pointer speed, wheel speed, and scroll direction are applied from the profile.")
             }
-        }
-    }
-
-    private func maybeRearmHaptic() {
-        guard ready, let reprogIndex else { return }
-        guard Date().timeIntervalSince(lastHapticArm) > 3 else { return }
-        lastHapticArm = Date()
-        lastWheelConfig = nil
-        armHaptic(reprogIndex: reprogIndex) { [weak self] in
-            self?.applyWheelRouting()
-        }
-    }
-
-    private func armHaptic(reprogIndex: UInt8, completion: (() -> Void)? = nil) {
-        let params: [UInt8] = [0x01, 0xA0, 0x33, 0, 0, 0x03]
-        request(featureIndex: reprogIndex, function: 3, params: params) { _ in
-            completion?()
         }
     }
 
@@ -695,15 +860,13 @@ final class LogitechMXMasterReader {
         var params: [UInt8] = [
             UInt8(job.0 >> 8), UInt8(job.0 & 0xFF),
             job.1,
-            0, 0
+            0, 0,
+            job.2 != 0 ? job.2 : job.1
         ]
-        if job.2 != 0 {
-            params.append(job.2)
-        }
         request(featureIndex: reprogIndex, function: 3, params: params) { [weak self] data in
             guard let self else { return }
-            if data == nil, job.1 != 0x03 {
-                self.divert(jobs: [(job.0, 0x03, job.2)] + Array(jobs.dropFirst()), reprogIndex: reprogIndex, completion: completion)
+            if data == nil, job.1 != 0x01 {
+                self.divert(jobs: [(job.0, 0x01, 0x01)] + Array(jobs.dropFirst()), reprogIndex: reprogIndex, completion: completion)
                 return
             }
             self.divert(jobs: Array(jobs.dropFirst()), reprogIndex: reprogIndex, completion: completion)
@@ -837,6 +1000,43 @@ final class LogitechMXMasterReader {
         request(featureIndex: thumbWheelIndex, function: 2, params: [divert ? 1 : 0, invert ? 1 : 0]) { _ in }
     }
 
+    private func restoreNativeReporting() {
+        guard hidppDevice != nil else { return }
+        hidppQueue.removeAll()
+        pending = nil
+        var cids = Set(controls.map(\.cid))
+        cids.formUnion(gestureCIDs)
+        cids.insert(0x01A0)
+        if let reprogIndex {
+            for cid in cids {
+                sendHIDPP(featureIndex: reprogIndex, function: 3, params: [
+                    UInt8(cid >> 8), UInt8(cid & 0xFF), 0, 0, 0
+                ])
+            }
+        }
+        if let thumbWheelIndex {
+            sendHIDPP(featureIndex: thumbWheelIndex, function: 2, params: [0, 0])
+        }
+    }
+
+    private func sendHIDPP(featureIndex: UInt8, function: UInt8, params: [UInt8]) {
+        guard let hidppDevice else { return }
+        swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
+        let swID = swCounter
+        var report = [UInt8](repeating: 0, count: 20)
+        report[0] = 0x11
+        report[1] = deviceIndex
+        report[2] = featureIndex
+        report[3] = (function << 4) | (swID & 0x0F)
+        for (offset, byte) in params.prefix(16).enumerated() {
+            report[4 + offset] = byte
+        }
+        _ = report.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return kIOReturnError }
+            return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
+        }
+    }
+
     private func handleHiresWheel(_ payload: Data) {
         guard payload.count >= 3 else { return }
         let delta = Int16(bitPattern: Self.be16(payload, 1))
@@ -925,20 +1125,27 @@ final class LogitechMXMasterReader {
             guard let self, let pending = self.pending, pending.swID == swID else { return }
             self.pending = nil
             pending.completion(nil)
+            if self.ready {
+                self.notePipeDropped("HID++ timed out. Retrying…")
+            }
         }
     }
 
-    private func handleReport(_ report: UnsafePointer<UInt8>, length: Int) {
-        guard length >= 4 else { return }
-        var bytes = Array(UnsafeBufferPointer(start: report, count: length))
+    private func handleReport(_ report: [UInt8]) {
+        guard report.count >= 4 else { return }
+        var bytes = report
         if bytes[0] != 0x10 && bytes[0] != 0x11 && bytes.count >= 3 {
             bytes.insert(0x11, at: 0)
         }
         guard bytes.count >= 4 else { return }
         if bytes[2] == 0x8F {
+            let wasReady = ready
             if let pending {
                 self.pending = nil
                 pending.completion(nil)
+            }
+            if wasReady {
+                notePipeDropped("HID++ error. Retrying…")
             }
             return
         }
@@ -1297,15 +1504,13 @@ final class LogitechMXMasterReader {
         }
     }
 
+    private static let gestureReportingFlags: UInt8 = 0x31
+
     private static func reportingFlags(for control: ControlInfo) -> UInt8 {
-        var flags: UInt8 = 0x03
         if control.rawXY || Self.knownGestureCIDs.contains(control.cid) || control.cid == 0x01A0 {
-            flags |= 0x30
+            return gestureReportingFlags
         }
-        if control.forceRawXY {
-            flags |= 0xC0
-        }
-        return flags
+        return 0x01
     }
 
     private static func be16(_ data: Data, _ offset: Int) -> UInt16 {

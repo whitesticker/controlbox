@@ -22,6 +22,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedWheelScrollSpeed: Double { Self.clampSpeed(wheelScrollSpeed) }
     public var resolvedThumbScrollSpeed: Double { Self.clampSpeed(thumbScrollSpeed) }
+    public var appliedPointerSpeed: Double { resolvedPointerSpeed * 0.5 }
+    public var appliedWheelScrollSpeed: Double { resolvedWheelScrollSpeed * 0.5 }
+    public var appliedThumbScrollSpeed: Double { resolvedThumbScrollSpeed * 0.5 }
     public var resolvedNaturalScrolling: Bool { naturalScrolling ?? true }
 
     public init(

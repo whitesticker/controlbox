@@ -222,8 +222,10 @@ final class DualSenseMonitor {
         updateControlActivity()
         refreshPermissions()
         refreshAudioInputs()
-        refreshDevices()
-        lastDeviceProbe = Date()
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshDevices()
+            self?.lastDeviceProbe = Date()
+        }
 
         observers.append(
             NotificationCenter.default.addObserver(
@@ -811,11 +813,11 @@ final class DualSenseMonitor {
             mxMasterReader.injectEnabled = record.controlEnabled
             mxMasterReader.wheelsEnabled = accessibilityTrusted
             mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
-            mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
+            mxMasterReader.applyPointerSpeed(record.selectedProfile.appliedPointerSpeed)
             mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
             mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
-            mouseScrollTap.verticalScale = 0.12 + record.selectedProfile.resolvedWheelScrollSpeed * 2.88
-            mouseScrollTap.horizontalScale = 0.12 + record.selectedProfile.resolvedThumbScrollSpeed * 2.88
+            mouseScrollTap.verticalScale = 0.12 + record.selectedProfile.appliedWheelScrollSpeed * 2.88
+            mouseScrollTap.horizontalScale = 0.12 + record.selectedProfile.appliedThumbScrollSpeed * 2.88
             mouseScrollTap.setActive(accessibilityTrusted)
         } else {
             mouseScrollTap.setActive(false)
@@ -870,6 +872,8 @@ final class DualSenseMonitor {
         !(address.isEmpty
             || address == "Bluetooth"
             || address == "USB"
+            || address == "HID"
+            || address == "HID++"
             || address == "Game Controller")
     }
 
