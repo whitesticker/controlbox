@@ -131,7 +131,7 @@ final class LogitechMXMasterReader {
             value.lastGesture = nil
         }
         if value.haptic || value.gestureDown {
-            value.liveGesture = Self.classify(delta: gestureDelta, tapLimit: usingRawXY ? 110 : 36)
+            value.liveGesture = Self.classify(delta: gestureDelta, tapLimit: usingRawXY ? Self.hapticSwipeDistance : Self.pointerSwipeDistance)
             value.gestureDX = gestureDelta.width
             value.gestureDY = gestureDelta.height
             value.gestureDown = true
@@ -1305,8 +1305,8 @@ final class LogitechMXMasterReader {
         guard down, report.count >= 5 else { return }
         let xRaw = Int(report[2]) | (Int(report[3] & 0x0F) << 8)
         let yRaw = (Int(report[3]) >> 4) | (Int(report[4]) << 4)
-        let dx = Self.signExtend12(xRaw) * 8
-        let dy = Self.signExtend12(yRaw) * 8
+        let dx = Self.signExtend12(xRaw) * 4
+        let dy = Self.signExtend12(yRaw) * 4
         guard dx != 0 || dy != 0 else { return }
         usingRawXY = true
         gestureDelta.width += CGFloat(dx)
@@ -1453,7 +1453,7 @@ final class LogitechMXMasterReader {
     }
 
     private func finishGesture(released: UInt16) {
-        let moved = hypot(gestureDelta.width, gestureDelta.height) >= (usingRawXY ? 80 : 36)
+        let moved = hypot(gestureDelta.width, gestureDelta.height) >= (usingRawXY ? Self.hapticSwipeDistance : Self.pointerSwipeDistance)
         let button: DeviceButton
         if moved {
             button = Self.classify(delta: gestureDelta, tapLimit: 0)
@@ -1630,6 +1630,9 @@ final class LogitechMXMasterReader {
         snapshot.lastHIDEvent = text
         lock.unlock()
     }
+
+    private static let hapticSwipeDistance: CGFloat = 240
+    private static let pointerSwipeDistance: CGFloat = 64
 
     private static func classify(delta: CGSize, tapLimit: CGFloat) -> DeviceButton {
         let dx = delta.width

@@ -517,7 +517,7 @@ private struct LiveGestureState {
         let dy = y - lastY
         guard let set else { return nil }
 
-        if axis == nil, hypot(x, y) >= 28 {
+        if axis == nil, hypot(x, y) >= 200 {
             axis = abs(x) >= abs(y) ? .horizontal : .vertical
         }
         guard let axis else { return nil }
