@@ -17,7 +17,7 @@ Treat these as **different devices**, not one “MX Master”:
 |---|---|---|
 | MX Master 3 | confirm before coding | Do not assume Master 4 CIDs |
 | MX Master 3S | often usage page `0xFF43` | Thumb / gesture CID often `0x00C3` |
-| MX Master 4 | usage page `0xFF00` | Haptic CID `0x01A0` (default task Action Ring `0x0109`); also divert Mouse Gesture Button `0x00C3` |
+| MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse. | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. |
 
 Focus on **MX Master 4 first**. Do not reopen 3S attach, dual-mouse attach, or “open every Logitech interface” while MX4 is the target.
 
