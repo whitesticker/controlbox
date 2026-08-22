@@ -8,7 +8,7 @@ On MX Master 4, Calibration lights up left / right / middle / wheel (when the li
 
 Those controls are not normal macOS mouse buttons on this machine. Logitech firmware keeps them on HID++ until we **divert** that CID.
 
-The Master 4 haptic pad is also a force-sensing control (`0x19C0`). Diverting `0x01A0` without a force threshold and analytics reporting can leave the pad silent even when back / forward / mode shift work.
+On Bluetooth LE, the Master 4 haptic pad is not a missing HID++ CID. It is HID button 7 on the normal mouse report. See [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md).
 
 After we stopped seizing devices and stopped diverting aggressively (to keep the pointer alive), HID++ stopped delivering those button notifications. Calibration reads `MXMasterSnapshot`; if HID++ never sets `haptic` / `back` / `forward`, the diagram stays idle.
 
