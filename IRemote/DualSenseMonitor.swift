@@ -816,8 +816,8 @@ final class DualSenseMonitor {
             mxMasterReader.applyPointerSpeed(record.selectedProfile.appliedPointerSpeed)
             mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
             mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
-            mouseScrollTap.verticalScale = 0.12 + record.selectedProfile.appliedWheelScrollSpeed * 2.88
-            mouseScrollTap.horizontalScale = 0.12 + record.selectedProfile.appliedThumbScrollSpeed * 2.88
+            mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
+            mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
             mouseScrollTap.setActive(accessibilityTrusted)
         } else {
             mouseScrollTap.setActive(false)

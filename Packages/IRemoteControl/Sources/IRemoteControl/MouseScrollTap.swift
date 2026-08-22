@@ -136,8 +136,22 @@ public final class MouseScrollTap: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
-        apply(vmul, to: event, line: .scrollWheelEventDeltaAxis1, point: .scrollWheelEventPointDeltaAxis1, fixed: .scrollWheelEventFixedPtDeltaAxis1)
-        apply(hmul, to: event, line: .scrollWheelEventDeltaAxis2, point: .scrollWheelEventPointDeltaAxis2, fixed: .scrollWheelEventFixedPtDeltaAxis2)
+        apply(
+            vmul,
+            to: event,
+            continuous: continuous,
+            line: .scrollWheelEventDeltaAxis1,
+            point: .scrollWheelEventPointDeltaAxis1,
+            fixed: .scrollWheelEventFixedPtDeltaAxis1
+        )
+        apply(
+            hmul,
+            to: event,
+            continuous: continuous,
+            line: .scrollWheelEventDeltaAxis2,
+            point: .scrollWheelEventPointDeltaAxis2,
+            fixed: .scrollWheelEventFixedPtDeltaAxis2
+        )
         return Unmanaged.passUnretained(event)
     }
 
@@ -146,6 +160,7 @@ public final class MouseScrollTap: @unchecked Sendable {
     private func apply(
         _ multiplier: Double,
         to event: CGEvent,
+        continuous: Bool,
         line: CGEventField,
         point: CGEventField,
         fixed: CGEventField
@@ -154,14 +169,16 @@ public final class MouseScrollTap: @unchecked Sendable {
         let lineDelta = Double(event.getIntegerValueField(line))
         let pointDelta = Double(event.getIntegerValueField(point))
         let fixedDelta = event.getDoubleValueField(fixed)
-        event.setIntegerValueField(line, value: scaledInt(lineDelta * multiplier, original: lineDelta))
-        event.setIntegerValueField(point, value: scaledInt(pointDelta * multiplier, original: pointDelta))
+        // High-res MX wheels emit many events per notch. Forcing a leftover
+        // ±1 line on each one is what made a single tick jump ~20 lines.
+        event.setIntegerValueField(line, value: scaledInt(lineDelta * multiplier, original: lineDelta, keepStep: !continuous))
+        event.setIntegerValueField(point, value: scaledInt(pointDelta * multiplier, original: pointDelta, keepStep: false))
         event.setDoubleValueField(fixed, value: scaledDouble(fixedDelta * multiplier, original: fixedDelta))
     }
 
-    private func scaledInt(_ value: Double, original: Double) -> Int64 {
+    private func scaledInt(_ value: Double, original: Double, keepStep: Bool) -> Int64 {
         let rounded = value.rounded()
-        if original != 0, rounded == 0 {
+        if keepStep, original != 0, rounded == 0 {
             return original > 0 ? 1 : -1
         }
         return Int64(rounded)

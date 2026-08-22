@@ -255,7 +255,7 @@ final class LogitechMXMasterReader {
         guard abs(clamped - lastPointerSpeed) > 0.01 else { return }
         var sent = false
         if let pointerScaleIndex {
-            let factor = pow(4.0, (clamped - 0.5) * 2)
+            let factor = pow(4.0, (clamped - 0.65) * 2)
             let scaling = UInt16(min(max(factor * 256, 16), 4096))
             request(featureIndex: pointerScaleIndex, function: 1, params: [
                 UInt8(scaling >> 8),
@@ -283,9 +283,9 @@ final class LogitechMXMasterReader {
             return dpiValues[min(max(index, 0), dpiValues.count - 1)]
         }
         if slider <= 0.5 {
-            return Int((400 + slider * 2 * 1200).rounded())
+            return Int((200 + slider * 2 * 500).rounded())
         }
-        return Int((1600 + (slider - 0.5) * 2 * 6400).rounded())
+        return Int((700 + (slider - 0.5) * 2 * 2300).rounded())
     }
 
     func pollGesturePointer() {
