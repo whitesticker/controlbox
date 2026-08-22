@@ -28,7 +28,7 @@ Separate reader code per model will help: matching, divert flags, and button CID
 - Never call `IOBluetoothDevice.pairedDevices()`. It has corrupted the heap on this Mac (`libmalloc` / `EXC_BREAKPOINT`).
 - Never `IOHIDManagerOpen` with `kIOHIDOptionsTypeSeizeDevice` on Logitech mouse or HID++ managers.
 - Do not open the standard Logitech mouse collection (usage page `0x01` usage `0x02`) just to watch buttons. That can steal the system pointer.
-- Reprog Controls V4 `setCidReporting` flags are value + valid pairs, not “0x01 divert / 0x02 persist / 0x04 raw XY”. Solaar hold-only gestures use **`0x33`** (divert+valid + rawXY+valid). Persist is `0x04`/`0x08`. Force raw XY is `0x40`/`0x80`. Packet is **5 bytes** (CID, flags, remap). Do not send persist or force-raw-XY. Clear with `0x22`, not `0`. Remap haptic `0x01A0` → Gesture Button `0x00C3`; leaving it on Action Ring `0x0109` swallows the press.
+- Reprog Controls V4 `setCidReporting` flags are value + valid pairs, not “0x01 divert / 0x02 persist / 0x04 raw XY”. Solaar hold-only gestures use **`0x33`** (divert+valid + rawXY+valid). Persist is `0x04`/`0x08`. Force raw XY is `0x40`/`0x80`. Packet is CID, flags, remap, and optional high flags. Analytics reporting is high-byte `0x03`. Do not send persist or force-raw-XY. Clear with `0x22`, not `0`. The Master 4 haptic pad also needs Force Sensing `0x19C0` threshold `0x15A3`; press events often arrive as analytics, not diverted-buttons.
 - Debug builds must stay signed with the Apple Development identity (`DEVELOPMENT_TEAM = XXA24FWXDW`) so Accessibility and Input Monitoring persist across rebuilds. Do not switch back to ad-hoc (`CODE_SIGN_IDENTITY = "-"`).
 - Never upload or publish without explicit approval.
 

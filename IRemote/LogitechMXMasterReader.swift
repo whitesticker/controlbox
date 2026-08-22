@@ -55,6 +55,13 @@ final class LogitechMXMasterReader {
         var forceRawXY: Bool
     }
 
+    private struct DivertJob {
+        var cid: UInt16
+        var flags: UInt8
+        var remap: UInt16
+        var highFlags: UInt8
+    }
+
     private var hidppManager: IOHIDManager?
     private var mouseManager: IOHIDManager?
     private var clickTap: CFMachPort?
@@ -780,7 +787,7 @@ final class LogitechMXMasterReader {
         }
         if index >= count {
             chooseGestureCID()
-            divertKnownButtons()
+            armForceSensingThenDivert()
             return
         }
         request(featureIndex: reprogIndex, function: 1, params: [UInt8(index)]) { [weak self] data in
@@ -814,25 +821,58 @@ final class LogitechMXMasterReader {
                 + String(format: " (%04X)", control.cid)
         }
         applyPressed(pressed)
-        noteLastEvent(String(format: "haptic %04X + gesture %04X", hapticCID, MXMaster4Support.gestureButtonCID))
+        let listed = controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
+        let found = controls.contains(where: { $0.cid == MXMaster4Support.hapticCID })
+        noteLastEvent(found ? "CIDs \(listed)" : "no 01A0 in table: \(listed)")
+    }
+
+    private func armForceSensingThenDivert() {
+        lookupFeature(MXMaster4Support.forceSensingFeature) { [weak self] index in
+            guard let self else { return }
+            guard let index else {
+                self.divertKnownButtons()
+                return
+            }
+            self.request(
+                featureIndex: index,
+                function: 3,
+                params: [
+                    0,
+                    UInt8(MXMaster4Support.forceThreshold >> 8),
+                    UInt8(MXMaster4Support.forceThreshold & 0xFF)
+                ]
+            ) { [weak self] _ in
+                self?.divertKnownButtons()
+            }
+        }
     }
 
     private func divertKnownButtons() {
         guard let reprogIndex else { return }
-        var jobs: [(UInt16, UInt8, UInt16)] = [
-            (MXMaster4Support.hapticCID, Self.gestureReportingFlags, MXMaster4Support.gestureButtonCID),
-            (MXMaster4Support.gestureButtonCID, Self.gestureReportingFlags, 0)
+        var jobs: [DivertJob] = [
+            DivertJob(
+                cid: MXMaster4Support.hapticCID,
+                flags: Self.gestureReportingFlags,
+                remap: 0,
+                highFlags: Self.analyticsReportingFlags
+            ),
+            DivertJob(
+                cid: MXMaster4Support.gestureButtonCID,
+                flags: Self.gestureReportingFlags,
+                remap: 0,
+                highFlags: 0
+            )
         ]
         for control in controls where control.divertable {
             if Self.nativeClickCIDs.contains(control.cid) { continue }
             if Self.wheelCIDs.contains(control.cid) { continue }
             if gestureCIDs.contains(control.cid) { continue }
             if MXMaster4Support.extraButtonCIDs.contains(control.cid) {
-                jobs.append((control.cid, Self.buttonReportingFlags, 0))
+                jobs.append(DivertJob(cid: control.cid, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0))
                 continue
             }
             if control.rawXY { continue }
-            jobs.append((control.cid, Self.buttonReportingFlags, 0))
+            jobs.append(DivertJob(cid: control.cid, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0))
         }
         divert(jobs: jobs, reprogIndex: reprogIndex) { [weak self] in
             guard let self else { return }
@@ -840,6 +880,7 @@ final class LogitechMXMasterReader {
             self.recoverAttempts = 0
             self.recoverWork?.cancel()
             self.recoverWork = nil
+            self.confirmHapticReporting()
             self.lookupMotionFeatures {
                 self.lastWheelConfig = nil
                 self.lastPointerSpeed = -1
@@ -850,16 +891,35 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func divert(jobs: [(UInt16, UInt8, UInt16)], reprogIndex: UInt8, completion: @escaping () -> Void) {
+    private func confirmHapticReporting() {
+        guard let reprogIndex else { return }
+        request(
+            featureIndex: reprogIndex,
+            function: 2,
+            params: [
+                UInt8(MXMaster4Support.hapticCID >> 8),
+                UInt8(MXMaster4Support.hapticCID & 0xFF)
+            ]
+        ) { [weak self] data in
+            guard let self, let data, !data.isEmpty else { return }
+            let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
+            self.noteLastEvent("01A0 reporting \(hex)")
+        }
+    }
+
+    private func divert(jobs: [DivertJob], reprogIndex: UInt8, completion: @escaping () -> Void) {
         guard let job = jobs.first else {
             completion()
             return
         }
-        let params: [UInt8] = [
-            UInt8(job.0 >> 8), UInt8(job.0 & 0xFF),
-            job.1,
-            UInt8(job.2 >> 8), UInt8(job.2 & 0xFF)
+        var params: [UInt8] = [
+            UInt8(job.cid >> 8), UInt8(job.cid & 0xFF),
+            job.flags,
+            UInt8(job.remap >> 8), UInt8(job.remap & 0xFF)
         ]
+        if job.highFlags != 0 {
+            params.append(job.highFlags)
+        }
         request(featureIndex: reprogIndex, function: 3, params: params) { [weak self] _ in
             self?.divert(jobs: Array(jobs.dropFirst()), reprogIndex: reprogIndex, completion: completion)
         }
@@ -1158,6 +1218,8 @@ final class LogitechMXMasterReader {
                 handleRawXY(payload)
             } else if function == 2 {
                 handleAnalytics(payload)
+            } else if swID == 0 {
+                noteLastEvent(String(format: "reprog fn%d %@", function, Self.hex(payload)))
             }
             return
         }
@@ -1167,6 +1229,10 @@ final class LogitechMXMasterReader {
         }
         if let thumbWheelIndex, featureIndex == thumbWheelIndex, function == 0 {
             handleThumbWheel(payload)
+            return
+        }
+        if swID == 0 {
+            noteLastEvent(String(format: "HID++ feat %02X fn%d %@", featureIndex, function, Self.hex(payload)))
         }
     }
 
@@ -1272,9 +1338,7 @@ final class LogitechMXMasterReader {
                 next.insert(cid)
             }
         }
-        if sawHaptic {
-            noteLastEvent("analytics haptic")
-        }
+        noteLastEvent(sawHaptic ? "analytics haptic \(Self.hex(payload))" : "analytics \(Self.hex(payload))")
         if next != pressed {
             var reconstructed = Data()
             for cid in next {
@@ -1502,6 +1566,11 @@ final class LogitechMXMasterReader {
     private static let gestureReportingFlags: UInt8 = 0x33
     private static let buttonReportingFlags: UInt8 = 0x03
     private static let clearReportingFlags: UInt8 = 0x22
+    private static let analyticsReportingFlags: UInt8 = 0x03
+
+    private static func hex(_ data: Data) -> String {
+        data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
 
     private static func reportingFlags(for control: ControlInfo) -> UInt8 {
         if control.rawXY || Self.knownGestureCIDs.contains(control.cid) || control.cid == 0x01A0 {
@@ -1533,7 +1602,9 @@ final class LogitechMXMasterReader {
         let extra = gestureCIDs.intersection(Self.nativeClickCIDs)
         guard extra != lastDivertedNative else { return }
         lastDivertedNative = extra
-        let jobs = extra.map { ($0, Self.buttonReportingFlags, UInt16(0)) }
+        let jobs = extra.map {
+            DivertJob(cid: $0, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0)
+        }
         divert(jobs: jobs, reprogIndex: reprogIndex) { }
     }
     private static let physicalHapticCIDs: Set<UInt16> = [0x01A0, 0x00C3]

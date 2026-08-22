@@ -6,6 +6,8 @@ enum MXMaster4Support {
     static let hidppUsagePage = 0xFF00
     static let hapticCID: UInt16 = 0x01A0
     static let gestureButtonCID: UInt16 = 0x00C3
+    static let forceSensingFeature: UInt16 = 0x19C0
+    static let forceThreshold: UInt16 = 0x15A3
     static let extraButtonCIDs: Set<UInt16> = [
         0x0053, 0x0054, 0x0056, 0x00C4, 0x00D0, 0x00ED, 0x00FD
     ]
