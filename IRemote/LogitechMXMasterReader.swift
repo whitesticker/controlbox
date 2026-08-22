@@ -1305,8 +1305,8 @@ final class LogitechMXMasterReader {
         guard down, report.count >= 5 else { return }
         let xRaw = Int(report[2]) | (Int(report[3] & 0x0F) << 8)
         let yRaw = (Int(report[3]) >> 4) | (Int(report[4]) << 4)
-        let dx = Self.signExtend12(xRaw)
-        let dy = Self.signExtend12(yRaw)
+        let dx = Self.signExtend12(xRaw) * 8
+        let dy = Self.signExtend12(yRaw) * 8
         guard dx != 0 || dy != 0 else { return }
         usingRawXY = true
         gestureDelta.width += CGFloat(dx)

@@ -392,7 +392,6 @@ public final class ControlEngine: @unchecked Sendable {
             return
         }
 
-        let consumed = liveGesture.consumed
         let followUp = liveGesture.end()
         if let followUp {
             perform(followUp, down: true)
@@ -403,7 +402,6 @@ public final class ControlEngine: @unchecked Sendable {
         guard let slotButton = frame.gestureSlot,
               let slot = GestureSlot.slot(for: slotButton)
         else { return }
-        if consumed { return }
         let action = profile.action(forGesture: slot, owner: owner)
         guard injectAll || action.isSystemNavigation else { return }
         perform(action, down: true)
