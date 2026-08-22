@@ -317,24 +317,17 @@ final class LogitechMXMasterReader {
 
     private func startHIDPP() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        let matches: [[String: Any]] = [
+        var matches: [[String: Any]] = MXMaster4Support.productIDs.map { productID in
             [
                 kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                kIOHIDPrimaryUsagePageKey as String: 0xFF00
-            ],
-            [
-                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                kIOHIDDeviceUsagePageKey as String: 0xFF00
-            ],
-            [
-                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                kIOHIDPrimaryUsagePageKey as String: 0xFF43
-            ],
-            [
-                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                kIOHIDDeviceUsagePageKey as String: 0xFF43
+                kIOHIDProductIDKey as String: productID,
+                kIOHIDPrimaryUsagePageKey as String: MXMaster4Support.hidppUsagePage
             ]
-        ]
+        }
+        matches.append([
+            kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
+            kIOHIDPrimaryUsagePageKey as String: MXMaster4Support.hidppUsagePage
+        ])
         IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(mgr, { context, _, _, device in
@@ -369,7 +362,7 @@ final class LogitechMXMasterReader {
         devices.sort { lhs, rhs in
             isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
         }
-        for device in devices {
+        for device in devices where isMXMaster4Device(device) {
             attachHIDPP(device)
         }
     }
@@ -493,6 +486,7 @@ final class LogitechMXMasterReader {
     }
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
+        guard isMXMaster4Device(incoming) else { return }
         if isSameDevice(incoming, hidppDevice) { return }
         if queuedHIDPP.contains(where: { isSameDevice(incoming, $0) }) { return }
         if hidppDevice == nil {
@@ -645,8 +639,14 @@ final class LogitechMXMasterReader {
     }
 
     private func isLikelyMXMaster(_ device: IOHIDDevice) -> Bool {
+        isMXMaster4Device(device)
+    }
+
+    private func isMXMaster4Device(_ device: IOHIDDevice) -> Bool {
         let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? ""
-        return DeviceSupport.isMXMasterName(product)
+        let productID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
+        if MXMaster4Support.productIDs.contains(productID) { return true }
+        return DeviceSupport.mxKind(from: product) == .logitechMXMaster4
     }
 
     private func probeDeviceIndices(_ indices: [UInt8]) {

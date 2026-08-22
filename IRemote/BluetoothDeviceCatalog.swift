@@ -7,16 +7,34 @@ enum DeviceKind: String, Codable, Equatable {
     case dualSenseEdge
     case appleTVRemote
     case logitechMXMaster
+    case logitechMXMaster3
+    case logitechMXMaster3S
+    case logitechMXMaster4
     case unsupported
 
     var isSupported: Bool { self != .unsupported }
+
+    var isMXMaster: Bool {
+        switch self {
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var usesMXMaster4HIDPP: Bool {
+        self == .logitechMXMaster4 || self == .logitechMXMaster
+    }
 
     var title: String {
         switch self {
         case .dualSense: return "PS5 DualSense"
         case .dualSenseEdge: return "PS5 DualSense Edge"
         case .appleTVRemote: return "Apple TV Remote"
-        case .logitechMXMaster: return "MX Master"
+        case .logitechMXMaster, .logitechMXMaster4: return "MX Master 4"
+        case .logitechMXMaster3: return "MX Master 3"
+        case .logitechMXMaster3S: return "MX Master 3S"
         case .unsupported: return "Not supported yet"
         }
     }
@@ -41,10 +59,10 @@ enum DeviceSupport {
     static let appleVendorID = 0x004C
     static let appleTVRemoteProductIDs: Set<Int> = [0x0314, 0x0315, 0x0266, 0x0267]
     static let logitechVendorID = 0x046D
-    static let mxMasterProductIDs: Set<Int> = [
-        0xB019, 0xB023, 0xB034, 0xB042, 0xB043, 0xB366,
-        0x4069, 0x4082
-    ]
+    static let mxMasterProductIDs: Set<Int> =
+        MXMaster3Support.productIDs
+            .union(MXMaster3SSupport.productIDs)
+            .union(MXMaster4Support.productIDs)
 
     static func classify(name: String, vendorID: Int?, productID: Int?) -> DeviceKind {
         if vendorID == sonyVendorID {
@@ -54,8 +72,10 @@ enum DeviceSupport {
         if vendorID == appleVendorID, let productID, appleTVRemoteProductIDs.contains(productID) {
             return .appleTVRemote
         }
-        if vendorID == logitechVendorID, let productID, mxMasterProductIDs.contains(productID) {
-            return .logitechMXMaster
+        if vendorID == logitechVendorID, let productID {
+            if MXMaster4Support.productIDs.contains(productID) { return .logitechMXMaster4 }
+            if MXMaster3SSupport.productIDs.contains(productID) { return .logitechMXMaster3S }
+            if MXMaster3Support.productIDs.contains(productID) { return .logitechMXMaster3 }
         }
 
         let lowered = name.lowercased()
@@ -67,8 +87,16 @@ enum DeviceSupport {
         if name.uppercased() == "DJ7FTR0Y17FC" {
             return .appleTVRemote
         }
-        if isMXMasterName(name) { return .logitechMXMaster }
+        if isMXMasterName(name) { return mxKind(from: name) }
         return .unsupported
+    }
+
+    static func mxKind(from name: String) -> DeviceKind {
+        let lowered = name.lowercased()
+        if lowered.contains("3s") || lowered.contains("3 s") { return .logitechMXMaster3S }
+        if lowered.contains("master 4") { return .logitechMXMaster4 }
+        if lowered.contains("master 3") { return .logitechMXMaster3 }
+        return .logitechMXMaster4
     }
 
     static func isMXMasterName(_ name: String) -> Bool {

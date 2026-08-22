@@ -139,7 +139,7 @@ struct CalibrationWindow: View {
                     AppleTVSidebar(snapshot: monitor.appleTVSnapshot)
                         .frame(width: 360)
                 }
-            } else if monitor.selectedKind == .logitechMXMaster {
+            } else if monitor.selectedKind.isMXMaster {
                 MXMasterCalibrationView(snapshot: monitor.mxMasterSnapshot)
             } else {
                 HeaderBar(snapshot: monitor.snapshot)
@@ -165,7 +165,7 @@ struct CalibrationWindow: View {
         if monitor.selectedKind == .appleTVRemote {
             return monitor.appleTVSnapshot.connected
         }
-        if monitor.selectedKind == .logitechMXMaster {
+        if monitor.selectedKind.isMXMaster {
             return monitor.mxMasterSnapshot.connected
         }
         return monitor.snapshot.connected

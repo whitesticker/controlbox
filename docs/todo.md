@@ -14,7 +14,7 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [ ] Divert without persist / force-raw-XY; restore native reporting on quit
 - [ ] Do not open or seize the standard mouse HID collection
 - [ ] Pointer / wheel / thumb speed feel (slider remap is in; revisit if still wrong)
-- [ ] Split MX 3 / 3S / 4 into separate readers; keep only MX4 attached for now
+- [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 
 ## Do not regress
 

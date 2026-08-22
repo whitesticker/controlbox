@@ -142,7 +142,7 @@ final class DualSenseMonitor {
         selectedRecord?.selectedProfile
             ?? MappingProfile.makeDefault(
                 isAppleTVRemote: selectedKind == .appleTVRemote,
-                isMXMaster: selectedKind == .logitechMXMaster
+                isMXMaster: selectedKind.isMXMaster
             )
     }
 
@@ -618,7 +618,7 @@ final class DualSenseMonitor {
             return
         }
 
-        if selected.deviceKind == .appleTVRemote || selected.deviceKind == .logitechMXMaster {
+        if selected.deviceKind == .appleTVRemote || selected.deviceKind.isMXMaster {
             if controller != nil {
                 controller = nil
                 haptics.detach()
@@ -675,7 +675,7 @@ final class DualSenseMonitor {
             captureAppleTV()
             return
         }
-        if selectedKind == .logitechMXMaster {
+        if selectedKind.isMXMaster {
             captureMXMaster()
             return
         }
@@ -1145,9 +1145,11 @@ final class DualSenseMonitor {
         let mx = mxMasterReader.current
         if mx.connected {
             if let index = devices.firstIndex(where: {
-                $0.deviceKind == .logitechMXMaster || namesMatch($0.name, mx.name)
+                $0.deviceKind.isMXMaster || namesMatch($0.name, mx.name)
             }) {
-                devices[index].deviceKind = .logitechMXMaster
+                if !devices[index].deviceKind.isMXMaster {
+                    devices[index].deviceKind = .logitechMXMaster4
+                }
                 devices[index].isConnected = true
                 devices[index].name = mx.name
                 devices[index].detail = mx.status
@@ -1157,7 +1159,7 @@ final class DualSenseMonitor {
                         id: "mx:\(mx.name)",
                         name: mx.name,
                         address: "HID++",
-                        deviceKind: .logitechMXMaster,
+                        deviceKind: .logitechMXMaster4,
                         detail: mx.status,
                         isConnected: true
                     )
@@ -1199,9 +1201,11 @@ final class DualSenseMonitor {
         let mx = mxMasterReader.current
         guard mx.connected else { return }
         if let index = connectedDevices.firstIndex(where: {
-            $0.deviceKind == .logitechMXMaster || namesMatch($0.name, mx.name)
+            $0.deviceKind.isMXMaster || namesMatch($0.name, mx.name)
         }) {
-            connectedDevices[index].deviceKind = .logitechMXMaster
+            if !connectedDevices[index].deviceKind.isMXMaster {
+                connectedDevices[index].deviceKind = .logitechMXMaster4
+            }
             connectedDevices[index].isConnected = true
             connectedDevices[index].name = mx.name
             connectedDevices[index].detail = mx.status

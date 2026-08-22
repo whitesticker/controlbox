@@ -5,7 +5,7 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 ## Current status (2026-08-22)
 
 - Active test device: **MX Master 4 only**. Leave MX Master 3 / 3S disconnected until MX4 is stable.
-- The app still treats every MX Master as one `logitechMXMaster` kind and one `LogitechMXMasterReader`. That is a known design problem, not the next code change until the user says to proceed.
+- Device kinds are split (`logitechMXMaster3`, `logitechMXMaster3S`, `logitechMXMaster4`). Only MX Master 4 opens HID++. 3 and 3S are classified only.
 - Pointer and wheel can work through normal HID + a listen-only event tap. Extra buttons and haptic hold-to-swipe go through Logitech **HID++**. Getting one working has repeatedly broken the other.
 - Do **not** change HID++ / MX reader code until the user says they have this status and want implementation.
 

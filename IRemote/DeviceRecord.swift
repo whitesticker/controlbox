@@ -14,7 +14,7 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var selectedProfileID: String
 
     var isAppleTVRemote: Bool { kind == .appleTVRemote }
-    var isMXMaster: Bool { kind == .logitechMXMaster }
+    var isMXMaster: Bool { kind.isMXMaster }
 
     var hapticFeedbackEnabled: Bool {
         hapticFeedback ?? (kind == .dualSense || kind == .dualSenseEdge)
@@ -29,7 +29,7 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     static func make(from device: ConnectedBluetoothDevice, remembered: Bool = false) -> DeviceRecord {
         let profile = MappingProfile.makeDefault(
             isAppleTVRemote: device.deviceKind == .appleTVRemote,
-            isMXMaster: device.deviceKind == .logitechMXMaster
+            isMXMaster: device.deviceKind.isMXMaster
         )
         return DeviceRecord(
             id: device.id,
@@ -58,7 +58,7 @@ struct SidebarDevice: Identifiable, Hashable {
     var symbol: String {
         kind == .appleTVRemote
             ? "appletvremote.gen4.fill"
-            : kind == .logitechMXMaster ? "computermouse.fill" : "gamecontroller.fill"
+            : kind.isMXMaster ? "computermouse.fill" : "gamecontroller.fill"
     }
 
     var statusTitle: String {
