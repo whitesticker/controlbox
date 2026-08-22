@@ -99,6 +99,7 @@ final class LogitechMXMasterReader {
     private var hidppBuffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
     private var hiresWheelIndex: UInt8?
     private var thumbWheelIndex: UInt8?
+    private var forceSensingIndex: UInt8?
     private var pointerScaleIndex: UInt8?
     private var dpiIndex: UInt8?
     private var dpiValues: [Int] = []
@@ -178,6 +179,7 @@ final class LogitechMXMasterReader {
         pending = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
+        forceSensingIndex = nil
         pointerScaleIndex = nil
         dpiIndex = nil
         dpiValues = []
@@ -518,6 +520,7 @@ final class LogitechMXMasterReader {
     private func beginProbe(_ device: IOHIDDevice) {
         hidppQueue.removeAll()
         pending = nil
+        forceSensingIndex = nil
         hidppDevice = device
         _ = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         registerHIDPPCallback(device)
@@ -829,6 +832,7 @@ final class LogitechMXMasterReader {
     private func armForceSensingThenDivert() {
         lookupFeature(MXMaster4Support.forceSensingFeature) { [weak self] index in
             guard let self else { return }
+            self.forceSensingIndex = index
             guard let index else {
                 self.divertKnownButtons()
                 return
@@ -886,7 +890,6 @@ final class LogitechMXMasterReader {
                 self.lastPointerSpeed = -1
                 self.sendPointerSpeedIfNeeded()
                 self.applyWheelRouting()
-                self.setStatus("Connected. Pointer speed, wheel speed, and scroll direction are applied from the profile.")
             }
         }
     }
@@ -901,9 +904,16 @@ final class LogitechMXMasterReader {
                 UInt8(MXMaster4Support.hapticCID & 0xFF)
             ]
         ) { [weak self] data in
-            guard let self, let data, !data.isEmpty else { return }
-            let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
-            self.noteLastEvent("01A0 reporting \(hex)")
+            guard let self else { return }
+            let listed = self.controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
+            if let data, !data.isEmpty {
+                let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.noteLastEvent("01A0 reporting \(hex)")
+                self.setStatus("Connected. CIDs \(listed). 01A0 \(hex)")
+            } else {
+                self.noteLastEvent("01A0 reporting missing")
+                self.setStatus("Connected. CIDs \(listed). 01A0 reporting missing")
+            }
         }
     }
 
@@ -1151,21 +1161,23 @@ final class LogitechMXMasterReader {
         for (offset, byte) in call.params.prefix(16).enumerated() {
             report[4 + offset] = byte
         }
-        var short = [UInt8](repeating: 0, count: 7)
-        short[0] = 0x10
-        short[1] = deviceIndex
-        short[2] = call.featureIndex
-        short[3] = (call.function << 4) | (swID & 0x0F)
-        for (offset, byte) in call.params.prefix(3).enumerated() {
-            short[4 + offset] = byte
-        }
         let kr = report.withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return kIOReturnError }
             return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
         }
-        _ = short.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return kIOReturnError }
-            return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x10), base, 7)
+        if call.params.count <= 3 {
+            var short = [UInt8](repeating: 0, count: 7)
+            short[0] = 0x10
+            short[1] = deviceIndex
+            short[2] = call.featureIndex
+            short[3] = (call.function << 4) | (swID & 0x0F)
+            for (offset, byte) in call.params.prefix(3).enumerated() {
+                short[4 + offset] = byte
+            }
+            _ = short.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return kIOReturnError }
+                return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x10), base, 7)
+            }
         }
         if kr != kIOReturnSuccess {
             _ = report.withUnsafeBufferPointer { buffer in
@@ -1231,9 +1243,11 @@ final class LogitechMXMasterReader {
             handleThumbWheel(payload)
             return
         }
-        if swID == 0 {
-            noteLastEvent(String(format: "HID++ feat %02X fn%d %@", featureIndex, function, Self.hex(payload)))
+        if let forceSensingIndex, featureIndex == forceSensingIndex {
+            handleForceSensing(payload)
+            return
         }
+        noteLastEvent(String(format: "HID++ feat %02X fn%d %@", featureIndex, function, Self.hex(payload)))
     }
 
     private func handleDivertedButtons(_ payload: Data) {
@@ -1297,6 +1311,25 @@ final class LogitechMXMasterReader {
         ]
         logged.append(contentsOf: extras.map { ($0.title, $0.down) })
         noteButtons(logged)
+    }
+
+    private func handleForceSensing(_ payload: Data) {
+        noteLastEvent("force \(Self.hex(payload))")
+        let pressed = payload.contains { $0 != 0 }
+        var next = self.pressed
+        if pressed {
+            next.insert(MXMaster4Support.hapticCID)
+        } else {
+            next.remove(MXMaster4Support.hapticCID)
+        }
+        if next != self.pressed {
+            var reconstructed = Data()
+            for cid in next {
+                reconstructed.append(UInt8(cid >> 8))
+                reconstructed.append(UInt8(cid & 0xFF))
+            }
+            handleDivertedButtons(reconstructed)
+        }
     }
 
     private func handleRawXY(_ payload: Data) {
