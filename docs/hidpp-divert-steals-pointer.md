@@ -8,7 +8,12 @@ HID / sidebar shows the MX Master as connected, but the cursor does not move. Qu
 
 HID++ **divert** tells firmware to send a control to software instead of (or in addition to) native HID.
 
-We armed the Master 4 haptic control (`0x01A0`) with flags around `0x33` (divert + persist + raw/force-XY style bits). That can make **all** movement come in as HID++ raw XY. macOS then gets no normal mouse X/Y.
+We misread HID++ `setCidReporting` flags. On Reprog Controls V4, each setting is a **value bit plus a valid bit**:
+
+- `0x33` = divert + divert-valid + raw-XY + raw-XY-valid (hold-only gestures). This is what Solaar sends.
+- Persist is `0x04` / valid `0x08`. Force raw XY is `0x40` / valid `0x80`.
+- Sending `0` to undo does nothing (valid bits are 0). Clear with `0x22`.
+- A 6th “mask” byte can confuse Master 4 (feature V6). The packet is 5 bytes: CID, flags, remap.
 
 Persist means the firmware can keep that mode after the app quits. A power cycle clears it.
 
@@ -19,7 +24,7 @@ Opening the normal Logitech mouse HID collection at launch can also steal the po
 - Stopped opening the mouse collection on launch
 - Stopped seizing HID++
 - Weakened or removed persist / force-raw-XY on quit
-- On terminate, try to send divert flags `0` so firmware returns to native reporting
+- On terminate, send flags `0x22` (clear divert + raw XY with valid bits). Sending `0` does nothing.
 
 ## Tradeoff
 

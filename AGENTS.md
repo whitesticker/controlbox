@@ -17,7 +17,7 @@ Treat these as **different devices**, not one “MX Master”:
 |---|---|---|
 | MX Master 3 | confirm before coding | Do not assume Master 4 CIDs |
 | MX Master 3S | often usage page `0xFF43` | Thumb / gesture CID often `0x00C3` |
-| MX Master 4 | usage page `0xFF00` | Haptic / gesture CID `0x01A0` |
+| MX Master 4 | usage page `0xFF00` | Haptic CID `0x01A0` (default task Action Ring `0x0109`); also divert Mouse Gesture Button `0x00C3` |
 
 Focus on **MX Master 4 first**. Do not reopen 3S attach, dual-mouse attach, or “open every Logitech interface” while MX4 is the target.
 
@@ -28,7 +28,7 @@ Separate reader code per model will help: matching, divert flags, and button CID
 - Never call `IOBluetoothDevice.pairedDevices()`. It has corrupted the heap on this Mac (`libmalloc` / `EXC_BREAKPOINT`).
 - Never `IOHIDManagerOpen` with `kIOHIDOptionsTypeSeizeDevice` on Logitech mouse or HID++ managers.
 - Do not open the standard Logitech mouse collection (usage page `0x01` usage `0x02`) just to watch buttons. That can steal the system pointer.
-- Do not send HID++ divert flags that include persist or force-raw-XY (`0x02`, `0x08`, `0x10` in the usual Solaar layout, or the old `0x33` arm). Those have left the Master 4 pointer dead until a power cycle.
+- Reprog Controls V4 `setCidReporting` flags are value + valid pairs, not “0x01 divert / 0x02 persist / 0x04 raw XY”. Solaar hold-only gestures use **`0x33`** (divert+valid + rawXY+valid). Persist is `0x04`/`0x08`. Force raw XY is `0x40`/`0x80`. Packet is **5 bytes** (CID, flags, remap). Do not send persist or force-raw-XY. Clear with `0x22`, not `0`. Remap haptic `0x01A0` → Gesture Button `0x00C3`; leaving it on Action Ring `0x0109` swallows the press.
 - Debug builds must stay signed with the Apple Development identity (`DEVELOPMENT_TEAM = XXA24FWXDW`) so Accessibility and Input Monitoring persist across rebuilds. Do not switch back to ad-hoc (`CODE_SIGN_IDENTITY = "-"`).
 - Never upload or publish without explicit approval.
 
