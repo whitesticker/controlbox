@@ -397,6 +397,14 @@ final class DualSenseMonitor {
         updateSelectedProfile { $0.naturalScrolling = enabled }
     }
 
+    func setSensorDPI(_ dpi: Int) {
+        updateSelectedProfile { $0.sensorDPI = MappingProfile.clampDisplayedDPI(dpi) }
+    }
+
+    func setSmoothScrolling(_ enabled: Bool) {
+        updateSelectedProfile { $0.smoothScrolling = enabled }
+    }
+
     func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
         updateSelectedProfile { $0.setGestureSet(.named(preset), for: button) }
     }
@@ -813,9 +821,11 @@ final class DualSenseMonitor {
             mxMasterReader.injectEnabled = record.controlEnabled
             mxMasterReader.wheelsEnabled = accessibilityTrusted
             mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
-            mxMasterReader.applyPointerSpeed(record.selectedProfile.appliedPointerSpeed)
+            mxMasterReader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
+            mxMasterReader.applySmoothScrolling(record.selectedProfile.resolvedSmoothScrolling)
             mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
             mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
+            mouseScrollTap.smoothScrolling = record.selectedProfile.resolvedSmoothScrolling
             mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
             mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
             mouseScrollTap.setActive(accessibilityTrusted)

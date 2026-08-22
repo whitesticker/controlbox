@@ -385,22 +385,15 @@ public final class ControlEngine: @unchecked Sendable {
 
         if frame.gestureActive {
             guard allow else { return }
-            if let opened = liveGesture.handleMove(x: frame.gestureX, y: frame.gestureY, owner: owner, set: set) {
-                perform(opened, down: true)
-                perform(opened, down: false)
-            }
+            liveGesture.handleMove(x: frame.gestureX, y: frame.gestureY, owner: owner, set: set)
             return
         }
 
-        let followUp = liveGesture.end()
-        if let followUp {
-            perform(followUp, down: true)
-            perform(followUp, down: false)
-            return
-        }
+        liveGesture.end()
 
         guard let slotButton = frame.gestureSlot,
-              let slot = GestureSlot.slot(for: slotButton)
+              let slot = GestureSlot.slot(for: slotButton),
+              slot == .click
         else { return }
         let action = profile.action(forGesture: slot, owner: owner)
         guard injectAll || action.isSystemNavigation else { return }
@@ -496,57 +489,48 @@ private struct LiveGestureState {
     }
 
     var owner: DeviceButton?
-    var consumed = false
     private var lastX = 0.0
     private var lastY = 0.0
     private var hasSample = false
     private var axis: Axis?
     private var space = DockSwipe.Session()
     private var volumeHold = 0.0
-    private var openedAppExpose = false
 
-    mutating func handleMove(x: Double, y: Double, owner: DeviceButton, set: GestureSet?) -> ControlAction? {
+    mutating func handleMove(x: Double, y: Double, owner: DeviceButton, set: GestureSet?) {
         self.owner = owner
-        defer {
+        guard let set else {
             lastX = x
             lastY = y
             hasSample = true
+            return
         }
-        guard hasSample else { return nil }
-        let dx = x - lastX
-        let dy = y - lastY
-        guard let set else { return nil }
+        let dx = hasSample ? x - lastX : x
+        let dy = hasSample ? y - lastY : y
+        lastX = x
+        lastY = y
+        hasSample = true
+        let travel = hypot(x, y)
 
-        if axis == nil, hypot(x, y) >= 200 {
-            axis = abs(x) >= abs(y) ? .horizontal : .vertical
+        if axis == nil, travel >= 8 {
+            axis = abs(y) >= abs(x) ? .vertical : .horizontal
         }
-        guard let axis else { return nil }
+        guard let axis else { return }
 
         switch axis {
         case .horizontal:
             applySpace(dx: dx, set: set)
-            return nil
         case .vertical:
-            return applyVertical(dy: dy, set: set)
+            applyVertical(dy: dy, set: set)
         }
     }
 
-    mutating func end() -> ControlAction? {
-        let offset = space.offset
+    mutating func end() {
         space.end()
-        let closeExpose = openedAppExpose && offset > -0.18
-        let openExpose = !openedAppExpose && offset <= -0.28
         resetTracking()
-        consumed = false
-        if closeExpose || openExpose {
-            return .appExpose
-        }
-        return nil
     }
 
     mutating func cancel() {
         space.cancel()
-        consumed = false
         resetTracking()
     }
 
@@ -557,33 +541,23 @@ private struct LiveGestureState {
         hasSample = false
         axis = nil
         volumeHold = 0
-        openedAppExpose = false
     }
 
     private mutating func applySpace(dx: Double, set: GestureSet) {
         let action = dx >= 0 ? set.right : set.left
         guard action.isLiveSpace else { return }
-        let magnitude = abs(dx) / (DockSwipe.horizontalSpan * 0.7)
+        let magnitude = abs(dx) / DockSwipe.horizontalSpan
         let signed = action == .spaceRight ? magnitude : -magnitude
         space.add(signed, axis: .horizontal)
-        consumed = true
     }
 
-    private mutating func applyVertical(dy: Double, set: GestureSet) -> ControlAction? {
+    private mutating func applyVertical(dy: Double, set: GestureSet) {
         let action = dy < 0 ? set.up : set.down
-        if action.isLiveMissionSwipe, set.preset == .windowNavigation {
-            let magnitude = abs(dy) / DockSwipe.verticalSwipeSpan
-            let signed = action == .missionControl ? magnitude : -magnitude
-            space.add(signed, axis: .vertical)
-            consumed = true
-            if action == .appExpose, !openedAppExpose, space.offset <= -0.28 {
-                openedAppExpose = true
-                return .appExpose
-            }
-            return nil
+        if action.isLiveMissionSwipe {
+            space.add(-dy / DockSwipe.liveVerticalSpan, axis: .vertical)
+            return
         }
         applyVolume(dy: dy, set: set)
-        return nil
     }
 
     private mutating func applyVolume(dy: Double, set: GestureSet) {
@@ -597,6 +571,5 @@ private struct LiveGestureState {
             VolumeHUD.show(level: level)
         }
         volumeHold = 0
-        consumed = true
     }
 }

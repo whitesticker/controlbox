@@ -17,6 +17,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var wheelScrollSpeed: Double?
     public var thumbScrollSpeed: Double?
     public var naturalScrolling: Bool?
+    public var sensorDPI: Int?
+    public var smoothScrolling: Bool?
     public var gestureSets: [DeviceButton: GestureSet]?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
@@ -26,6 +28,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var appliedWheelScrollSpeed: Double { resolvedWheelScrollSpeed * 0.5 }
     public var appliedThumbScrollSpeed: Double { resolvedThumbScrollSpeed * 0.5 }
     public var resolvedNaturalScrolling: Bool { naturalScrolling ?? true }
+    public var resolvedSensorDPI: Int { Self.clampDPI(sensorDPI) }
+    public var resolvedSmoothScrolling: Bool { smoothScrolling ?? true }
+
+    public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
+    public static let defaultSensorDPI = 1000
 
     public init(
         id: String = UUID().uuidString,
@@ -44,6 +51,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         wheelScrollSpeed: Double? = 0.5,
         thumbScrollSpeed: Double? = 0.5,
         naturalScrolling: Bool? = true,
+        sensorDPI: Int? = nil,
+        smoothScrolling: Bool? = true,
         gestureSets: [DeviceButton: GestureSet]? = nil
     ) {
         self.id = id
@@ -62,11 +71,26 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.wheelScrollSpeed = wheelScrollSpeed
         self.thumbScrollSpeed = thumbScrollSpeed
         self.naturalScrolling = naturalScrolling
+        self.sensorDPI = sensorDPI
+        self.smoothScrolling = smoothScrolling
         self.gestureSets = gestureSets
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
         min(max(value ?? 0.5, 0), 1)
+    }
+
+    public static func clampDisplayedDPI(_ value: Int) -> Int {
+        clampDPI(value)
+    }
+
+    private static func clampDPI(_ value: Int?) -> Int {
+        min(max(value ?? defaultSensorDPI, 200), 8000)
+    }
+
+    public static func nearestDPI(_ value: Int, in levels: [Int]) -> Int {
+        let list = levels.isEmpty ? fallbackDPILevels : levels
+        return list.min(by: { abs($0 - value) < abs($1 - value) }) ?? defaultSensorDPI
     }
 
     public func mode(for source: AnalogSource) -> AnalogMode {
@@ -165,6 +189,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             wheelScrollSpeed: wheelScrollSpeed,
             thumbScrollSpeed: thumbScrollSpeed,
             naturalScrolling: naturalScrolling,
+            sensorDPI: sensorDPI,
+            smoothScrolling: smoothScrolling,
             gestureSets: gestureSets
         )
     }
@@ -179,6 +205,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 name: name,
                 summary: "Assign Gestures to any button, then hold and move. A tap without moving is Click.",
                 bindings: mxMasterBindings,
+                sensorDPI: defaultSensorDPI,
+                smoothScrolling: true,
                 gestureSets: [.mxHaptic: .named(.windowNavigation)]
             )
         }

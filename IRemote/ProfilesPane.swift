@@ -68,13 +68,14 @@ struct DeviceProfilePane: View {
                     analogSection(for: record)
 
                     Section {
-                        speedSlider("Pointer speed", value: pointerSpeedBinding)
-                        speedSlider(
-                            record.isMXMaster ? "Wheel speed" : "Scroll speed",
-                            value: wheelSpeedBinding
-                        )
                         if record.isMXMaster {
+                            dpiSlider
+                            Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
+                            speedSlider("Wheel speed", value: wheelSpeedBinding)
                             speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
+                        } else {
+                            speedSlider("Pointer speed", value: pointerSpeedBinding)
+                            speedSlider("Scroll speed", value: wheelSpeedBinding)
                         }
                         Picker("Scroll direction", selection: scrollDirectionBinding) {
                             Text("Natural").tag("natural")
@@ -85,7 +86,7 @@ struct DeviceProfilePane: View {
                         Text("Pointer & scroll")
                     } footer: {
                         if record.isMXMaster {
-                            Text("Pointer speed is sent to the mouse as DPI. Wheel speed, thumb-wheel speed, and direction intercept the wheel on this Mac (Accessibility must be allowed). Control this Mac is only required for buttons and gestures.")
+                            Text("DPI is the mouse sensor resolution: higher moves the pointer farther per inch. Smooth scrolling makes the wheel send many small steps instead of one jump per notch. Wheel speed, thumb-wheel speed, and direction still intercept the wheel on this Mac (Accessibility must be allowed).")
                         } else {
                             Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
                         }
@@ -427,6 +428,49 @@ struct DeviceProfilePane: View {
             get: { monitor.selectedProfile.resolvedPointerSpeed },
             set: { monitor.setPointerSpeed($0) }
         )
+    }
+
+    private var smoothScrollingBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedSmoothScrolling },
+            set: { monitor.setSmoothScrolling($0) }
+        )
+    }
+
+    private var dpiLevels: [Int] {
+        let fromMouse = monitor.mxMasterSnapshot.availableDPI
+        return fromMouse.count >= 2 ? fromMouse : MappingProfile.fallbackDPILevels
+    }
+
+    private var dpiIndexBinding: Binding<Double> {
+        Binding(
+            get: {
+                let levels = dpiLevels
+                let current = MappingProfile.nearestDPI(monitor.selectedProfile.resolvedSensorDPI, in: levels)
+                return Double(levels.firstIndex(of: current) ?? 0)
+            },
+            set: { index in
+                let levels = dpiLevels
+                let clamped = min(max(Int(index.rounded()), 0), levels.count - 1)
+                monitor.setSensorDPI(levels[clamped])
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var dpiSlider: some View {
+        let levels = dpiLevels
+        let current = MappingProfile.nearestDPI(monitor.selectedProfile.resolvedSensorDPI, in: levels)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("DPI")
+                Spacer()
+                Text("\(current)")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(value: dpiIndexBinding, in: 0...Double(max(levels.count - 1, 1)), step: 1)
+        }
     }
 
     private var wheelSpeedBinding: Binding<Double> {

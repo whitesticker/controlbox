@@ -9,6 +9,7 @@ public final class MouseScrollTap: @unchecked Sendable {
     public var wantNatural = true
     public var verticalScale = 1.0
     public var horizontalScale = 1.0
+    public var smoothScrolling = true
 
     private var activePort: CFMachPort?
     private var activeSource: CFRunLoopSource?
@@ -16,6 +17,8 @@ public final class MouseScrollTap: @unchecked Sendable {
     private var gestureSource: CFRunLoopSource?
     private var touching = 0
     private var lastTouchAt: UInt64 = 0
+    private var lineRemainder: [UInt32: Double] = [:]
+    private var pointRemainder: [UInt32: Double] = [:]
 
     public var isActive: Bool { activePort != nil && activeSource != nil }
 
@@ -85,6 +88,8 @@ public final class MouseScrollTap: @unchecked Sendable {
         gestureSource = nil
         touching = 0
         lastTouchAt = 0
+        lineRemainder.removeAll()
+        pointRemainder.removeAll()
     }
 
     private static let callback: CGEventTapCallBack = { _, type, event, refcon in
@@ -169,18 +174,39 @@ public final class MouseScrollTap: @unchecked Sendable {
         let lineDelta = Double(event.getIntegerValueField(line))
         let pointDelta = Double(event.getIntegerValueField(point))
         let fixedDelta = event.getDoubleValueField(fixed)
-        // High-res MX wheels emit many events per notch. Forcing a leftover
-        // ±1 line on each one is what made a single tick jump ~20 lines.
-        event.setIntegerValueField(line, value: scaledInt(lineDelta * multiplier, original: lineDelta, keepStep: !continuous))
-        event.setIntegerValueField(point, value: scaledInt(pointDelta * multiplier, original: pointDelta, keepStep: false))
+        // High-res / smooth wheels emit many tiny events. Accumulate leftovers
+        // so they still move, and do not force a leftover ±1 line on each one.
+        let keepLineStep = !continuous && !smoothScrolling
+        event.setIntegerValueField(
+            line,
+            value: scaledInt(lineDelta * multiplier, original: lineDelta, field: line, keepStep: keepLineStep, store: &lineRemainder)
+        )
+        event.setIntegerValueField(
+            point,
+            value: scaledInt(pointDelta * multiplier, original: pointDelta, field: point, keepStep: false, store: &pointRemainder)
+        )
         event.setDoubleValueField(fixed, value: scaledDouble(fixedDelta * multiplier, original: fixedDelta))
     }
 
-    private func scaledInt(_ value: Double, original: Double, keepStep: Bool) -> Int64 {
-        let rounded = value.rounded()
+    private func scaledInt(
+        _ value: Double,
+        original: Double,
+        field: CGEventField,
+        keepStep: Bool,
+        store: inout [UInt32: Double]
+    ) -> Int64 {
+        let key = field.rawValue
+        var remainder = store[key] ?? 0
+        if original != 0, remainder != 0, (value > 0) != (remainder > 0) {
+            remainder = 0
+        }
+        let total = remainder + value
+        let rounded = total.rounded(.towardZero)
         if keepStep, original != 0, rounded == 0 {
+            store[key] = 0
             return original > 0 ? 1 : -1
         }
+        store[key] = total - rounded
         return Int64(rounded)
     }
 

@@ -13,6 +13,7 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [x] Haptic divert uses hold-only flags (no persist / force-raw-XY); native restore on quit
 - [x] Do not open or seize the standard mouse HID collection
 - [x] Pointer / wheel / thumb speed feel (slider 50% applies the old 25%)
+- [x] MX4 sensor DPI + smooth scrolling (HiRes wheel), with settings controls
 - [x] BLE MX4 haptic is native HID button 7 (see `docs/mx-master-4-ble-haptic.md`)
 - [ ] Confirm window-navigation actions fire on haptic hold + swipe (Calibration already shows the swipe)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now

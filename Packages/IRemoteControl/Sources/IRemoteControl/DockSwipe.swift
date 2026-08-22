@@ -102,6 +102,11 @@ enum DockSwipe {
         max(NSScreen.main?.frame.height ?? 900, 600) * 0.7
     }
 
+    /// Pixel travel that fully reveals Mission Control while the haptic pad is held.
+    static var liveVerticalSpan: Double {
+        max((NSScreen.main?.frame.height ?? 900) * 0.22, 140)
+    }
+
     private static func field(_ raw: UInt32) -> CGEventField {
         CGEventField(rawValue: raw)!
     }
