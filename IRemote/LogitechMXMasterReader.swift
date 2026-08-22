@@ -804,35 +804,31 @@ final class LogitechMXMasterReader {
     }
 
     private func chooseGestureCID() {
-        hapticCID = 0x01A0
-        gestureCIDs = [0x01A0]
-        if controls.contains(where: { $0.cid == 0x01A0 }) {
-            gestureCID = 0x01A0
-        }
-        if controls.contains(where: { $0.cid == 0x00C3 }) {
-            gestureCIDs.insert(0x00C3)
-            if !controls.contains(where: { $0.cid == 0x01A0 }) {
-                gestureCID = 0x00C3
-            }
-        }
-        for cid in [UInt16(0x00D6), 0x00D7] where controls.contains(where: { $0.cid == cid }) {
-            gestureCIDs.insert(cid)
-        }
+        hapticCID = MXMaster4Support.hapticCID
+        gestureCID = MXMaster4Support.hapticCID
+        gestureCIDs = [MXMaster4Support.hapticCID]
     }
 
     private func divertKnownButtons() {
         guard let reprogIndex else { return }
         extraCIDs.removeAll()
         var jobs: [(UInt16, UInt8, UInt8)] = [
-            (0x01A0, Self.gestureReportingFlags, Self.gestureReportingFlags)
+            (MXMaster4Support.hapticCID, Self.gestureReportingFlags, Self.gestureReportingFlags)
         ]
         for control in controls where control.divertable {
-            if Self.nativeClickCIDs.contains(control.cid), !gestureCIDs.contains(control.cid) { continue }
+            if Self.nativeClickCIDs.contains(control.cid) { continue }
             if Self.wheelCIDs.contains(control.cid) { continue }
-            if control.cid == 0x01A0 { continue }
-            if control.rawXY, !gestureCIDs.contains(control.cid) { continue }
-            jobs.append((control.cid, Self.reportingFlags(for: control), 0))
-            if Self.button(for: control.cid) == nil, !gestureCIDs.contains(control.cid) {
+            if control.cid == MXMaster4Support.hapticCID { continue }
+            if MXMaster4Support.extraButtonCIDs.contains(control.cid) {
+                jobs.append((control.cid, 0x01, 0x01))
+                if Self.button(for: control.cid) == nil {
+                    extraCIDs[control.cid] = Self.title(for: control.cid, task: control.task)
+                }
+                continue
+            }
+            if control.rawXY { continue }
+            jobs.append((control.cid, 0x01, 0x01))
+            if Self.button(for: control.cid) == nil {
                 extraCIDs[control.cid] = Self.title(for: control.cid, task: control.task)
             }
         }
@@ -1536,7 +1532,7 @@ final class LogitechMXMasterReader {
         let extra = gestureCIDs.intersection(Self.nativeClickCIDs)
         guard extra != lastDivertedNative else { return }
         lastDivertedNative = extra
-        let jobs = extra.map { ($0, UInt8(0x03), UInt8(0)) }
+        let jobs = extra.map { ($0, UInt8(0x01), UInt8(0x01)) }
         divert(jobs: jobs, reprogIndex: reprogIndex) { }
     }
     private static let knownGestureCIDs: Set<UInt16> = [0x00C3, 0x00D6, 0x00D7]

@@ -9,11 +9,11 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 
 ## MX Master 4
 
-- [ ] Extra buttons (haptic, back, forward, mode shift) in Calibration
-- [ ] Haptic hold + swipe for window navigation, without stealing the pointer
-- [ ] Divert without persist / force-raw-XY; restore native reporting on quit
-- [ ] Do not open or seize the standard mouse HID collection
-- [ ] Pointer / wheel / thumb speed feel (slider remap is in; revisit if still wrong)
+- [x] Extra buttons (haptic, back, forward, mode shift) diverted once on MX4 attach
+- [x] Haptic divert uses hold-only flags (no persist / force-raw-XY); native restore on quit
+- [x] Do not open or seize the standard mouse HID collection
+- [x] Pointer / wheel / thumb speed feel (slider 50% applies the old 25%)
+- [ ] Confirm haptic window navigation on MX4 after the once-only divert
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 
 ## Do not regress
