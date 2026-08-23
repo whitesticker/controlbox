@@ -1,6 +1,6 @@
 # Fix list
 
-Open items for MX Master / HID++ work. MX Master 4 first.
+Open items for MX Master / HID++ work. Active test device is MX Master 3S; MX4 stays disconnected.
 
 ## Done
 
@@ -22,6 +22,7 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `docs/haptic-vs-back-gesture.md`)
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
+- [x] MX Master 3 / 3S reader (same CID table; BLE `0xB034` measured). Separate module from MX4.
 
 ## Do not regress
 
@@ -31,7 +32,6 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 
 ## Later
 
-- [ ] MX Master 3S reader (`0xFF43`, CID `0x00C3`)
-- [ ] MX Master 3 reader
+- [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.

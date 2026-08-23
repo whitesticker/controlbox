@@ -27,10 +27,13 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     }
 
     static func make(from device: ConnectedBluetoothDevice, remembered: Bool = false) -> DeviceRecord {
-        let profile = MappingProfile.makeDefault(
+        var profile = MappingProfile.makeDefault(
             isAppleTVRemote: device.deviceKind == .appleTVRemote,
             isMXMaster: device.deviceKind.isMXMaster
         )
+        if device.deviceKind.isMXMaster3Family {
+            profile.summary = "Gesture button is Gestures. Back and Forward are browser buttons."
+        }
         return DeviceRecord(
             id: device.id,
             name: device.name,

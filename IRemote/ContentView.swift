@@ -166,7 +166,7 @@ struct CalibrationWindow: View {
             return monitor.appleTVSnapshot.connected
         }
         if monitor.selectedKind.isMXMaster {
-            return monitor.mxMasterSnapshot.connected
+            return monitor.isLiveMXSelection()
         }
         return monitor.snapshot.connected
     }

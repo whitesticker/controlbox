@@ -21,12 +21,13 @@ struct DeviceProfilePane: View {
                                 Text(device.statusTitle)
                             }
                         }
+                        if let identifier = deviceIdentifier(for: record, device: device) {
+                            LabeledContent(DeviceIdentity.displayLabel(for: identifier), value: identifier)
+                                .textSelection(.enabled)
+                        }
                         LabeledContent("Type", value: record.kind.title)
                         if record.isMXMaster {
-                            LabeledContent("HID++", value: monitor.mxMasterSnapshot.status)
-                        }
-                        if !record.address.isEmpty {
-                            LabeledContent("Address", value: record.address)
+                            LabeledContent("HID++", value: mxHIDPPStatus(for: record))
                         }
                     }
 
@@ -71,7 +72,10 @@ struct DeviceProfilePane: View {
                         if record.isMXMaster {
                             dpiSlider
                             speedSlider("Pointer speed", value: pointerSpeedBinding)
-                            speedSlider("Haptic gesture speed", value: hapticGestureSpeedBinding)
+                            speedSlider(
+                                record.kind.isMXMaster3Family ? "Gesture speed" : "Haptic gesture speed",
+                                value: hapticGestureSpeedBinding
+                            )
                             Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
                             speedSlider("Wheel speed", value: wheelSpeedBinding)
                             speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
@@ -88,7 +92,9 @@ struct DeviceProfilePane: View {
                         Text("Pointer & scroll")
                     } footer: {
                         if record.isMXMaster {
-                            Text("DPI is sensor resolution. Pointer speed is the cursor. Haptic gesture speed is the thumb pad. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed.")
+                            Text(record.kind.isMXMaster3Family
+                                 ? "DPI is sensor resolution. Pointer speed is the cursor. Gesture speed is hold-to-swipe on the thumb button. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed."
+                                 : "DPI is sensor resolution. Pointer speed is the cursor. Haptic gesture speed is the thumb pad. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed.")
                         } else {
                             Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
                         }
@@ -100,9 +106,9 @@ struct DeviceProfilePane: View {
                                 if button == .clickSelect {
                                     selectRow(for: record)
                                 } else if record.isMXMaster {
-                                    mxActionRow(label(for: button), button: button, record: record)
+                                    mxActionRow(label(for: button, kind: record.kind), button: button, record: record)
                                 } else {
-                                    actionRow(label(for: button), button: button, current: record.selectedProfile.bindings[button] ?? .none)
+                                    actionRow(label(for: button, kind: record.kind), button: button, current: record.selectedProfile.bindings[button] ?? .none)
                                 }
                             }
                         } header: {
@@ -111,7 +117,9 @@ struct DeviceProfilePane: View {
                             if group.id == "clickpad" {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
                             } else if group.id == "buttons" {
-                                Text("Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click.")
+                                Text(record.kind.isMXMaster3Family
+                                     ? "Gesture is the only Gestures button. Hold the thumb button and move for the four directions. A tap without moving is Click."
+                                     : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click.")
                             }
                         }
                     }
@@ -528,13 +536,28 @@ struct DeviceProfilePane: View {
         }
     }
 
+    private func deviceIdentifier(for record: DeviceRecord, device: SidebarDevice) -> String? {
+        for candidate in [device.address, record.address] where DeviceIdentity.isConcrete(candidate) {
+            return DeviceIdentity.format(candidate)
+        }
+        return nil
+    }
+
+    private func mxHIDPPStatus(for record: DeviceRecord) -> String {
+        let live = monitor.mxMasterSnapshot
+        if monitor.isLiveMXSelection(live) {
+            return live.status
+        }
+        return "Not connected"
+    }
+
     private func buttonGroups(for record: DeviceRecord) -> [DeviceButtonGroup] {
         if record.isMXMaster { return DeviceButton.mxMasterGroups }
         if record.isAppleTVRemote { return DeviceButton.appleTVGroups }
         return DeviceButton.dualSenseGroups
     }
 
-    private func label(for button: DeviceButton) -> String {
+    private func label(for button: DeviceButton, kind: DeviceKind = .unsupported) -> String {
         switch button {
         case .clickUp: return "Up"
         case .clickDown: return "Down"
@@ -543,6 +566,7 @@ struct DeviceProfilePane: View {
         case .clickSelect: return "Select"
         case .volumeUp: return "Volume +"
         case .volumeDown: return "Volume −"
+        case .mxHaptic: return kind.mxGestureControlTitle
         default: return button.title
         }
     }

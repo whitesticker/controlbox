@@ -23,8 +23,13 @@ enum DeviceKind: String, Codable, Equatable {
         }
     }
 
-    var usesMXMaster4HIDPP: Bool {
-        self == .logitechMXMaster4 || self == .logitechMXMaster
+    var usesMXMasterHIDPP: Bool {
+        switch self {
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+            return true
+        default:
+            return false
+        }
     }
 
     var title: String {
@@ -61,7 +66,6 @@ enum DeviceSupport {
     static let logitechVendorID = 0x046D
     static let mxMasterProductIDs: Set<Int> =
         MXMaster3Support.productIDs
-            .union(MXMaster3SSupport.productIDs)
             .union(MXMaster4Support.productIDs)
 
     static func classify(name: String, vendorID: Int?, productID: Int?) -> DeviceKind {
@@ -74,8 +78,9 @@ enum DeviceSupport {
         }
         if vendorID == logitechVendorID, let productID {
             if MXMaster4Support.productIDs.contains(productID) { return .logitechMXMaster4 }
-            if MXMaster3SSupport.productIDs.contains(productID) { return .logitechMXMaster3S }
-            if MXMaster3Support.productIDs.contains(productID) { return .logitechMXMaster3 }
+            if MXMaster3Support.productIDs.contains(productID) {
+                return MXMaster3Support.kind(productID: productID, product: name)
+            }
         }
 
         let lowered = name.lowercased()
@@ -104,6 +109,55 @@ enum DeviceSupport {
     }
 }
 
+enum DeviceIdentity {
+    static let hidFallback = "HID"
+    static let placeholders: Set<String> = [
+        "", "HID", "HID++", "Bluetooth", "USB", "Game Controller"
+    ]
+
+    static func isConcrete(_ address: String) -> Bool {
+        !placeholders.contains(address)
+    }
+
+    static func same(_ lhs: String, _ rhs: String) -> Bool {
+        guard isConcrete(lhs), isConcrete(rhs) else { return false }
+        return format(lhs).caseInsensitiveCompare(format(rhs)) == .orderedSame
+    }
+
+    static func displayLabel(for address: String) -> String {
+        looksLikeHardwareAddress(address) ? "Address" : "Identifier"
+    }
+
+    static func looksLikeHardwareAddress(_ value: String) -> Bool {
+        value.filter(\.isHexDigit).count == 12
+    }
+
+    static func format(_ raw: String) -> String {
+        let hex = raw.filter(\.isHexDigit).uppercased()
+        guard hex.count == 12 else { return raw }
+        let pairs = stride(from: 0, to: 12, by: 2).map { index in
+            let start = hex.index(hex.startIndex, offsetBy: index)
+            let end = hex.index(start, offsetBy: 2)
+            return String(hex[start..<end])
+        }
+        return pairs.joined(separator: ":")
+    }
+
+    static func fromHID(_ device: IOHIDDevice) -> String {
+        if let address = stringProperty("DeviceAddress", device: device), !address.isEmpty {
+            return format(address)
+        }
+        if let serial = stringProperty(kIOHIDSerialNumberKey as String, device: device), !serial.isEmpty {
+            return serial
+        }
+        return ""
+    }
+
+    private static func stringProperty(_ key: String, device: IOHIDDevice) -> String? {
+        IOHIDDeviceGetProperty(device, key as CFString) as? String
+    }
+}
+
 enum BluetoothDeviceCatalog {
     static func availableDevices() -> [ConnectedBluetoothDevice] {
         autoreleasepool {
@@ -124,14 +178,15 @@ enum BluetoothDeviceCatalog {
             )
             guard kind.isSupported else { continue }
             let name = record.product.isEmpty ? kind.title : record.product
-            let identity = "\(record.vendorID):\(record.productID):\(name.lowercased())"
+            let token = record.address.isEmpty ? name.lowercased() : record.address.lowercased()
+            let identity = "\(record.vendorID):\(record.productID):\(token)"
             guard seen.insert(identity).inserted else { continue }
             seen.insert(name.lowercased())
             devices.append(
                 ConnectedBluetoothDevice(
                     id: "hid:\(identity)",
                     name: name,
-                    address: "HID",
+                    address: record.address.isEmpty ? DeviceIdentity.hidFallback : record.address,
                     deviceKind: kind,
                     detail: kind.title,
                     isConnected: true
@@ -173,6 +228,7 @@ private struct HIDRecord {
     var product: String
     var vendorID: Int
     var productID: Int
+    var address: String
 }
 
 private struct HIDNameIndex {
@@ -209,7 +265,14 @@ private struct HIDNameIndex {
                 let product = stringProperty(kIOHIDProductKey as String, device: device) ?? ""
                 let vendorID = intProperty(kIOHIDVendorIDKey as String, device: device)
                 let productID = intProperty(kIOHIDProductIDKey as String, device: device)
-                records.append(HIDRecord(product: product, vendorID: vendorID, productID: productID))
+                records.append(
+                    HIDRecord(
+                        product: product,
+                        vendorID: vendorID,
+                        productID: productID,
+                        address: DeviceIdentity.fromHID(device)
+                    )
+                )
             }
         }
         return HIDNameIndex(records: records)

@@ -14,7 +14,7 @@ Release classification also used distance only (`pointerSwipeDistance` 70). A wo
 
 Wait **100ms** after press before any swipe action:
 
-- `LiveGestureState` records hold start and ignores axis lock / DockSwipe / App Exposé until 100ms.
+- `HoldGesture` records hold start and ignores axis lock / DockSwipe / App Exposé until 100ms (`armDelay` 0.10 s).
 - `finishGesture` treats a hold shorter than 100ms as a tap even if the pad moved.
 
 After 100ms, hold + move is a swipe as before.

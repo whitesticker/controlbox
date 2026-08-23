@@ -182,7 +182,12 @@ final class DualSenseMonitor {
 
     var addableDevices: [ConnectedBluetoothDevice] {
         connectedDevices.filter { device in
-            device.isSupported && !sidebarDevices.contains { $0.id == device.id || namesMatch($0.name, device.name) }
+            device.isSupported && !sidebarDevices.contains { row in
+                if row.id == device.id { return true }
+                if DeviceIdentity.same(row.address, device.address) { return true }
+                if device.deviceKind.isMXMaster { return false }
+                return namesMatch(row.name, device.name)
+            }
         }
     }
 
@@ -206,7 +211,7 @@ final class DualSenseMonitor {
     private let appleTVReader = AppleTVRemoteHIDReader()
     private let appleTVTouch = AppleTVTouchReader()
     private let appleTVBattery = AppleTVBatteryReader()
-    private let mxMasterReader = LogitechMXMasterReader()
+    private let mxMasterReader = LogitechMXMasterReader(model: MXMasterHIDDiscovery.activeModel())
     private let mouseScrollTap = MouseScrollTap()
 
     func start() {
@@ -683,12 +688,12 @@ final class DualSenseMonitor {
             refreshPermissions()
         }
 
+        if mxMasterReader.current.connected || selectedKind.isMXMaster {
+            captureMXMaster()
+            if selectedKind.isMXMaster { return }
+        }
         if selectedKind == .appleTVRemote {
             captureAppleTV()
-            return
-        }
-        if selectedKind.isMXMaster {
-            captureMXMaster()
             return
         }
 
@@ -808,9 +813,32 @@ final class DualSenseMonitor {
         mxMasterReader.pollGesturePointer()
         let next = mxMasterReader.current
         mxMasterSnapshot = next
-        ingestControl(ControlFrameBuilder.make(from: next))
+        if let record = liveMXRecord(for: next) {
+            ingestMX(record, ControlFrameBuilder.make(from: next))
+        }
         _ = mxMasterReader.consumePendingGesture()
         mxMasterReader.consumePendingScroll()
+    }
+
+    private func ingestMX(_ record: DeviceRecord, _ frame: ControlFrame) {
+        let engine = engine(for: record.id)
+        engine.profile = record.selectedProfile
+        engine.enabled = record.controlEnabled
+        engine.postsWhenHostIsActive = record.controlWhileFocused
+        mxMasterReader.injectEnabled = record.controlEnabled
+        mxMasterReader.wheelsEnabled = accessibilityTrusted
+        mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
+        mxMasterReader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
+        mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
+        mxMasterReader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
+        mxMasterReader.applySmoothScrolling(record.selectedProfile.resolvedSmoothScrolling)
+        mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
+        mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
+        mouseScrollTap.smoothScrolling = record.selectedProfile.resolvedSmoothScrolling
+        mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
+        mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
+        mouseScrollTap.setActive(accessibilityTrusted)
+        engine.process(frame, hostIsActive: NSApp.isActive)
     }
 
     private func ingestControl(_ frame: ControlFrame) {
@@ -822,22 +850,9 @@ final class DualSenseMonitor {
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
         if record.isMXMaster {
-            mxMasterReader.injectEnabled = record.controlEnabled
-            mxMasterReader.wheelsEnabled = accessibilityTrusted
-            mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
-            mxMasterReader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
-            mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
-            mxMasterReader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
-            mxMasterReader.applySmoothScrolling(record.selectedProfile.resolvedSmoothScrolling)
-            mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
-            mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
-            mouseScrollTap.smoothScrolling = record.selectedProfile.resolvedSmoothScrolling
-            mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
-            mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
-            mouseScrollTap.setActive(accessibilityTrusted)
-        } else {
-            mouseScrollTap.setActive(false)
+            return
         }
+        mouseScrollTap.setActive(false)
         engine.process(frame, hostIsActive: NSApp.isActive)
     }
 
@@ -875,9 +890,51 @@ final class DualSenseMonitor {
 
     private func recordsMatch(_ record: DeviceRecord, _ device: ConnectedBluetoothDevice) -> Bool {
         if record.id == device.id { return true }
+        if DeviceIdentity.same(record.address, device.address) { return true }
         guard record.kind == device.deviceKind else { return false }
+        if record.kind.isMXMaster {
+            if DeviceIdentity.isConcrete(record.address), DeviceIdentity.isConcrete(device.address) {
+                return false
+            }
+            return namesMatch(record.name, device.name)
+        }
         if namesMatch(record.name, device.name) { return true }
         return isConcreteAddress(record.address) && record.address == device.address
+    }
+
+    func isLiveMXSelection(_ live: MXMasterSnapshot? = nil) -> Bool {
+        guard let record = selectedRecord else { return false }
+        return isLiveMXDevice(
+            kind: record.kind,
+            address: record.address,
+            name: record.name,
+            live: live ?? mxMasterSnapshot
+        )
+    }
+
+    private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
+        guard live.connected else { return nil }
+        if let match = deviceRecords.first(where: {
+            isLiveMXDevice(kind: $0.kind, address: $0.address, name: $0.name, live: live)
+        }) {
+            return match
+        }
+        if let device = connectedDevices.first(where: {
+            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+        }) {
+            ensureRecord(for: device.id)
+            return matchingRecord(for: device) ?? deviceRecords.first { $0.id == device.id }
+        }
+        return nil
+    }
+
+    private func isLiveMXDevice(kind: DeviceKind, address: String, name: String, live: MXMasterSnapshot) -> Bool {
+        guard live.connected else { return false }
+        if DeviceIdentity.same(address, live.address) { return true }
+        if DeviceIdentity.isConcrete(address), DeviceIdentity.isConcrete(live.address) {
+            return false
+        }
+        return kind == live.kind && namesMatch(name, live.name)
     }
 
     private func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
@@ -885,12 +942,7 @@ final class DualSenseMonitor {
     }
 
     private func isConcreteAddress(_ address: String) -> Bool {
-        !(address.isEmpty
-            || address == "Bluetooth"
-            || address == "USB"
-            || address == "HID"
-            || address == "HID++"
-            || address == "Game Controller")
+        DeviceIdentity.isConcrete(address)
     }
 
     private func suppressionKey(for device: ConnectedBluetoothDevice) -> String {
@@ -1166,21 +1218,22 @@ final class DualSenseMonitor {
         let mx = mxMasterReader.current
         if mx.connected {
             if let index = devices.firstIndex(where: {
-                $0.deviceKind.isMXMaster || namesMatch($0.name, mx.name)
+                isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: mx)
             }) {
-                if !devices[index].deviceKind.isMXMaster {
-                    devices[index].deviceKind = .logitechMXMaster4
-                }
+                devices[index].deviceKind = mx.kind
                 devices[index].isConnected = true
                 devices[index].name = mx.name
+                if DeviceIdentity.isConcrete(mx.address) {
+                    devices[index].address = mx.address
+                }
                 devices[index].detail = mx.status
             } else {
                 devices.append(
                     ConnectedBluetoothDevice(
-                        id: "mx:\(mx.name)",
+                        id: "mx:\(DeviceIdentity.isConcrete(mx.address) ? mx.address : mx.name)",
                         name: mx.name,
-                        address: "HID++",
-                        deviceKind: .logitechMXMaster4,
+                        address: DeviceIdentity.isConcrete(mx.address) ? mx.address : DeviceIdentity.hidFallback,
+                        deviceKind: mx.kind,
                         detail: mx.status,
                         isConnected: true
                     )
@@ -1222,13 +1275,14 @@ final class DualSenseMonitor {
         let mx = mxMasterReader.current
         guard mx.connected else { return }
         if let index = connectedDevices.firstIndex(where: {
-            $0.deviceKind.isMXMaster || namesMatch($0.name, mx.name)
+            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: mx)
         }) {
-            if !connectedDevices[index].deviceKind.isMXMaster {
-                connectedDevices[index].deviceKind = .logitechMXMaster4
-            }
+            connectedDevices[index].deviceKind = mx.kind
             connectedDevices[index].isConnected = true
             connectedDevices[index].name = mx.name
+            if DeviceIdentity.isConcrete(mx.address) {
+                connectedDevices[index].address = mx.address
+            }
             connectedDevices[index].detail = mx.status
         }
     }

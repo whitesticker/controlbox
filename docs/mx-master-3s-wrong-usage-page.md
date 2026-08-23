@@ -12,4 +12,4 @@ The 3S gesture control is also a different CID (thumb `0x00C3`), not the Master 
 
 ## Status
 
-3S matching was tried, then pulled back after dual-mouse crashes. **Do not resume 3S work until MX Master 4 is stable.** When we do, it should be a separate reader, not more branches inside one shared MX class.
+3S matching was pulled back after dual-mouse crashes, then resumed 2026-08-22 with MX4 disconnected. Matching is product `0xB034` / `0xB043` only (see [mx-master-3s-hid.md](mx-master-3s-hid.md)). Do not open Bolt `0xC548`. Keep 3S and 4 as separate HID modules; shared code is the HID++ pipe and gesture engine.

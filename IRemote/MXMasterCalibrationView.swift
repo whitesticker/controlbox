@@ -21,7 +21,9 @@ struct MXMasterCalibrationView: View {
                 Spacer()
                 MXChip(title: "HID++", tint: Palette.accent)
                 MXChip(
-                    title: (snapshot.haptic || snapshot.gestureDown) ? "Haptic held" : "Haptic up",
+                    title: (snapshot.haptic || snapshot.gestureDown)
+                        ? "\(snapshot.kind.mxGestureControlTitle) held"
+                        : "\(snapshot.kind.mxGestureControlTitle) up",
                     tint: (snapshot.haptic || snapshot.gestureDown) ? Palette.good : Palette.secondaryText(colorScheme)
                 )
             }
@@ -69,7 +71,7 @@ private struct MXMasterMouseView: View {
 
                 MXButton(title: "Mode shift", pressed: snapshot.smartShift, compact: true)
                     .position(x: width * 0.62, y: height * 0.42)
-                MXButton(title: "Haptic", pressed: snapshot.haptic)
+                MXButton(title: snapshot.kind.mxGestureControlTitle, pressed: snapshot.haptic)
                     .frame(width: 88, height: 44)
                     .position(x: width * 0.30, y: height * 0.52)
 
@@ -103,7 +105,7 @@ private struct MXMasterMouseView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill((snapshot.gestureDown || snapshot.haptic) ? Palette.accent.opacity(0.28) : Palette.fill(colorScheme))
             VStack(spacing: 4) {
-                Text("Haptic swipe")
+                Text(snapshot.kind.isMXMaster3Family ? "Gesture swipe" : "Haptic swipe")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Text(gestureCaption)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -128,12 +130,12 @@ private struct MXMasterMouseView: View {
 
     private var gestureCaption: String {
         if snapshot.gestureDown || snapshot.haptic {
-            return snapshot.liveGesture?.title ?? "Haptic held"
+            return snapshot.liveGesture?.title ?? "\(snapshot.kind.mxGestureControlTitle) held"
         }
         if let last = snapshot.lastGesture {
             return "Last: \(last.title)"
         }
-        return "Hold haptic + move"
+        return snapshot.kind.isMXMaster3Family ? "Hold gesture + move" : "Hold haptic + move"
     }
 
     private func arrow(_ symbol: String, active: Bool) -> some View {
@@ -185,18 +187,20 @@ private struct MXMasterSidebar: View {
                 MXValueRow(label: "Back", value: down(snapshot.back))
                 MXValueRow(label: "Forward", value: down(snapshot.forward))
                 MXValueRow(label: "Mode shift", value: down(snapshot.smartShift))
-                MXValueRow(label: "Haptic", value: down(snapshot.haptic))
+                MXValueRow(label: snapshot.kind.mxGestureControlTitle, value: down(snapshot.haptic))
                 ForEach(snapshot.extras) { extra in
                     MXValueRow(label: extra.title, value: down(extra.down))
                 }
             }
-            MXPanel(title: "Haptic gesture") {
-                MXValueRow(label: "Haptic pad", value: down(snapshot.haptic || snapshot.gestureDown))
+            MXPanel(title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture") {
+                MXValueRow(label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad", value: down(snapshot.haptic || snapshot.gestureDown))
                 MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
                 MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
                 MXValueRow(label: "Delta", value: String(format: "%+.0f, %+.0f", snapshot.gestureDX, snapshot.gestureDY))
                 MXValueRow(label: "HID++", value: snapshot.lastHIDEvent)
-                Text("Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
+                Text(snapshot.kind.isMXMaster3Family
+                     ? "Gesture means: hold the thumb gesture button and move the mouse. A tap without moving is Click. Quit Logi Options+ first."
+                     : "Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Palette.secondaryText(colorScheme))
             }

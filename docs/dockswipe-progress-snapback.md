@@ -13,7 +13,7 @@ Pointer motion during the hold could also cancel or fight the dock-swipe. The MX
 ## What we changed
 
 - `DockSwipe.Session.setAbsolute` posts the hold’s accumulated progress, not a per-sample delta.
-- `LiveGestureState` ignores a sample that jumps toward the origin (teleport reject).
+- `HoldGesture.move` ignores a sample that jumps toward the origin (teleport reject).
 - While the pad is held, freeze the cursor and swallow mouse-move / dragged events.
 
 Release ends the session immediately (`finishHapticNow`). Do not add a 180 ms release debounce; that hid dropouts but delayed Spaces commit.

@@ -14,7 +14,7 @@ App navigation next/previous app had the same hole.
 
 ## What we changed
 
-Once the 100ms arm delay has passed and the axis is horizontal, a clear move (`x <= -40` or `x >= 40`) fires `set.left` / `set.right` once per hold when those actions are discrete (media skip, app switch, browser back/forward). Spaces still use live DockSwipe.
+Once `HoldGesture`’s 100ms arm delay has passed and the axis is horizontal, a clear move (`x <= -40` or `x >= 40`) fires `set.left` / `set.right` once per hold when those actions are discrete (media skip, app switch, browser back/forward). Spaces still use live DockSwipe.
 
 ## Do not
 

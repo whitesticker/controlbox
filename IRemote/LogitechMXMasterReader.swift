@@ -11,8 +11,10 @@ struct MXMasterControl: Equatable, Sendable, Identifiable {
 
 struct MXMasterSnapshot: Equatable, Sendable {
     var connected = false
+    var kind = DeviceKind.logitechMXMaster4
     var name = "MX Master"
     var product = "Logitech MX Master"
+    var address = ""
     var status = "Looking for an MX Master…"
     var left = false
     var right = false
@@ -46,6 +48,19 @@ struct MXMasterSnapshot: Equatable, Sendable {
 }
 
 final class LogitechMXMasterReader {
+    private let model: MXMasterHIDModel
+
+    init(model: MXMasterHIDModel) {
+        self.model = model
+        snapshot.kind = model.kind
+        snapshot.name = model.kind.title
+        snapshot.product = model.kind.title
+        snapshot.status = model.lookingStatus
+        hapticCID = model.gestureCID
+        gestureCID = model.gestureCID
+        gestureCIDs = [model.gestureCID]
+    }
+
     private struct Pending {
         let swID: UInt8
         let completion: (Data?) -> Void
@@ -235,6 +250,10 @@ final class LogitechMXMasterReader {
         hidppBuffers.removeAll()
         lock.lock()
         snapshot = MXMasterSnapshot()
+        snapshot.kind = model.kind
+        snapshot.name = model.kind.title
+        snapshot.product = model.kind.title
+        snapshot.status = model.lookingStatus
         lock.unlock()
     }
 
@@ -263,7 +282,7 @@ final class LogitechMXMasterReader {
     func setGestureOwners(_ buttons: Set<DeviceButton>) {
         let owners = buttons.intersection([.mxHaptic])
         gestureOwnerButtons = owners
-        var cids = Set(owners.flatMap(Self.cids(for:)))
+        var cids = Set(owners.flatMap { self.cids(for: $0) })
         cids.subtract(Self.nativeClickCIDs)
         guard cids != gestureCIDs else { return }
         gestureCIDs = cids
@@ -406,25 +425,7 @@ final class LogitechMXMasterReader {
 
     private func startHIDPP() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        var matches: [[String: Any]] = []
-        for productID in MXMaster4Support.productIDs {
-            for page in [MXMaster4Support.hidppUsagePage, MXMaster4Support.hidppUsagePageBLE] {
-                matches.append([
-                    kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                    kIOHIDProductIDKey as String: productID,
-                    kIOHIDPrimaryUsagePageKey as String: page
-                ])
-            }
-            matches.append([
-                kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-                kIOHIDProductIDKey as String: productID
-            ])
-        }
-        matches.append([
-            kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
-            kIOHIDPrimaryUsagePageKey as String: MXMaster4Support.hidppUsagePage
-        ])
-        IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
+        IOHIDManagerSetDeviceMatchingMultiple(mgr, model.hidManagerMatches() as CFArray)
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(mgr, { context, _, _, device in
             guard let context else { return }
@@ -456,9 +457,12 @@ final class LogitechMXMasterReader {
             devices.append(item)
         }
         devices.sort { lhs, rhs in
-            isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
+            let leftDesc = IOHIDDeviceGetProperty(lhs, kIOHIDReportDescriptorKey as CFString) != nil
+            let rightDesc = IOHIDDeviceGetProperty(rhs, kIOHIDReportDescriptorKey as CFString) != nil
+            if leftDesc != rightDesc { return leftDesc && !rightDesc }
+            return isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
         }
-        for device in devices where isMXMaster4Device(device) {
+        for device in devices where model.matches(device) {
             attachHIDPP(device)
         }
     }
@@ -574,7 +578,7 @@ final class LogitechMXMasterReader {
             } else if button == 6 || button == 5 {
                 if snapshot.haptic != down {
                     snapshot.haptic = down
-                    logs.append(("Haptic", down))
+                    logs.append((model.gestureControlTitle, down))
                 }
             }
         case .scrollWheel:
@@ -666,7 +670,7 @@ final class LogitechMXMasterReader {
             lock.unlock()
             return
         }
-        activeGestureCID = Self.cids(for: owner).first ?? MXMaster4Support.hapticCID
+        activeGestureCID = cids(for: owner).first ?? model.gestureCID
         usingRawXY = true
         ignoreNextRawXY = false
         hapticDownAt = Date()
@@ -709,7 +713,7 @@ final class LogitechMXMasterReader {
     private func finishHapticNow() {
         cancelHapticRelease()
         guard activeGestureCID != nil else { return }
-        let cid = activeGestureCID ?? MXMaster4Support.hapticCID
+        let cid = activeGestureCID ?? model.gestureCID
         activeGestureCID = nil
         if let owner = snapshot.liveGestureOwner {
             holdSources[owner] = nil
@@ -718,7 +722,7 @@ final class LogitechMXMasterReader {
     }
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
-        guard isMXMaster4Device(incoming) else { return }
+        guard model.matches(incoming) else { return }
         if isSameDevice(incoming, hidppDevice) { return }
         if queuedHIDPP.contains(where: { isSameDevice(incoming, $0) }) { return }
         if hidppDevice == nil {
@@ -757,8 +761,15 @@ final class LogitechMXMasterReader {
         _ = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         registerHIDPPCallback(device)
         applyOSPointerSettingsIfNeeded()
-        let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? "Logitech HID++"
-        setStatus("Talking to \(product) over HID++…")
+        let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? model.kind.title
+        lock.lock()
+        snapshot.kind = model.resolvedKind(of: device)
+        snapshot.name = product
+        snapshot.product = product
+        snapshot.address = DeviceIdentity.fromHID(device)
+        snapshot.connected = true
+        snapshot.status = "Talking to \(product) over HID++…"
+        lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3, 4, 5, 6])
     }
 
@@ -825,7 +836,9 @@ final class LogitechMXMasterReader {
         unlockCursor()
         lock.lock()
         snapshot = MXMasterSnapshot()
-        snapshot.status = "MX Master disconnected"
+        snapshot.kind = model.kind
+        snapshot.name = model.kind.title
+        snapshot.status = "\(model.kind.title) disconnected"
         lock.unlock()
         probeNextHIDPP(failed: "MX Master disconnected")
     }
@@ -894,14 +907,7 @@ final class LogitechMXMasterReader {
     }
 
     private func isLikelyMXMaster(_ device: IOHIDDevice) -> Bool {
-        isMXMaster4Device(device)
-    }
-
-    private func isMXMaster4Device(_ device: IOHIDDevice) -> Bool {
-        let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? ""
-        let productID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
-        if MXMaster4Support.productIDs.contains(productID) { return true }
-        return DeviceSupport.mxKind(from: product) == .logitechMXMaster4
+        model.matches(device)
     }
 
     private func probeDeviceIndices(_ indices: [UInt8]) {
@@ -986,10 +992,13 @@ final class LogitechMXMasterReader {
         let trimmed = named.trimmingCharacters(in: .whitespacesAndNewlines)
         let isMX = DeviceSupport.isMXMasterName(trimmed)
         lock.lock()
-        snapshot.name = trimmed.isEmpty ? "MX Master" : trimmed
+        if let hidppDevice {
+            snapshot.kind = model.resolvedKind(of: hidppDevice)
+        }
+        snapshot.name = trimmed.isEmpty ? snapshot.kind.title : trimmed
         snapshot.product = snapshot.name
         snapshot.connected = isMX
-        snapshot.status = isMX ? "Connected" : "Logitech device is not an MX Master"
+        snapshot.status = isMX ? "Connected" : "Logitech device is not \(snapshot.kind.title)"
         lock.unlock()
         guard isMX else {
             failHIDPPAndTryNext("Logitech device is not an MX Master")
@@ -1093,22 +1102,26 @@ final class LogitechMXMasterReader {
     }
 
     private func chooseGestureCID() {
-        hapticCID = MXMaster4Support.hapticCID
-        gestureCID = MXMaster4Support.hapticCID
-        gestureCIDs = [MXMaster4Support.hapticCID, MXMaster4Support.gestureButtonCID]
+        hapticCID = model.gestureCID
+        gestureCID = model.gestureCID
+        gestureCIDs = [model.gestureCID]
         extraCIDs.removeAll()
         for control in controls {
-            extraCIDs[control.cid] = Self.title(for: control.cid, task: control.task)
+            extraCIDs[control.cid] = title(for: control.cid, task: control.task)
                 + String(format: " (%04X)", control.cid)
         }
         applyPressed(pressed)
         let listed = controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
-        let found = controls.contains(where: { $0.cid == MXMaster4Support.hapticCID })
-        noteLastEvent(found ? "CIDs \(listed)" : "no 01A0 in table: \(listed)")
+        let found = controls.contains(where: { $0.cid == model.gestureCID })
+        noteLastEvent(found ? "CIDs \(listed)" : String(format: "no %04X in table: %@", model.gestureCID, listed))
     }
 
     private func armForceSensingThenDivert() {
-        lookupFeature(MXMaster4Support.forceSensingFeature) { [weak self] index in
+        guard let feature = model.forceSensingFeature, let threshold = model.forceThreshold else {
+            divertKnownButtons()
+            return
+        }
+        lookupFeature(feature) { [weak self] index in
             guard let self else { return }
             self.forceSensingIndex = index
             guard let index else {
@@ -1120,8 +1133,8 @@ final class LogitechMXMasterReader {
                 function: 3,
                 params: [
                     0,
-                    UInt8(MXMaster4Support.forceThreshold >> 8),
-                    UInt8(MXMaster4Support.forceThreshold & 0xFF)
+                    UInt8(threshold >> 8),
+                    UInt8(threshold & 0xFF)
                 ]
             ) { [weak self] _ in
                 self?.divertKnownButtons()
@@ -1133,23 +1146,17 @@ final class LogitechMXMasterReader {
         guard let reprogIndex else { return }
         var jobs: [DivertJob] = [
             DivertJob(
-                cid: MXMaster4Support.hapticCID,
+                cid: model.gestureCID,
                 flags: Self.gestureReportingFlags,
                 remap: 0,
-                highFlags: Self.analyticsReportingFlags
-            ),
-            DivertJob(
-                cid: MXMaster4Support.gestureButtonCID,
-                flags: Self.gestureReportingFlags,
-                remap: 0,
-                highFlags: 0
+                highFlags: model.analyticsReportingFlags
             )
         ]
         for control in controls where control.divertable {
             if Self.nativeClickCIDs.contains(control.cid) { continue }
             if Self.wheelCIDs.contains(control.cid) { continue }
             if gestureCIDs.contains(control.cid) { continue }
-            if MXMaster4Support.extraButtonCIDs.contains(control.cid) {
+            if model.extraButtonCIDs.contains(control.cid) {
                 jobs.append(DivertJob(cid: control.cid, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0))
                 continue
             }
@@ -1163,7 +1170,7 @@ final class LogitechMXMasterReader {
             self.recoverAttempts = 0
             self.recoverWork?.cancel()
             self.recoverWork = nil
-            self.confirmHapticReporting()
+            self.confirmGestureReporting()
             self.lookupMotionFeatures {
                 self.lastWheelConfig = nil
                 self.lastSentDPI = -1
@@ -1174,25 +1181,26 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func confirmHapticReporting() {
+    private func confirmGestureReporting() {
         guard let reprogIndex else { return }
         request(
             featureIndex: reprogIndex,
             function: 2,
             params: [
-                UInt8(MXMaster4Support.hapticCID >> 8),
-                UInt8(MXMaster4Support.hapticCID & 0xFF)
+                UInt8(model.gestureCID >> 8),
+                UInt8(model.gestureCID & 0xFF)
             ]
         ) { [weak self] data in
             guard let self else { return }
             let listed = self.controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
+            let cidHex = String(format: "%04X", self.model.gestureCID)
             if let data, !data.isEmpty {
                 let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.noteLastEvent("01A0 reporting \(hex)")
-                self.setStatus("Connected. CIDs \(listed). 01A0 \(hex)")
+                self.noteLastEvent("\(cidHex) reporting \(hex)")
+                self.setStatus("Connected. CIDs \(listed). \(cidHex) \(hex)")
             } else {
-                self.noteLastEvent("01A0 reporting missing")
-                self.setStatus("Connected. CIDs \(listed). 01A0 reporting missing")
+                self.noteLastEvent("\(cidHex) reporting missing")
+                self.setStatus("Connected. CIDs \(listed). \(cidHex) reporting missing")
             }
         }
     }
@@ -1358,7 +1366,7 @@ final class LogitechMXMasterReader {
         pending = nil
         var cids = Set(controls.map(\.cid))
         cids.formUnion(gestureCIDs)
-        cids.insert(0x01A0)
+        cids.insert(model.gestureCID)
         if let reprogIndex {
             for cid in cids {
                 sendHIDPP(featureIndex: reprogIndex, function: 3, params: [
@@ -1455,7 +1463,7 @@ final class LogitechMXMasterReader {
             guard let base = buffer.baseAddress else { return kIOReturnError }
             return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
         }
-        if call.params.count <= 3 {
+        if model.tryShortHIDPPReport, call.params.count <= 3 {
             var short = [UInt8](repeating: 0, count: 7)
             short[0] = 0x10
             short[1] = deviceIndex
@@ -1469,7 +1477,7 @@ final class LogitechMXMasterReader {
                 return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x10), base, 7)
             }
         }
-        if kr != kIOReturnSuccess {
+        if model.tryShortHIDPPReport, kr != kIOReturnSuccess {
             _ = report.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return kIOReturnError }
                 return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, 0, base, 20)
@@ -1551,20 +1559,23 @@ final class LogitechMXMasterReader {
 
     private func handleNativeMouseReport(_ report: UnsafePointer<UInt8>, length: Int) {
         guard length >= 2 else { return }
-        let hapticDown = report[1] & MXMaster4Support.nativeHapticButtonBit != 0
-        if hapticDown != lastHapticBit {
-            lastHapticBit = hapticDown
-            if hapticDown {
-                pressed.insert(MXMaster4Support.hapticCID)
-            } else {
-                pressed.remove(MXMaster4Support.hapticCID)
+        if let bit = model.nativeHapticButtonBit {
+            let hapticDown = report[1] & bit != 0
+            if hapticDown != lastHapticBit {
+                lastHapticBit = hapticDown
+                if hapticDown {
+                    pressed.insert(model.gestureCID)
+                } else {
+                    pressed.remove(model.gestureCID)
+                }
+                applyPressed(pressed)
+                applyHapticEdge(down: hapticDown)
             }
-            applyPressed(pressed)
-            applyHapticEdge(down: hapticDown)
         }
-        guard activeGestureCID != nil, length >= 5 else { return }
-        let dx = Self.signExtend12(Int(report[2]) | (Int(report[3] & 0x0F) << 8))
-        let dy = Self.signExtend12((Int(report[3]) >> 4) | (Int(report[4]) << 4))
+        let xyOffset = 1 + model.nativeMouseButtonBytes
+        guard activeGestureCID != nil, length >= xyOffset + 3 else { return }
+        let dx = Self.signExtend12(Int(report[xyOffset]) | (Int(report[xyOffset + 1] & 0x0F) << 8))
+        let dy = Self.signExtend12((Int(report[xyOffset + 1]) >> 4) | (Int(report[xyOffset + 2]) << 4))
         guard dx != 0 || dy != 0 else { return }
         guard abs(dx) < 512, abs(dy) < 512 else { return }
         usingRawXY = true
@@ -1590,18 +1601,18 @@ final class LogitechMXMasterReader {
         let removed = previous.subtracting(next)
         let added = next.subtracting(previous)
         pressed = next
-        for cid in next where Self.button(for: cid) == nil && extraCIDs[cid] == nil {
+        for cid in next where button(for: cid) == nil && extraCIDs[cid] == nil {
             extraCIDs[cid] = String(format: "CID %04X", cid)
         }
         applyPressed(next)
 
         for cid in added {
-            guard let button = Self.button(for: cid), isGestureOwner(button) else { continue }
+            guard let button = button(for: cid), isGestureOwner(button) else { continue }
             if Self.nativeClickCIDs.contains(cid) { continue }
             addHoldSource(button, "hidpp")
         }
         for cid in removed {
-            guard let button = Self.button(for: cid) else { continue }
+            guard let button = button(for: cid) else { continue }
             if Self.nativeClickCIDs.contains(cid) { continue }
             removeHoldSource(button, "hidpp")
         }
@@ -1616,7 +1627,7 @@ final class LogitechMXMasterReader {
         snapshot.forward = next.contains(0x0056) || next.contains(0x0054)
         snapshot.smartShift = next.contains(0x00C4)
         snapshot.modeShift = next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)
-        let hidppHaptic = next.contains(where: { Self.physicalHapticCIDs.contains($0) })
+        let hidppHaptic = next.contains(model.gestureCID)
         let holding = activeGestureCID != nil
         snapshot.haptic = hidppHaptic || lastHapticBit
         snapshot.extras = extras
@@ -1630,7 +1641,7 @@ final class LogitechMXMasterReader {
             ("Forward", next.contains(0x0056) || next.contains(0x0054)),
             ("Mode shift", next.contains(0x00C4)),
             ("DPI", next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)),
-            ("Haptic", next.contains(where: { Self.physicalHapticCIDs.contains($0) })),
+            (model.gestureControlTitle, next.contains(model.gestureCID)),
             ("Gesture", next.contains(where: { gestureCIDs.contains($0) }))
         ]
         logged.append(contentsOf: extras.map { ($0.title, $0.down) })
@@ -1642,9 +1653,9 @@ final class LogitechMXMasterReader {
         let pressed = payload.contains { $0 != 0 }
         var next = self.pressed
         if pressed {
-            next.insert(MXMaster4Support.hapticCID)
+            next.insert(model.gestureCID)
         } else {
-            next.remove(MXMaster4Support.hapticCID)
+            next.remove(model.gestureCID)
         }
         if next != self.pressed {
             var reconstructed = Data()
@@ -1710,17 +1721,17 @@ final class LogitechMXMasterReader {
         let held = hapticDownAt.map { Date().timeIntervalSince($0) } ?? 0
         hapticDownAt = nil
         let moved = held >= 0.10 && hypot(delta.width, delta.height) >= Self.pointerSwipeDistance
-        let button: DeviceButton
+        let slot: DeviceButton
         if moved {
-            button = Self.classify(delta: delta, tapLimit: 0)
+            slot = Self.classify(delta: delta, tapLimit: 0)
         } else {
-            button = .mxGesture
+            slot = .mxGesture
         }
         lock.lock()
-        snapshot.pendingGesture = button
-        snapshot.pendingGestureOwner = Self.button(for: released) ?? snapshot.liveGestureOwner ?? .mxHaptic
+        snapshot.pendingGesture = slot
+        snapshot.pendingGestureOwner = button(for: released) ?? snapshot.liveGestureOwner ?? .mxHaptic
         snapshot.liveGestureOwner = nil
-        snapshot.lastGesture = button
+        snapshot.lastGesture = slot
         snapshot.liveGesture = nil
         snapshot.gestureDown = false
         snapshot.gestureHeld = false
@@ -1731,7 +1742,7 @@ final class LogitechMXMasterReader {
         lock.unlock()
         unfreezeCursor()
         unlockCursor()
-        logEvent(button.title, pressed: true)
+        logEvent(slot.title, pressed: true)
         gestureDelta = .zero
         pointerDelta = .zero
         pointerOrigin = .zero
@@ -1784,8 +1795,10 @@ final class LogitechMXMasterReader {
         case (0x09, 6):
             snapshot.smartShift = integer != 0
         case (0x09, 7):
-            snapshot.haptic = integer != 0 || lastHapticBit
-            snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown || activeGestureCID != nil
+            if model.nativeHapticButtonBit != nil {
+                snapshot.haptic = integer != 0 || lastHapticBit
+                snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown || activeGestureCID != nil
+            }
         case (0x01, 0x30):
             if activeGestureCID != nil, snapshot.liveGestureOwner == .mxHaptic, integer != 0 {
                 usingRawXY = true
@@ -1831,11 +1844,11 @@ final class LogitechMXMasterReader {
             ("Thumb wheel left", snapshot.thumbLeft && now < thumbPulseUntil),
             ("Thumb wheel right", snapshot.thumbRight && now < thumbPulseUntil),
             ("Mode shift", snapshot.smartShift),
-            ("Haptic", snapshot.haptic)
+            (model.gestureControlTitle, snapshot.haptic)
         ]
         lock.unlock()
         noteButtons(logged)
-        if page == 0x09, usage == 7 {
+        if page == 0x09, usage == 7, model.nativeHapticButtonBit != nil {
             applyHapticEdge(down: integer != 0)
         }
     }
@@ -1917,7 +1930,8 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private static func button(for cid: UInt16) -> DeviceButton? {
+    private func button(for cid: UInt16) -> DeviceButton? {
+        if cid == model.gestureCID { return .mxHaptic }
         switch cid {
         case 0x0050: return .mxLeft
         case 0x0051: return .mxRight
@@ -1932,7 +1946,8 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private static func title(for cid: UInt16, task _: UInt16) -> String {
+    private func title(for cid: UInt16, task _: UInt16) -> String {
+        if cid == model.gestureCID { return model.gestureControlTitle }
         if let button = button(for: cid) { return button.title }
         switch cid {
         case 0x00D4: return "Thumb wheel"
@@ -1949,11 +1964,11 @@ final class LogitechMXMasterReader {
         data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
     }
 
-    private static func reportingFlags(for control: ControlInfo) -> UInt8 {
-        if control.rawXY || Self.knownGestureCIDs.contains(control.cid) || control.cid == 0x01A0 {
-            return gestureReportingFlags
+    private func reportingFlags(for control: ControlInfo) -> UInt8 {
+        if control.rawXY || control.cid == model.gestureCID || Self.knownGestureCIDs.contains(control.cid) {
+            return Self.gestureReportingFlags
         }
-        return buttonReportingFlags
+        return Self.buttonReportingFlags
     }
 
     private static func be16(_ data: Data, _ offset: Int) -> UInt16 {
@@ -1965,7 +1980,7 @@ final class LogitechMXMasterReader {
         return value >= 0x800 ? value - 0x1000 : value
     }
 
-    private static func cids(for button: DeviceButton) -> [UInt16] {
+    private func cids(for button: DeviceButton) -> [UInt16] {
         switch button {
         case .mxLeft: return [0x0050]
         case .mxRight: return [0x0051]
@@ -1974,13 +1989,12 @@ final class LogitechMXMasterReader {
         case .mxForward: return [0x0054, 0x0056]
         case .mxSmartShift: return [0x00C4]
         case .mxModeShift: return [0x00D0, 0x00ED, 0x00FD]
-        case .mxHaptic: return [0x01A0, 0x00C3]
+        case .mxHaptic: return [model.gestureCID]
         default: return []
         }
     }
 
-    private static let physicalHapticCIDs: Set<UInt16> = [0x01A0, 0x00C3]
     private static let knownGestureCIDs: Set<UInt16> = [0x00C3, 0x00D6, 0x00D7]
     private static let nativeClickCIDs: Set<UInt16> = [0x0050, 0x0051, 0x0052]
-    private static let wheelCIDs: Set<UInt16> = [0x00D4]
+    private static let wheelCIDs: Set<UInt16> = [0x00D4, 0x00D7]
 }
