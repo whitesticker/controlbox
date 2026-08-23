@@ -19,10 +19,10 @@ VibeRemote stays on your Mac. Nothing is uploaded.
 
 | Device | What you get |
 |---|---|
-| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures (same hold-to-swipe engine as MX). Analog pointer/scroll still available if you turn a stick or the pad on. |
+| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
-| **MX Master 3 / 3S** | Extra buttons + thumb **Gesture** (tap = click, hold + move = swipe). |
-| **MX Master 4** | Extra buttons + **Haptic** pad (same gesture engine, isolated HID++ reader). |
+| **MX Master 3 / 3S** | Extra buttons + thumb **Gesture** (tap = click, hold + move = swipe). Hold Control to move a window; Control+Shift to resize. |
+| **MX Master 4** | Extra buttons + **Haptic** pad (same gesture engine, isolated HID++ reader). Same window grab as 3 / 3S. |
 
 Several of these can stay attached at once. Wheel invert and scroll speed are shared across mice (one system scroll tap). Pointer mappings stay per device.
 
