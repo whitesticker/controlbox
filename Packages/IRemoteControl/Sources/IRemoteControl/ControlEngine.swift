@@ -579,6 +579,9 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func perform(_ action: ControlAction, down: Bool) {
+        if down {
+            ActionHUD.show(action)
+        }
         switch action {
         case .switchApplication, .switchApplicationBack, .none, .gestures:
             break

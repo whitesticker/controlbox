@@ -38,4 +38,4 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md).
+Product-facing work (mic, live gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md). Media skip / play / mute already show an action HUD.

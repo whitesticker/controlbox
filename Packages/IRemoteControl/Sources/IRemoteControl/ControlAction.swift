@@ -106,6 +106,32 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
             return false
         }
     }
+
+    /// Silent discrete actions that need an on-screen cue.
+    var showsActionHUD: Bool {
+        switch self {
+        case .mediaNext, .mediaPrevious, .mediaPlayPause, .mediaMute,
+             .browserBack, .browserForward,
+             .tabPrevious, .tabNext:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var actionHUDSymbol: String? {
+        switch self {
+        case .mediaNext: return "forward.end.fill"
+        case .mediaPrevious: return "backward.end.fill"
+        case .mediaPlayPause: return "playpause.fill"
+        case .mediaMute: return "speaker.slash.fill"
+        case .browserBack: return "chevron.backward"
+        case .browserForward: return "chevron.forward"
+        case .tabPrevious: return "arrow.left.to.line"
+        case .tabNext: return "arrow.right.to.line"
+        default: return nil
+        }
+    }
 }
 
 public struct ControlActionOption: Identifiable, Hashable, Sendable {

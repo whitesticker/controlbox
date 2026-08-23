@@ -57,7 +57,7 @@ VibeRemote does not send input data to a server. Bluetooth is used only to list 
 Tracked in [docs/roadmap.md](docs/roadmap.md):
 
 - DualSense and Siri Remote **microphone**
-- Stronger **gesture** and **media skip** on-screen cues
+- Stronger **gesture** hold / swipe on-screen cue (media skip / play / mute already show an action HUD)
 - The extra **MX Master 4** button we do not capture yet
 - **MX keyboard** support
 - More accurate **calibration** layouts

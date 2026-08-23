@@ -14,8 +14,8 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 
 ## Feedback and UI
 
-- [ ] **Gesture visual cue.** Stronger on-screen feedback when the 3S gesture button, MX4 haptic pad, or DualSense touchpad is held / swiping.
-- [ ] **Media action cue.** Previous / next track (and similar discrete gestures) should show a HUD so it is obvious the action fired.
+- [ ] **Gesture visual cue.** Stronger on-screen feedback when the 3S gesture button, MX4 haptic pad, or DualSense touchpad is held / swiping. Media skip / play / mute already use the action HUD; this is the live hold overlay.
+- [x] **Media action cue.** Previous / next track, play/pause, mute, back/forward, and tab switch show the same card as volume (symbol + title).
 - [ ] **Calibration layouts.** More accurate physical button placement on DualSense, Apple TV remote, and each MX body.
 - [ ] **Onboarding.** First-launch page: permissions, attach a device, Control this Mac, Calibration.
 - [ ] **Menu bar icon.** Replace `gamecontroller.fill` with a circle that matches the app icon ring.
