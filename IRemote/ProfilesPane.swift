@@ -70,6 +70,8 @@ struct DeviceProfilePane: View {
                     Section {
                         if record.isMXMaster {
                             dpiSlider
+                            speedSlider("Pointer speed", value: pointerSpeedBinding)
+                            speedSlider("Haptic gesture speed", value: hapticGestureSpeedBinding)
                             Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
                             speedSlider("Wheel speed", value: wheelSpeedBinding)
                             speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
@@ -86,7 +88,7 @@ struct DeviceProfilePane: View {
                         Text("Pointer & scroll")
                     } footer: {
                         if record.isMXMaster {
-                            Text("DPI is the mouse sensor resolution: higher moves the pointer farther per inch. Smooth scrolling makes the wheel send many small steps instead of one jump per notch. Wheel speed, thumb-wheel speed, and direction still intercept the wheel on this Mac (Accessibility must be allowed).")
+                            Text("DPI is sensor resolution (smoother tracking). Pointer speed is the cursor. Haptic gesture speed is hold-to-swipe only. Smooth scrolling is the wheel equivalent. Accessibility must be allowed for wheel speed.")
                         } else {
                             Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
                         }
@@ -427,6 +429,13 @@ struct DeviceProfilePane: View {
         Binding(
             get: { monitor.selectedProfile.resolvedPointerSpeed },
             set: { monitor.setPointerSpeed($0) }
+        )
+    }
+
+    private var hapticGestureSpeedBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedHapticGestureSpeed },
+            set: { monitor.setHapticGestureSpeed($0) }
         )
     }
 

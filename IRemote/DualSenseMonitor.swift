@@ -385,6 +385,10 @@ final class DualSenseMonitor {
         updateSelectedProfile { $0.pointerSpeed = min(max(speed, 0), 1) }
     }
 
+    func setHapticGestureSpeed(_ speed: Double) {
+        updateSelectedProfile { $0.hapticGestureSpeed = min(max(speed, 0), 1) }
+    }
+
     func setWheelScrollSpeed(_ speed: Double) {
         updateSelectedProfile { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
     }
@@ -822,6 +826,8 @@ final class DualSenseMonitor {
             mxMasterReader.wheelsEnabled = accessibilityTrusted
             mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
             mxMasterReader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
+            mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
+            mxMasterReader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
             mxMasterReader.applySmoothScrolling(record.selectedProfile.resolvedSmoothScrolling)
             mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
             mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling

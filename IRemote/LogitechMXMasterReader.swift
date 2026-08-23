@@ -23,6 +23,7 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var modeShift = false
     var haptic = false
     var gestureDown = false
+    var gestureHeld = false
     var wheelUp = false
     var wheelDown = false
     var thumbLeft = false
@@ -89,6 +90,7 @@ final class LogitechMXMasterReader {
     private var recoverAttempts = 0
     private var recoverWork: DispatchWorkItem?
     private var hapticReleaseWork: DispatchWorkItem?
+    private var hapticDownAt: Date?
     private var controls: [ControlInfo] = []
     private var extraCIDs: [UInt16: String] = [:]
     private var gestureOrigin = CGPoint.zero
@@ -97,6 +99,7 @@ final class LogitechMXMasterReader {
     private var pointerDelta = CGSize.zero
     private var usingRawXY = false
     private var cursorLocked = false
+    private var cursorFrozen = false
     private var ready = false
     private var previousButtons: [String: Bool] = [:]
     private var wheelPulseUntil = Date.distantPast
@@ -110,9 +113,13 @@ final class LogitechMXMasterReader {
     private var dpiIndex: UInt8?
     private var dpiValues: [Int] = []
     private var lastSentDPI = -1
+    private var lastSentPointerScale = -1
+    private var lastAppliedOSDPI = -1
+    private var lastAppliedOSPointerSpeed = -1.0
     private var desiredDPI = MappingProfile.defaultSensorDPI
+    private var desiredPointerSpeed = 0.5
+    private var desiredHapticGestureSpeed = 0.5
     private var desiredSmoothScrolling = true
-    private var resetPointerScale = true
     private var lastWheelConfig: (divert: Bool, invert: Bool, highRes: Bool)?
     private var consecutiveTimeouts = 0
     private var hidppEpoch = 0
@@ -140,12 +147,14 @@ final class LogitechMXMasterReader {
         if now.timeIntervalSince(lastGestureAt) > 1.6 {
             value.lastGesture = nil
         }
-        if value.haptic || value.gestureDown {
+        if value.gestureHeld || value.haptic || value.gestureDown {
             let live = Self.liveDelta(hid: gestureDelta, pointer: pointerDelta)
             value.liveGesture = Self.classify(delta: live, tapLimit: Self.pointerSwipeDistance)
             value.gestureDX = live.width
             value.gestureDY = live.height
             value.gestureDown = true
+            value.haptic = true
+            value.gestureHeld = true
         }
         return value
     }
@@ -163,7 +172,9 @@ final class LogitechMXMasterReader {
         recoverAttempts = 0
         hapticReleaseWork?.cancel()
         hapticReleaseWork = nil
+        hapticDownAt = nil
         hidppEpoch += 1
+        unfreezeCursor()
         unlockCursor()
         restoreNativeReporting()
         if let hidppDevice {
@@ -198,12 +209,16 @@ final class LogitechMXMasterReader {
         dpiIndex = nil
         dpiValues = []
         lastSentDPI = -1
+        lastSentPointerScale = -1
+        lastAppliedOSDPI = -1
+        lastAppliedOSPointerSpeed = -1.0
         lastWheelConfig = nil
         consecutiveTimeouts = 0
         hidppQueue.removeAll()
         desiredDPI = MappingProfile.defaultSensorDPI
+        desiredPointerSpeed = 0.5
+        desiredHapticGestureSpeed = 0.5
         desiredSmoothScrolling = true
-        resetPointerScale = true
         naturalScrolling = true
         injectEnabled = false
         wheelsEnabled = false
@@ -264,6 +279,17 @@ final class LogitechMXMasterReader {
     func applySensorDPI(_ dpi: Int) {
         desiredDPI = MappingProfile.nearestDPI(dpi, in: dpiValues)
         sendSensorSettingsIfNeeded()
+        applyOSPointerSettingsIfNeeded()
+    }
+
+    func applyPointerSpeed(_ speed: Double) {
+        desiredPointerSpeed = min(max(speed, 0), 1)
+        sendSensorSettingsIfNeeded()
+        applyOSPointerSettingsIfNeeded()
+    }
+
+    func applyHapticGestureSpeed(_ speed: Double) {
+        desiredHapticGestureSpeed = min(max(speed, 0), 1)
     }
 
     func applySmoothScrolling(_ enabled: Bool) {
@@ -276,21 +302,36 @@ final class LogitechMXMasterReader {
 
     private func sendSensorSettingsIfNeeded() {
         guard ready else { return }
-        if resetPointerScale, let pointerScaleIndex {
-            // 1.0× so DPI is the only pointer-speed control, matching Options+.
-            request(featureIndex: pointerScaleIndex, function: 1, params: [0x01, 0x00]) { _ in }
-            resetPointerScale = false
-        }
-        guard let dpiIndex else { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
-        guard dpi != lastSentDPI else { return }
-        request(featureIndex: dpiIndex, function: 3, params: [
-            0,
-            UInt8((dpi >> 8) & 0xFF),
-            UInt8(dpi & 0xFF)
-        ]) { _ in }
-        lastSentDPI = dpi
+        if let dpiIndex, dpi != lastSentDPI {
+            request(featureIndex: dpiIndex, function: 3, params: [
+                0,
+                UInt8((dpi >> 8) & 0xFF),
+                UInt8(dpi & 0xFF)
+            ]) { _ in }
+            lastSentDPI = dpi
+        }
+        if let pointerScaleIndex {
+            let scaling = MappingProfile.pointerScale8_8(slider: desiredPointerSpeed, dpi: dpi)
+            if scaling != lastSentPointerScale {
+                request(featureIndex: pointerScaleIndex, function: 1, params: [
+                    UInt8((scaling >> 8) & 0xFF),
+                    UInt8(scaling & 0xFF)
+                ]) { _ in }
+                lastSentPointerScale = scaling
+            }
+        }
+        applyOSPointerSettingsIfNeeded()
         publishMotionSettings()
+    }
+
+    private func applyOSPointerSettingsIfNeeded() {
+        guard let hidppDevice else { return }
+        let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
+        guard dpi != lastAppliedOSDPI || desiredPointerSpeed != lastAppliedOSPointerSpeed else { return }
+        PointerHIDSettings.apply(to: hidppDevice, dpi: dpi, pointerSpeed: desiredPointerSpeed)
+        lastAppliedOSDPI = dpi
+        lastAppliedOSPointerSpeed = desiredPointerSpeed
     }
 
     private func publishMotionSettings() {
@@ -302,35 +343,20 @@ final class LogitechMXMasterReader {
     }
 
     func pollGesturePointer() {
-        let down = activeGestureCID != nil
-        lock.lock()
-        let followPointer = usingRawXY
-        lock.unlock()
-        guard down else {
+        guard activeGestureCID != nil else {
+            unfreezeCursor()
             unlockCursor()
             return
         }
-        let location = CGEvent(source: nil)?.location ?? .zero
-        if followPointer {
-            unlockCursor()
-            lock.lock()
-            if pointerOrigin == .zero {
-                pointerOrigin = location
-            }
-            pointerDelta = CGSize(width: location.x - pointerOrigin.x, height: location.y - pointerOrigin.y)
-            snapshot.gestureDX = pointerDelta.width
-            snapshot.gestureDY = pointerDelta.height
-            lock.unlock()
-            return
-        }
-        lockCursor()
+        freezeCursor()
+        unlockCursor()
         lock.lock()
-        gestureDelta.width += location.x - gestureOrigin.x
-        gestureDelta.height += location.y - gestureOrigin.y
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
+        snapshot.gestureHeld = true
+        snapshot.gestureDown = true
+        snapshot.haptic = true
         lock.unlock()
-        CGWarpMouseCursorPosition(gestureOrigin)
     }
 
     private func lockCursor() {
@@ -341,10 +367,24 @@ final class LogitechMXMasterReader {
         cursorLocked = true
     }
 
+    private func freezeCursor() {
+        guard !cursorFrozen else { return }
+        CGAssociateMouseAndMouseCursorPosition(0)
+        cursorFrozen = true
+    }
+
+    private func unfreezeCursor() {
+        guard cursorFrozen else { return }
+        CGAssociateMouseAndMouseCursorPosition(1)
+        cursorFrozen = false
+    }
+
     private func unlockCursor() {
         guard cursorLocked else { return }
-        CGWarpMouseCursorPosition(gestureOrigin)
-        CGAssociateMouseAndMouseCursorPosition(1)
+        if !cursorFrozen {
+            CGWarpMouseCursorPosition(gestureOrigin)
+            CGAssociateMouseAndMouseCursorPosition(1)
+        }
         cursorLocked = false
     }
 
@@ -440,16 +480,23 @@ final class LogitechMXMasterReader {
             | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
             | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+            | CGEventMask(1 << CGEventType.mouseMoved.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDragged.rawValue)
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
-            place: .tailAppendEventTap,
-            options: .listenOnly,
+            place: .headInsertEventTap,
+            options: .defaultTap,
             eventsOfInterest: mask,
             callback: { _, type, event, context in
                 guard let context else { return Unmanaged.passUnretained(event) }
-                Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
-                    .handleClickEvent(type: type, event: event)
+                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
+                if reader.shouldSwallowPointerEvent(type) {
+                    return nil
+                }
+                reader.handleClickEvent(type: type, event: event)
                 return Unmanaged.passUnretained(event)
             },
             userInfo: pointer
@@ -459,6 +506,15 @@ final class LogitechMXMasterReader {
         CGEvent.tapEnable(tap: tap, enable: true)
         clickTap = tap
         clickSource = source
+    }
+
+    private func shouldSwallowPointerEvent(_ type: CGEventType) -> Bool {
+        switch type {
+        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            return activeGestureCID != nil || cursorFrozen
+        default:
+            return false
+        }
     }
 
     private func handleClickEvent(type: CGEventType, event: CGEvent) {
@@ -535,34 +591,48 @@ final class LogitechMXMasterReader {
 
     private func applyHapticEdge(down: Bool) {
         if down {
-            hapticReleaseWork?.cancel()
-            hapticReleaseWork = nil
-            guard activeGestureCID == nil else { return }
+            cancelHapticRelease()
+            guard activeGestureCID == nil else {
+                freezeCursor()
+                lock.lock()
+                snapshot.haptic = true
+                snapshot.gestureDown = true
+                snapshot.gestureHeld = true
+                lock.unlock()
+                return
+            }
             activeGestureCID = MXMaster4Support.hapticCID
             usingRawXY = true
             ignoreNextRawXY = false
+            hapticDownAt = Date()
             gestureDelta = .zero
             pointerDelta = .zero
             gestureOrigin = CGEvent(source: nil)?.location ?? .zero
             pointerOrigin = gestureOrigin
+            freezeCursor()
             lock.lock()
             snapshot.haptic = true
             snapshot.gestureDown = true
+            snapshot.gestureHeld = true
             snapshot.liveGestureOwner = .mxHaptic
             lock.unlock()
             noteLastEvent("haptic down")
-        } else if activeGestureCID != nil {
-            hapticReleaseWork?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                guard let self, self.activeGestureCID != nil else { return }
-                let cid = self.activeGestureCID ?? MXMaster4Support.hapticCID
-                self.activeGestureCID = nil
-                self.hapticReleaseWork = nil
-                self.finishGesture(released: cid)
-            }
-            hapticReleaseWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        } else {
+            finishHapticNow()
         }
+    }
+
+    private func cancelHapticRelease() {
+        hapticReleaseWork?.cancel()
+        hapticReleaseWork = nil
+    }
+
+    private func finishHapticNow() {
+        cancelHapticRelease()
+        guard activeGestureCID != nil else { return }
+        let cid = activeGestureCID ?? MXMaster4Support.hapticCID
+        activeGestureCID = nil
+        finishGesture(released: cid)
     }
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
@@ -600,8 +670,11 @@ final class LogitechMXMasterReader {
         dpiIndex = nil
         ready = false
         hidppDevice = device
+        lastAppliedOSDPI = -1
+        lastAppliedOSPointerSpeed = -1.0
         _ = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         registerHIDPPCallback(device)
+        applyOSPointerSettingsIfNeeded()
         let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? "Logitech HID++"
         setStatus("Talking to \(product) over HID++…")
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3, 4, 5, 6])
@@ -618,11 +691,19 @@ final class LogitechMXMasterReader {
             buffer,
             64,
             { context, _, _, _, _, report, length in
-                guard let context else { return }
+                guard let context, length > 0 else { return }
+                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
+                if report[0] == 0x02 {
+                    reader.handleNativeMouseReport(report, length: length)
+                    return
+                }
                 let bytes = Array(UnsafeBufferPointer(start: report, count: length))
-                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
-                DispatchQueue.main.async {
-                    reader.takeUnretainedValue().handleReport(bytes)
+                if Thread.isMainThread {
+                    reader.handleReport(bytes)
+                } else {
+                    DispatchQueue.main.async {
+                        reader.handleReport(bytes)
+                    }
                 }
             },
             pointer
@@ -654,6 +735,7 @@ final class LogitechMXMasterReader {
             return
         }
         teardownHIDPP(incoming, keepQueued: false)
+        unfreezeCursor()
         hidppDevice = nil
         ready = false
         pending = nil
@@ -884,7 +966,7 @@ final class LogitechMXMasterReader {
                 guard let self else { return }
                 self.lastWheelConfig = nil
                 self.lastSentDPI = -1
-                self.resetPointerScale = true
+                self.lastSentPointerScale = -1
                 self.sendSensorSettingsIfNeeded()
                 self.applyWheelRouting()
             }
@@ -1003,7 +1085,7 @@ final class LogitechMXMasterReader {
             self.lookupMotionFeatures {
                 self.lastWheelConfig = nil
                 self.lastSentDPI = -1
-                self.resetPointerScale = true
+                self.lastSentPointerScale = -1
                 self.sendSensorSettingsIfNeeded()
                 self.applyWheelRouting()
             }
@@ -1329,10 +1411,7 @@ final class LogitechMXMasterReader {
     }
 
     private func handleReport(_ report: [UInt8]) {
-        if report.first == 0x02 {
-            handleNativeMouseReport(report)
-            return
-        }
+        guard report.first != 0x02 else { return }
         guard report.count >= 4 else { return }
         var bytes = report
         if bytes[0] != 0x10 && bytes[0] != 0x11 && bytes.count >= 3 {
@@ -1388,8 +1467,8 @@ final class LogitechMXMasterReader {
         noteLastEvent(String(format: "HID++ feat %02X fn%d %@", featureIndex, function, Self.hex(payload)))
     }
 
-    private func handleNativeMouseReport(_ report: [UInt8]) {
-        guard report.count >= 2 else { return }
+    private func handleNativeMouseReport(_ report: UnsafePointer<UInt8>, length: Int) {
+        guard length >= 2 else { return }
         let down = report[1] & MXMaster4Support.nativeHapticButtonBit != 0
         let wasDown = activeGestureCID != nil || pressed.contains(MXMaster4Support.hapticCID)
         if down != wasDown {
@@ -1401,22 +1480,20 @@ final class LogitechMXMasterReader {
             applyPressed(pressed)
             applyHapticEdge(down: down)
         }
-        guard down, report.count >= 5 else { return }
-        let xRaw = Int(report[2]) | (Int(report[3] & 0x0F) << 8)
-        let yRaw = (Int(report[3]) >> 4) | (Int(report[4]) << 4)
-        let dx = Self.signExtend12(xRaw) * 4
-        let dy = Self.signExtend12(yRaw) * 4
+        guard down, length >= 5 else { return }
+        let dx = Self.signExtend12(Int(report[2]) | (Int(report[3] & 0x0F) << 8))
+        let dy = Self.signExtend12((Int(report[3]) >> 4) | (Int(report[4]) << 4))
         guard dx != 0 || dy != 0 else { return }
+        guard abs(dx) < 512, abs(dy) < 512 else { return }
         usingRawXY = true
-        gestureDelta.width += CGFloat(dx)
-        gestureDelta.height += CGFloat(dy)
+        addGestureHID(dx: Double(dx), dy: Double(dy))
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
         snapshot.haptic = true
         snapshot.gestureDown = true
+        snapshot.gestureHeld = true
         lock.unlock()
-        noteLastEvent(String(format: "haptic XY %+d,%+d", dx, dy))
     }
 
     private func handleDivertedButtons(_ payload: Data) {
@@ -1437,13 +1514,12 @@ final class LogitechMXMasterReader {
         }
         applyPressed(next)
 
+        if added.contains(where: { gestureCIDs.contains($0) || $0 == hapticCID }) {
+            applyHapticEdge(down: true)
+        }
         if activeGestureCID == nil, let cid = added.first(where: { gestureCIDs.contains($0) || $0 == hapticCID }) {
             activeGestureCID = cid
-            usingRawXY = false
-            ignoreNextRawXY = true
-            gestureDelta = .zero
-            gestureOrigin = CGEvent(source: nil)?.location ?? .zero
-            lockCursor()
+            if hapticDownAt == nil { hapticDownAt = Date() }
             lock.lock()
             snapshot.liveGestureOwner = Self.button(for: cid) ?? .mxHaptic
             snapshot.gestureDown = true
@@ -1451,8 +1527,12 @@ final class LogitechMXMasterReader {
             noteLastEvent("gesture down")
         }
         if let cid = activeGestureCID, removed.contains(cid) {
-            activeGestureCID = nil
-            finishGesture(released: cid)
+            if Self.physicalHapticCIDs.contains(cid) {
+                finishHapticNow()
+            } else {
+                activeGestureCID = nil
+                finishGesture(released: cid)
+            }
         }
     }
 
@@ -1465,9 +1545,13 @@ final class LogitechMXMasterReader {
         snapshot.forward = next.contains(0x0056) || next.contains(0x0054)
         snapshot.smartShift = next.contains(0x00C4)
         snapshot.modeShift = next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)
-        snapshot.haptic = next.contains(where: { Self.physicalHapticCIDs.contains($0) })
+        let hidppHaptic = next.contains(where: { Self.physicalHapticCIDs.contains($0) })
+        let holding = activeGestureCID != nil
+        snapshot.haptic = hidppHaptic || holding
         snapshot.extras = extras
-        snapshot.gestureDown = snapshot.haptic || next.contains(where: { self.gestureCIDs.contains($0) })
+        snapshot.gestureDown = snapshot.haptic
+            || next.contains(where: { self.gestureCIDs.contains($0) })
+            || holding
         lock.unlock()
 
         var logged = [
@@ -1511,8 +1595,7 @@ final class LogitechMXMasterReader {
         let dx = Int16(bitPattern: Self.be16(payload, 0))
         let dy = Int16(bitPattern: Self.be16(payload, 2))
         usingRawXY = true
-        gestureDelta.width += CGFloat(dx)
-        gestureDelta.height += CGFloat(dy)
+        addGestureHID(dx: Double(dx), dy: Double(dy))
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
@@ -1553,7 +1636,9 @@ final class LogitechMXMasterReader {
 
     private func finishGesture(released: UInt16) {
         let delta = Self.liveDelta(hid: gestureDelta, pointer: pointerDelta)
-        let moved = hypot(delta.width, delta.height) >= Self.pointerSwipeDistance
+        let held = hapticDownAt.map { Date().timeIntervalSince($0) } ?? 0
+        hapticDownAt = nil
+        let moved = held >= 0.10 && hypot(delta.width, delta.height) >= Self.pointerSwipeDistance
         let button: DeviceButton
         if moved {
             button = Self.classify(delta: delta, tapLimit: 0)
@@ -1567,11 +1652,13 @@ final class LogitechMXMasterReader {
         snapshot.lastGesture = button
         snapshot.liveGesture = nil
         snapshot.gestureDown = false
+        snapshot.gestureHeld = false
         snapshot.haptic = false
         snapshot.gestureDX = 0
         snapshot.gestureDY = 0
         lastGestureAt = Date()
         lock.unlock()
+        unfreezeCursor()
         unlockCursor()
         logEvent(button.title, pressed: true)
         gestureDelta = .zero
@@ -1612,7 +1699,6 @@ final class LogitechMXMasterReader {
 
         var logged: [(String, Bool)] = []
         lock.lock()
-        let wasHaptic = snapshot.haptic
         switch (page, usage) {
         case (0x09, 1):
             snapshot.left = integer != 0
@@ -1627,18 +1713,18 @@ final class LogitechMXMasterReader {
         case (0x09, 6):
             snapshot.smartShift = integer != 0
         case (0x09, 7):
-            snapshot.haptic = integer != 0
-            snapshot.gestureDown = integer != 0 || snapshot.gestureDown
+            snapshot.haptic = integer != 0 || activeGestureCID != nil
+            snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown
         case (0x01, 0x30):
             if snapshot.haptic || snapshot.gestureDown, integer != 0 {
                 usingRawXY = true
-                gestureDelta.width += CGFloat(integer)
+                addGestureHID(dx: Double(integer), dy: 0)
                 snapshot.gestureDX = gestureDelta.width
             }
         case (0x01, 0x31):
             if snapshot.haptic || snapshot.gestureDown, integer != 0 {
                 usingRawXY = true
-                gestureDelta.height += CGFloat(integer)
+                addGestureHID(dx: 0, dy: Double(integer))
                 snapshot.gestureDY = gestureDelta.height
             }
         case (0x01, 0x38):
@@ -1678,20 +1764,8 @@ final class LogitechMXMasterReader {
         ]
         lock.unlock()
         noteButtons(logged)
-        if page == 0x09, usage == 7, gestureCIDs.contains(hapticCID) {
-            if integer != 0, !wasHaptic {
-                usingRawXY = false
-                ignoreNextRawXY = true
-                gestureDelta = .zero
-                gestureOrigin = CGEvent(source: nil)?.location ?? .zero
-                lockCursor()
-                lock.lock()
-                snapshot.liveGestureOwner = .mxHaptic
-                lock.unlock()
-                noteLastEvent("haptic HID down")
-            } else if integer == 0, wasHaptic {
-                finishGesture(released: hapticCID)
-            }
+        if page == 0x09, usage == 7 {
+            applyHapticEdge(down: integer != 0)
         }
     }
 
@@ -1736,11 +1810,18 @@ final class LogitechMXMasterReader {
     private static let hapticSwipeDistance: CGFloat = 240
     private static let pointerSwipeDistance: CGFloat = 70
 
+    private func addGestureHID(dx: Double, dy: Double) {
+        let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
+        let factor = MappingProfile.gestureSpeedFactor(slider: desiredHapticGestureSpeed, dpi: dpi)
+        gestureDelta.width += CGFloat(dx * factor)
+        gestureDelta.height += CGFloat(dy * factor)
+    }
+
     private static func liveDelta(hid: CGSize, pointer: CGSize) -> CGSize {
-        if hypot(pointer.width, pointer.height) >= 1 {
-            return pointer
+        if hid.width != 0 || hid.height != 0 {
+            return hid
         }
-        return hid
+        return pointer
     }
 
     private static func classify(delta: CGSize, tapLimit: CGFloat) -> DeviceButton {

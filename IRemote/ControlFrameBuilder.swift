@@ -74,7 +74,7 @@ enum ControlFrameBuilder {
             scrollX: snapshot.pendingScrollX,
             gestureSlot: snapshot.pendingGesture,
             gestureOwner: snapshot.pendingGestureOwner ?? snapshot.liveGestureOwner,
-            gestureActive: snapshot.gestureDown || snapshot.haptic,
+            gestureActive: snapshot.gestureHeld || snapshot.gestureDown || snapshot.haptic,
             gestureX: snapshot.gestureDX,
             gestureY: snapshot.gestureDY
         )

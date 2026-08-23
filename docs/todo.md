@@ -14,8 +14,9 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [x] Do not open or seize the standard mouse HID collection
 - [x] Pointer / wheel / thumb speed feel (slider 50% applies the old 25%)
 - [x] MX4 sensor DPI + smooth scrolling (HiRes wheel), with settings controls
+- [x] Haptic swipes keep 1000-DPI physical travel; pointer speed stays on its own slider.
 - [x] BLE MX4 haptic is native HID button 7 (see `docs/mx-master-4-ble-haptic.md`)
-- [ ] Confirm window-navigation actions fire on haptic hold + swipe (Calibration already shows the swipe)
+- [ ] Confirm window-navigation actions fire on haptic hold + swipe without mid-swipe DockSwipe cancel/flicker
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 
 ## Do not regress

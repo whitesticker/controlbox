@@ -14,6 +14,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var pointerAccelerationAmount: Double?
     public var stickyTargeting: Bool?
     public var pointerSpeed: Double?
+    public var hapticGestureSpeed: Double?
     public var wheelScrollSpeed: Double?
     public var thumbScrollSpeed: Double?
     public var naturalScrolling: Bool?
@@ -22,6 +23,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var gestureSets: [DeviceButton: GestureSet]?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
+    public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
     public var resolvedWheelScrollSpeed: Double { Self.clampSpeed(wheelScrollSpeed) }
     public var resolvedThumbScrollSpeed: Double { Self.clampSpeed(thumbScrollSpeed) }
     public var appliedPointerSpeed: Double { resolvedPointerSpeed * 0.5 }
@@ -48,6 +50,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         pointerAccelerationAmount: Double? = 0.3,
         stickyTargeting: Bool? = false,
         pointerSpeed: Double? = 0.5,
+        hapticGestureSpeed: Double? = 0.5,
         wheelScrollSpeed: Double? = 0.5,
         thumbScrollSpeed: Double? = 0.5,
         naturalScrolling: Bool? = true,
@@ -68,6 +71,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.pointerAccelerationAmount = pointerAccelerationAmount
         self.stickyTargeting = stickyTargeting
         self.pointerSpeed = pointerSpeed
+        self.hapticGestureSpeed = hapticGestureSpeed
         self.wheelScrollSpeed = wheelScrollSpeed
         self.thumbScrollSpeed = thumbScrollSpeed
         self.naturalScrolling = naturalScrolling
@@ -91,6 +95,33 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public static func nearestDPI(_ value: Int, in levels: [Int]) -> Int {
         let list = levels.isEmpty ? fallbackDPILevels : levels
         return list.min(by: { abs($0 - value) < abs($1 - value) }) ?? defaultSensorDPI
+    }
+
+    /// On-screen speed vs a 1000 DPI mouse at 50%. Low slider values drop
+    /// steeply so 8% is actually slow. Higher sensor DPI is divided out.
+    public static func pointerSpeedFactor(slider: Double, dpi: Int) -> Double {
+        let s = clampSpeed(slider)
+        let fromSlider: Double
+        if s <= 0.5 {
+            fromSlider = pow(s / 0.5, 2.6)
+        } else {
+            fromSlider = pow(4.0, (s - 0.5) * 2)
+        }
+        let dpiRatio = Double(defaultSensorDPI) / Double(max(dpi, 1))
+        return min(max(fromSlider * dpiRatio, 0.002), 8)
+    }
+
+    /// Haptic swipe bar. 50% is 1× of native HID travel at 1000 DPI.
+    /// Sensor DPI is divided out so the same physical swipe stays the same.
+    public static func gestureSpeedFactor(slider: Double, dpi: Int) -> Double {
+        let fromSlider = pow(2.0, (clampSpeed(slider) - 0.5) * 2)
+        let dpiRatio = Double(defaultSensorDPI) / Double(max(dpi, 1))
+        return min(max(fromSlider * dpiRatio, 0.002), 8)
+    }
+
+    /// HID++ 0x2205 8.8 scale. 50% at 1000 DPI is 1×.
+    public static func pointerScale8_8(slider: Double, dpi: Int) -> Int {
+        Int(min(max(pointerSpeedFactor(slider: slider, dpi: dpi) * 256, 1), 4096).rounded())
     }
 
     public func mode(for source: AnalogSource) -> AnalogMode {
@@ -186,6 +217,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             pointerAccelerationAmount: pointerAccelerationAmount,
             stickyTargeting: stickyTargeting,
             pointerSpeed: pointerSpeed,
+            hapticGestureSpeed: hapticGestureSpeed,
             wheelScrollSpeed: wheelScrollSpeed,
             thumbScrollSpeed: thumbScrollSpeed,
             naturalScrolling: naturalScrolling,

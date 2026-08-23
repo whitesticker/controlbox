@@ -20,6 +20,8 @@ enum DockSwipe {
     final class Session {
         private var origin = 0.0
         private var lastDelta = 0.0
+        private var pending = 0.0
+        private var lastPost = Date.distantPast
         private var started = false
         private var axis: Axis = .horizontal
 
@@ -28,54 +30,71 @@ enum DockSwipe {
         var currentAxis: Axis { axis }
 
         func add(_ delta: Double, axis: Axis) {
-            guard abs(delta) > 0.00005 else { return }
+            setAbsolute(origin + delta, axis: axis)
+        }
+
+        /// Trackpad-style: the event carries the absolute swipe progress, not a
+        /// delta that can jump backward if one sample is missing or reset.
+        func setAbsolute(_ offset: Double, axis: Axis) {
             self.axis = axis
             if !started {
                 started = true
-                origin = 0
-                lastDelta = 0
-                post(delta: delta, phase: .began)
-            } else {
-                post(delta: delta, phase: .changed)
+                origin = offset
+                lastDelta = offset
+                pending = 0
+                lastPost = Date()
+                postAbsolute(offset, phase: .began)
+                return
             }
+            pending = offset
+            let now = Date()
+            guard now.timeIntervalSince(lastPost) >= 1.0 / 90.0 || abs(offset - origin) >= 0.008 else {
+                return
+            }
+            let delta = offset - origin
+            guard abs(delta) > 0.00005 else { return }
+            lastPost = now
+            lastDelta = delta
+            origin = offset
+            postAbsolute(offset, phase: .changed)
         }
 
         @discardableResult
         func end() -> Bool {
             guard started else { return false }
+            if abs(pending - origin) > 0.00005 {
+                origin = pending
+                postAbsolute(origin, phase: .changed)
+            }
             let commit = abs(origin) >= 0.28
-            post(delta: lastDelta, phase: commit ? .ended : .cancelled)
+            postAbsolute(origin, phase: commit ? .ended : .cancelled)
             started = false
             origin = 0
             lastDelta = 0
+            pending = 0
             return commit
         }
 
         func cancel() {
             guard started else { return }
-            post(delta: lastDelta, phase: .cancelled)
+            postAbsolute(origin, phase: .cancelled)
             started = false
             origin = 0
             lastDelta = 0
+            pending = 0
         }
 
-        private func post(delta: Double, phase: Phase) {
+        private func postAbsolute(_ offset: Double, phase: Phase) {
             var resolved = phase
-            if phase == .began {
-                origin = delta
-            } else if phase == .changed {
-                origin += delta
-            } else if phase == .ended {
+            if phase == .ended {
                 let lastSign = (lastDelta > 0 ? 1 : 0) - (lastDelta < 0 ? 1 : 0)
-                let originSign = (origin > 0 ? 1 : 0) - (origin < 0 ? 1 : 0)
+                let originSign = (offset > 0 ? 1 : 0) - (offset < 0 ? 1 : 0)
                 if lastSign != 0, originSign != 0, lastSign != originSign {
                     resolved = .cancelled
                 }
             }
-
             let exitSpeed = (resolved == .ended || resolved == .cancelled) ? lastDelta * 100 : 0
-            postPair(offset: origin, axis: axis, phase: resolved, exitSpeed: exitSpeed)
-            lastDelta = delta
+            postPair(offset: offset, axis: axis, phase: resolved, exitSpeed: exitSpeed)
         }
     }
 
@@ -102,9 +121,9 @@ enum DockSwipe {
         max(NSScreen.main?.frame.height ?? 900, 600) * 0.7
     }
 
-    /// Pixel travel that fully reveals Mission Control while the haptic pad is held.
+    /// Same physical travel as a desktop switch at the same haptic-speed slider.
     static var liveVerticalSpan: Double {
-        max((NSScreen.main?.frame.height ?? 900) * 0.22, 140)
+        horizontalSpan
     }
 
     private static func field(_ raw: UInt32) -> CGEventField {
