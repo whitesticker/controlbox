@@ -1,3 +1,4 @@
+import CoreGraphics
 import IRemoteControl
 import SwiftUI
 
@@ -67,6 +68,10 @@ struct DeviceProfilePane: View {
                     }
 
                     analogSection(for: record)
+
+                    if record.isMXMaster {
+                        windowGrabSection
+                    }
 
                     if !record.isMXMaster && !record.isAppleTVRemote {
                         dualSenseTouchpadGesturesSection(for: record)
@@ -204,6 +209,45 @@ struct DeviceProfilePane: View {
 
     private var sidebarDevice: SidebarDevice? {
         monitor.sidebarDevices.first { $0.id == monitor.selectedDeviceID }
+    }
+
+    private var windowGrabSection: some View {
+        Section {
+            Toggle("Move window", isOn: windowMoveEnabledBinding)
+            modifierChordRow("Move keys", flags: windowMoveFlagsBinding)
+            Toggle("Resize window", isOn: windowResizeEnabledBinding)
+            modifierChordRow("Resize keys", flags: windowResizeFlagsBinding)
+        } header: {
+            Text("Window grab")
+        } footer: {
+            Text("Hold the move keys and move the pointer to drag a window from anywhere, like grabbing the title bar. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. Control this Mac must be on.")
+        }
+    }
+
+    private func modifierChordRow(_ title: String, flags: Binding<UInt64>) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            modifierChip("⌃", .maskControl, flags)
+            modifierChip("⇧", .maskShift, flags)
+            modifierChip("⌥", .maskAlternate, flags)
+            modifierChip("⌘", .maskCommand, flags)
+        }
+    }
+
+    private func modifierChip(_ label: String, _ bit: CGEventFlags, _ flags: Binding<UInt64>) -> some View {
+        let on = CGEventFlags(rawValue: flags.wrappedValue).contains(bit)
+        return Button(label) {
+            var next = CGEventFlags(rawValue: flags.wrappedValue)
+            if on {
+                next.remove(bit)
+            } else {
+                next.insert(bit)
+            }
+            flags.wrappedValue = next.rawValue
+        }
+        .buttonStyle(.bordered)
+        .tint(on ? Color.accentColor : Color.secondary)
     }
 
     @ViewBuilder
@@ -554,6 +598,34 @@ struct DeviceProfilePane: View {
         Binding(
             get: { monitor.selectedRecord?.hapticFeedbackEnabled ?? true },
             set: { monitor.setHapticFeedback($0) }
+        )
+    }
+
+    private var windowMoveEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedWindowMoveEnabled },
+            set: { monitor.setWindowMoveEnabled($0) }
+        )
+    }
+
+    private var windowResizeEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedWindowResizeEnabled },
+            set: { monitor.setWindowResizeEnabled($0) }
+        )
+    }
+
+    private var windowMoveFlagsBinding: Binding<UInt64> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedWindowMoveFlags.rawValue },
+            set: { monitor.setWindowMoveFlags($0) }
+        )
+    }
+
+    private var windowResizeFlagsBinding: Binding<UInt64> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedWindowResizeFlags.rawValue },
+            set: { monitor.setWindowResizeFlags($0) }
         )
     }
 

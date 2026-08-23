@@ -665,6 +665,7 @@ final class DualSenseMonitor {
         }
         mxMasterSnapshot = displayMXSnapshot()
         applyMouseScrollTap()
+        applyWindowGrab()
     }
 
     private func reader(for kind: DeviceKind) -> LogitechMXMasterReader? {
@@ -723,6 +724,37 @@ final class DualSenseMonitor {
             reader.applyScrollDirection(natural)
         }
         propagateSharedMouseScroll(from: record.selectedProfile)
+    }
+
+    private func applyWindowGrab() {
+        guard let record = sharedMXScrollRecord, accessibilityTrusted else {
+            WindowGrab.stop()
+            return
+        }
+        let profile = record.selectedProfile
+        WindowGrab.configure(
+            enabled: true,
+            moveEnabled: profile.resolvedWindowMoveEnabled,
+            resizeEnabled: profile.resolvedWindowResizeEnabled,
+            moveFlags: profile.resolvedWindowMoveFlags,
+            resizeFlags: profile.resolvedWindowResizeFlags
+        )
+    }
+
+    func setWindowMoveEnabled(_ enabled: Bool) {
+        updateSelectedProfile { $0.windowMoveEnabled = enabled }
+    }
+
+    func setWindowResizeEnabled(_ enabled: Bool) {
+        updateSelectedProfile { $0.windowResizeEnabled = enabled }
+    }
+
+    func setWindowMoveFlags(_ flags: UInt64) {
+        updateSelectedProfile { $0.windowMoveFlags = flags == 0 ? MappingProfile.defaultWindowMoveFlags : flags }
+    }
+
+    func setWindowResizeFlags(_ flags: UInt64) {
+        updateSelectedProfile { $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags }
     }
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {

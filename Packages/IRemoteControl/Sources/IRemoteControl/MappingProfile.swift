@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
@@ -24,6 +25,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var smoothScrolling: Bool?
     public var gestureSets: [DeviceButton: GestureSet]?
     public var dualSenseTabRepeatInterval: Double?
+    public var windowMoveEnabled: Bool?
+    public var windowResizeEnabled: Bool?
+    public var windowMoveFlags: UInt64?
+    public var windowResizeFlags: UInt64?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -36,6 +41,17 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedSensorDPI: Int { Self.clampDPI(sensorDPI) }
     public var resolvedSmoothScrolling: Bool { smoothScrolling ?? true }
     public var resolvedTabRepeatInterval: Double { min(max(dualSenseTabRepeatInterval ?? 0.22, 0.10), 0.55) }
+    public var resolvedWindowMoveEnabled: Bool { windowMoveEnabled ?? true }
+    public var resolvedWindowResizeEnabled: Bool { windowResizeEnabled ?? true }
+    public var resolvedWindowMoveFlags: CGEventFlags {
+        CGEventFlags(rawValue: windowMoveFlags ?? Self.defaultWindowMoveFlags)
+    }
+    public var resolvedWindowResizeFlags: CGEventFlags {
+        CGEventFlags(rawValue: windowResizeFlags ?? Self.defaultWindowResizeFlags)
+    }
+
+    public static let defaultWindowMoveFlags = CGEventFlags.maskControl.rawValue
+    public static let defaultWindowResizeFlags = CGEventFlags.maskControl.union(.maskShift).rawValue
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
@@ -63,7 +79,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         sensorDPI: Int? = nil,
         smoothScrolling: Bool? = true,
         gestureSets: [DeviceButton: GestureSet]? = nil,
-        dualSenseTabRepeatInterval: Double? = nil
+        dualSenseTabRepeatInterval: Double? = nil,
+        windowMoveEnabled: Bool? = nil,
+        windowResizeEnabled: Bool? = nil,
+        windowMoveFlags: UInt64? = nil,
+        windowResizeFlags: UInt64? = nil
     ) {
         self.id = id
         self.name = name
@@ -88,6 +108,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.smoothScrolling = smoothScrolling
         self.gestureSets = gestureSets
         self.dualSenseTabRepeatInterval = dualSenseTabRepeatInterval
+        self.windowMoveEnabled = windowMoveEnabled
+        self.windowResizeEnabled = windowResizeEnabled
+        self.windowMoveFlags = windowMoveFlags
+        self.windowResizeFlags = windowResizeFlags
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -285,7 +309,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             sensorDPI: sensorDPI,
             smoothScrolling: smoothScrolling,
             gestureSets: gestureSets,
-            dualSenseTabRepeatInterval: dualSenseTabRepeatInterval
+            dualSenseTabRepeatInterval: dualSenseTabRepeatInterval,
+            windowMoveEnabled: windowMoveEnabled,
+            windowResizeEnabled: windowResizeEnabled,
+            windowMoveFlags: windowMoveFlags,
+            windowResizeFlags: windowResizeFlags
         )
     }
 
@@ -306,7 +334,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 naturalScrolling: false,
                 sensorDPI: defaultSensorDPI,
                 smoothScrolling: true,
-                gestureSets: [.mxHaptic: .named(.windowNavigation)]
+                gestureSets: [.mxHaptic: .named(.windowNavigation)],
+                windowMoveEnabled: true,
+                windowResizeEnabled: true,
+                windowMoveFlags: defaultWindowMoveFlags,
+                windowResizeFlags: defaultWindowResizeFlags
             )
         }
         if isAppleTVRemote {

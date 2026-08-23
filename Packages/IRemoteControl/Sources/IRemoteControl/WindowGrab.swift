@@ -1,0 +1,563 @@
+import AppKit
+import ApplicationServices
+import CoreGraphics
+import Darwin
+import Foundation
+import QuartzCore
+
+/// Hold modifiers and move the pointer to drag or resize the window
+/// under the cursor. Windows are found via the window server so
+/// Firefox / Electron still match when Accessibility hit-testing is empty.
+public enum WindowGrab {
+    public static func configure(
+        enabled: Bool,
+        moveEnabled: Bool,
+        resizeEnabled: Bool,
+        moveFlags: CGEventFlags,
+        resizeFlags: CGEventFlags
+    ) {
+        Controller.shared.configure(
+            enabled: enabled,
+            moveEnabled: moveEnabled,
+            resizeEnabled: resizeEnabled,
+            moveFlags: moveFlags,
+            resizeFlags: resizeFlags
+        )
+    }
+
+    public static func stop() {
+        configure(
+            enabled: false,
+            moveEnabled: false,
+            resizeEnabled: false,
+            moveFlags: [],
+            resizeFlags: []
+        )
+    }
+}
+
+private final class Controller: @unchecked Sendable {
+    static let shared = Controller()
+
+    private let systemWide = AXUIElementCreateSystemWide()
+    private let lock = NSLock()
+    private var enabled = false
+    private var moveEnabled = false
+    private var resizeEnabled = false
+    private var moveFlags: CGEventFlags = .maskControl
+    private var resizeFlags: CGEventFlags = [.maskControl, .maskShift]
+    private var port: CFMachPort?
+    private var source: CFRunLoopSource?
+    private var lastPoint = CGPoint.zero
+    private var hasPoint = false
+    private var session: Session?
+    private var pendingPoint: CGPoint?
+    private var writing = false
+    private var displayLink: CADisplayLink?
+    private let tickTarget = DisplayTick()
+
+    private struct Session {
+        var window: AXUIElement
+        var windowID: CGWindowID
+        var startFrame: CGRect
+        var startPoint: CGPoint
+        var moving: Bool
+    }
+
+    init() {
+        AXUIElementSetMessagingTimeout(systemWide, 0.05)
+        tickTarget.onTick = { [weak self] in self?.flush() }
+    }
+
+    func configure(
+        enabled: Bool,
+        moveEnabled: Bool,
+        resizeEnabled: Bool,
+        moveFlags: CGEventFlags,
+        resizeFlags: CGEventFlags
+    ) {
+        lock.lock()
+        self.enabled = enabled && (moveEnabled || resizeEnabled)
+        self.moveEnabled = moveEnabled
+        self.resizeEnabled = resizeEnabled
+        self.moveFlags = moveFlags
+        self.resizeFlags = resizeFlags
+        let shouldRun = self.enabled
+        lock.unlock()
+        if shouldRun {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    private func start() {
+        if port != nil { return }
+        let mask = CGEventMask(1 << CGEventType.mouseMoved.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .tailAppendEventTap,
+            options: .listenOnly,
+            eventsOfInterest: mask,
+            callback: { _, type, event, info in
+                guard let info else { return Unmanaged.passUnretained(event) }
+                let controller = Unmanaged<Controller>.fromOpaque(info).takeUnretainedValue()
+                controller.handle(type: type, event: event)
+                return Unmanaged.passUnretained(event)
+            },
+            userInfo: userInfo
+        ) else { return }
+        let loopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), loopSource, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        port = tap
+        source = loopSource
+    }
+
+    private func stop() {
+        endSession()
+        if let source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let port {
+            CGEvent.tapEnable(tap: port, enable: false)
+            CFMachPortInvalidate(port)
+        }
+        port = nil
+        source = nil
+        hasPoint = false
+    }
+
+    private func handle(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput, let port {
+            CGEvent.tapEnable(tap: port, enable: true)
+            return
+        }
+        lock.lock()
+        let active = enabled
+        let moveOn = moveEnabled
+        let resizeOn = resizeEnabled
+        let move = moveFlags
+        let resize = resizeFlags
+        lock.unlock()
+        guard active else { return }
+
+        let mode = Self.mode(
+            flags: event.flags,
+            moveEnabled: moveOn,
+            resizeEnabled: resizeOn,
+            moveFlags: move,
+            resizeFlags: resize
+        )
+        if mode == nil {
+            endSession()
+            hasPoint = false
+            return
+        }
+
+        let point = event.location
+        lastPoint = point
+        hasPoint = true
+
+        if let session, session.moving != (mode == .move) {
+            retarget(session, moving: mode == .move, point: point)
+        }
+        if type == .flagsChanged { return }
+
+        if session == nil {
+            guard let hit = hit(at: point) else { return }
+            session = Session(
+                window: hit.window,
+                windowID: hit.windowID,
+                startFrame: hit.bounds,
+                startPoint: point,
+                moving: mode == .move
+            )
+            AXUIElementSetMessagingTimeout(hit.window, 0.04)
+            NSCursor.setHiddenUntilMouseMoves(false)
+            if mode == .move {
+                NSCursor.closedHand.set()
+            } else {
+                NSCursor.crosshair.set()
+            }
+            startDisplayLink()
+        }
+        pendingPoint = point
+    }
+
+    private func retarget(_ current: Session, moving: Bool, point: CGPoint) {
+        let frame = visualFrame(for: current.window) ?? axFrame(current.window) ?? current.startFrame
+        session = Session(
+            window: current.window,
+            windowID: current.windowID,
+            startFrame: frame,
+            startPoint: point,
+            moving: moving
+        )
+        if moving {
+            NSCursor.closedHand.set()
+        } else {
+            NSCursor.crosshair.set()
+        }
+    }
+
+    private var fallbackTimer: Timer?
+
+    private func startDisplayLink() {
+        if displayLink != nil || fallbackTimer != nil { return }
+        if let link = NSScreen.main?.displayLink(target: tickTarget, selector: #selector(DisplayTick.tick)) {
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+            return
+        }
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            self?.flush()
+        }
+        if let fallbackTimer {
+            RunLoop.main.add(fallbackTimer, forMode: .common)
+        }
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    private func flush() {
+        guard let point = pendingPoint, session != nil, !writing else { return }
+        writing = true
+        write(at: point)
+        writing = false
+    }
+
+    private func write(at point: CGPoint) {
+        guard let session else { return }
+        let dx = point.x - session.startPoint.x
+        let dy = point.y - session.startPoint.y
+        if session.moving {
+            let origin = CGPoint(
+                x: session.startFrame.origin.x + dx,
+                y: session.startFrame.origin.y + dy
+            )
+            if !WindowServer.move(session.windowID, to: origin) {
+                var axOrigin = origin
+                _ = setPoint(session.window, kAXPositionAttribute as CFString, &axOrigin)
+            }
+            return
+        }
+        var size = CGSize(
+            width: max(160, session.startFrame.width + dx),
+            height: max(80, session.startFrame.height + dy)
+        )
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        NSAnimationContext.current.allowsImplicitAnimation = false
+        _ = setSize(session.window, &size)
+        NSAnimationContext.endGrouping()
+    }
+
+    private func endSession() {
+        if session != nil {
+            NSCursor.arrow.set()
+        }
+        session = nil
+        pendingPoint = nil
+        writing = false
+        stopDisplayLink()
+    }
+
+    private enum Mode { case move, resize }
+
+    private static let modifierBits: CGEventFlags = [
+        .maskControl, .maskShift, .maskAlternate, .maskCommand
+    ]
+
+    private static func mode(
+        flags: CGEventFlags,
+        moveEnabled: Bool,
+        resizeEnabled: Bool,
+        moveFlags: CGEventFlags,
+        resizeFlags: CGEventFlags
+    ) -> Mode? {
+        let bits = flags.intersection(modifierBits)
+        let resizeNeed = resizeFlags.intersection(modifierBits)
+        let moveNeed = moveFlags.intersection(modifierBits)
+        if resizeEnabled, !resizeNeed.isEmpty, bits == resizeNeed {
+            return .resize
+        }
+        if moveEnabled, !moveNeed.isEmpty, bits == moveNeed {
+            return .move
+        }
+        return nil
+    }
+
+    private func visualFrame(for window: AXUIElement) -> CGRect? {
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        let ax = axFrame(window)
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard pid > 0,
+              let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return ax
+        }
+        var best: CGRect?
+        var bestArea: CGFloat = 0
+        for entry in info {
+            guard (entry[kCGWindowOwnerPID as String] as? pid_t) == pid else { continue }
+            guard (entry[kCGWindowLayer as String] as? Int) ?? 0 == 0 else { continue }
+            guard let bounds = cgBounds(entry[kCGWindowBounds as String] as? [String: Any]) else { continue }
+            let area: CGFloat
+            if let ax {
+                area = bounds.intersection(ax).width * bounds.intersection(ax).height
+            } else {
+                area = bounds.width * bounds.height
+            }
+            if area > bestArea {
+                bestArea = area
+                best = bounds
+            }
+        }
+        return best ?? ax
+    }
+
+    private struct Hit {
+        var window: AXUIElement
+        var windowID: CGWindowID
+        var bounds: CGRect
+    }
+
+    private func hit(at point: CGPoint) -> Hit? {
+        if let listed = frontWindow(at: point), let matched = axWindow(pid: listed.pid, bounds: listed.bounds) {
+            return Hit(window: matched, windowID: listed.windowID, bounds: listed.bounds)
+        }
+        if let window = windowFromHitTest(point), let frame = axFrame(window) ?? visualFrame(for: window) {
+            return Hit(window: window, windowID: 0, bounds: frame)
+        }
+        return nil
+    }
+
+    private struct ListedWindow {
+        var pid: pid_t
+        var windowID: CGWindowID
+        var bounds: CGRect
+    }
+
+    private func frontWindow(at point: CGPoint) -> ListedWindow? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        for entry in info {
+            let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+            guard layer == 0 else { continue }
+            let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
+            guard alpha > 0.05 else { continue }
+            let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
+            if Self.ignoredOwners.contains(owner) { continue }
+            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid > 0 else { continue }
+            guard let bounds = cgBounds(entry[kCGWindowBounds as String] as? [String: Any]) else { continue }
+            guard bounds.width >= 80, bounds.height >= 40 else { continue }
+            if bounds.insetBy(dx: -2, dy: -2).contains(point) {
+                let windowID = CGWindowID((entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0)
+                return ListedWindow(pid: pid, windowID: windowID, bounds: bounds)
+            }
+        }
+        return nil
+    }
+
+    private func cgBounds(_ dict: [String: Any]?) -> CGRect? {
+        guard let dict else { return nil }
+        func number(_ key: String) -> CGFloat? {
+            if let value = dict[key] as? NSNumber { return CGFloat(truncating: value) }
+            return nil
+        }
+        guard let x = number("X"), let y = number("Y"),
+              let w = number("Width"), let h = number("Height") else {
+            return nil
+        }
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    private func axWindow(pid: pid_t, bounds: CGRect) -> AXUIElement? {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.05)
+        var windows = copyArray(app, kAXWindowsAttribute as CFString) ?? []
+        if let focused = copyElement(app, kAXFocusedWindowAttribute as CFString) {
+            if !windows.contains(where: { CFEqual($0, focused) }) {
+                windows.insert(focused, at: 0)
+            }
+        }
+        if let main = copyElement(app, kAXMainWindowAttribute as CFString) {
+            if !windows.contains(where: { CFEqual($0, main) }) {
+                windows.append(main)
+            }
+        }
+        var best: AXUIElement?
+        var bestArea: CGFloat = 0
+        for window in windows {
+            guard let frame = axFrame(window) else { continue }
+            let area = frame.intersection(bounds).width * frame.intersection(bounds).height
+            if area > bestArea {
+                bestArea = area
+                best = window
+            }
+        }
+        if bestArea > 40 { return best }
+        return windows.first
+    }
+
+    private func windowFromHitTest(_ point: CGPoint) -> AXUIElement? {
+        var found: AXUIElement?
+        let status = AXUIElementCopyElementAtPosition(
+            systemWide,
+            Float(point.x),
+            Float(point.y),
+            &found
+        )
+        guard status == .success, let found else { return nil }
+        return windowAncestor(found)
+    }
+
+    private func windowAncestor(_ element: AXUIElement) -> AXUIElement? {
+        var current: AXUIElement? = element
+        var depth = 0
+        while let node = current, depth < 16 {
+            if role(of: node) == kAXWindowRole as String {
+                return node
+            }
+            if role(of: node) == kAXApplicationRole as String {
+                return nil
+            }
+            current = parent(of: node)
+            depth += 1
+        }
+        return nil
+    }
+
+    private func setPoint(_ element: AXUIElement, _ attribute: CFString, _ point: inout CGPoint) -> Bool {
+        guard let value = AXValueCreate(.cgPoint, &point) else { return false }
+        return AXUIElementSetAttributeValue(element, attribute, value) == .success
+    }
+
+    private func setSize(_ element: AXUIElement, _ size: inout CGSize) -> Bool {
+        guard let value = AXValueCreate(.cgSize, &size) else { return false }
+        return AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value) == .success
+    }
+
+    private func axFrame(_ element: AXUIElement) -> CGRect? {
+        guard let position = copyAXValue(element, kAXPositionAttribute as CFString, .cgPoint, CGPoint.zero),
+              let size = copyAXValue(element, kAXSizeAttribute as CFString, .cgSize, CGSize.zero) else {
+            return nil
+        }
+        return CGRect(origin: position, size: size)
+    }
+
+    private func copyElement(_ element: AXUIElement, _ attribute: CFString) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
+    private func copyArray(_ element: AXUIElement, _ attribute: CFString) -> [AXUIElement]? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let array = value as? [AXUIElement] else {
+            return nil
+        }
+        return array
+    }
+
+    private func copyAXValue<T>(
+        _ element: AXUIElement,
+        _ attribute: CFString,
+        _ type: AXValueType,
+        _ placeholder: T
+    ) -> T? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &ref) == .success,
+              let ref, CFGetTypeID(ref) == AXValueGetTypeID() else {
+            return nil
+        }
+        var value = placeholder
+        guard AXValueGetValue(ref as! AXValue, type, &value) else { return nil }
+        return value
+    }
+
+    private func parent(of element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
+    private func role(of element: AXUIElement) -> String {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success else {
+            return ""
+        }
+        return value as? String ?? ""
+    }
+
+    private static let ignoredOwners: Set<String> = [
+        "Window Server",
+        "Dock",
+        "Control Center",
+        "Notification Centre",
+        "Notification Center",
+        "SystemUIServer",
+        "Spotlight",
+        "loginwindow",
+        "Screenshot"
+    ]
+}
+
+private final class DisplayTick: NSObject {
+    var onTick: () -> Void = {}
+
+    @objc func tick() {
+        onTick()
+    }
+}
+
+private enum WindowServer {
+    static func move(_ windowID: CGWindowID, to origin: CGPoint) -> Bool {
+        guard windowID != 0, let connection = connectionID(), let symbol = symbol("SLSMoveWindow")
+                ?? symbol("CGSMoveWindow") else {
+            return false
+        }
+        typealias Move = @convention(c) (Int32, UInt32, UnsafePointer<CGPoint>) -> Int32
+        var point = origin
+        return unsafeBitCast(symbol, to: Move.self)(connection, windowID, &point) == 0
+    }
+
+    private static func connectionID() -> Int32? {
+        guard let symbol = symbol("SLSMainConnectionID") ?? symbol("CGSMainConnectionID") else {
+            return nil
+        }
+        typealias Connect = @convention(c) () -> Int32
+        return unsafeBitCast(symbol, to: Connect.self)()
+    }
+
+    private static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
+        if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), name) {
+            return symbol
+        }
+        let path = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+        let handle = dlopen(path, RTLD_NOLOAD | RTLD_NOW) ?? dlopen(path, RTLD_NOW)
+        return handle.flatMap { dlsym($0, name) }
+    }
+}
