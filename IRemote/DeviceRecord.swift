@@ -34,6 +34,9 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
         if device.deviceKind.isMXMaster3Family {
             profile.summary = "Gesture button is Gestures. Back and Forward are browser buttons."
         }
+        if device.deviceKind == .logitechMXMaster4 {
+            profile.hapticGestureSpeed = 0.61
+        }
         return DeviceRecord(
             id: device.id,
             name: device.name,

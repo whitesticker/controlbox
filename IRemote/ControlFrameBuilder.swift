@@ -30,7 +30,9 @@ enum ControlFrameBuilder {
                 .dualSenseRightStick: AnalogSample(x: snapshot.rightStick.x, y: snapshot.rightStick.y, active: true),
                 .dualSenseTouchpad: AnalogSample(x: snapshot.touch1.x, y: snapshot.touch1.y, active: snapshot.touch1.active),
                 .dualSenseTouchpadSecondary: AnalogSample(x: snapshot.touch2.x, y: snapshot.touch2.y, active: snapshot.touch2.active)
-            ]
+            ],
+            leftTrigger: snapshot.l2,
+            rightTrigger: snapshot.r2
         )
     }
 

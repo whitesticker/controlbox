@@ -132,6 +132,21 @@ struct DeviceProfilePane: View {
                                     actionRow(label(for: button, kind: record.kind), button: button, current: record.selectedProfile.bindings[button] ?? .none)
                                 }
                             }
+                            if group.id == "shoulders",
+                               !record.isMXMaster,
+                               !record.isAppleTVRemote,
+                               dualSenseUsesTriggerTabs(record) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text("Tab repeat")
+                                        Spacer()
+                                        Text("\(Int((monitor.selectedProfile.resolvedTabRepeatInterval * 1000).rounded())) ms")
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    }
+                                    Slider(value: tabRepeatBinding, in: 0.10...0.55)
+                                }
+                            }
                         } header: {
                             Text(group.title)
                         } footer: {
@@ -141,6 +156,8 @@ struct DeviceProfilePane: View {
                                 Text(mxButtonsFooter(for: record))
                             } else if group.id == "sticks" {
                                 Text("L3 and R3 are clicks of the analog sticks, not extra shoulder buttons.")
+                            } else if group.id == "shoulders", !record.isMXMaster, !record.isAppleTVRemote {
+                                Text("L2 and R2 are analog triggers. Map Previous tab / Next tab to use travel: a mid pull switches one tab, a full hold repeats. L1 and R1 stay click buttons.")
                             }
                         }
                     }
@@ -465,6 +482,19 @@ struct DeviceProfilePane: View {
         let profile = record.selectedProfile
         return profile.bindings[.touchpadOneFinger] == .gestures
             || profile.bindings[.touchpadTwoFinger] == .gestures
+    }
+
+    private func dualSenseUsesTriggerTabs(_ record: DeviceRecord) -> Bool {
+        let profile = record.selectedProfile
+        return profile.bindings[.l2]?.isTabSwitch == true
+            || profile.bindings[.r2]?.isTabSwitch == true
+    }
+
+    private var tabRepeatBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedTabRepeatInterval },
+            set: { monitor.setTabRepeatInterval($0) }
+        )
     }
 
     private func hasAnalogScrollSource(_ record: DeviceRecord) -> Bool {

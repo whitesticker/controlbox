@@ -294,6 +294,10 @@ final class DualSenseMonitor {
         }
     }
 
+    func setTabRepeatInterval(_ interval: Double) {
+        updateSelectedProfile { $0.dualSenseTabRepeatInterval = min(max(interval, 0.10), 0.55) }
+    }
+
     func setStickyTargeting(_ enabled: Bool) {
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }

@@ -23,6 +23,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var sensorDPI: Int?
     public var smoothScrolling: Bool?
     public var gestureSets: [DeviceButton: GestureSet]?
+    public var dualSenseTabRepeatInterval: Double?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -34,6 +35,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedNaturalScrolling: Bool { naturalScrolling ?? true }
     public var resolvedSensorDPI: Int { Self.clampDPI(sensorDPI) }
     public var resolvedSmoothScrolling: Bool { smoothScrolling ?? true }
+    public var resolvedTabRepeatInterval: Double { min(max(dualSenseTabRepeatInterval ?? 0.22, 0.10), 0.55) }
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
@@ -60,7 +62,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         naturalScrolling: Bool? = true,
         sensorDPI: Int? = nil,
         smoothScrolling: Bool? = true,
-        gestureSets: [DeviceButton: GestureSet]? = nil
+        gestureSets: [DeviceButton: GestureSet]? = nil,
+        dualSenseTabRepeatInterval: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -84,6 +87,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.sensorDPI = sensorDPI
         self.smoothScrolling = smoothScrolling
         self.gestureSets = gestureSets
+        self.dualSenseTabRepeatInterval = dualSenseTabRepeatInterval
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -280,7 +284,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             naturalScrolling: naturalScrolling,
             sensorDPI: sensorDPI,
             smoothScrolling: smoothScrolling,
-            gestureSets: gestureSets
+            gestureSets: gestureSets,
+            dualSenseTabRepeatInterval: dualSenseTabRepeatInterval
         )
     }
 
@@ -294,6 +299,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 name: name,
                 summary: "Haptic pad is Gestures. Back and Forward are browser buttons.",
                 bindings: mxMasterBindings,
+                pointerSpeed: 0.21,
+                hapticGestureSpeed: 0.5,
+                wheelScrollSpeed: 0.5,
+                thumbScrollSpeed: 0.5,
+                naturalScrolling: false,
                 sensorDPI: defaultSensorDPI,
                 smoothScrolling: true,
                 gestureSets: [.mxHaptic: .named(.windowNavigation)]
@@ -302,22 +312,30 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if isAppleTVRemote {
             return MappingProfile(
                 name: name,
-                summary: "Clickpad moves the pointer. Clickwheel scrolls.",
+                summary: "Clickpad moves the pointer. Clickwheel scrolls. Back is Return.",
                 bindings: appleTVBindings,
                 appleTVClickpad: .pointer,
                 appleTVWheel: .scroll,
                 pointerAcceleration: true,
-                pointerAccelerationAmount: 0.3,
+                pointerAccelerationAmount: 0.58,
                 stickyTargeting: false
             )
         }
         return MappingProfile(
             name: name,
-            summary: "D-pad arrows, Cross for Return. Touchpad 1-finger and 2-finger are Gestures.",
+            summary: "L1/R1 switch desktops. L2/R2 switch tabs. Left stick pointer, right stick scroll. 1-finger is media.",
             bindings: dualSenseBindings,
+            leftStick: .pointer,
+            rightStick: .scroll,
+            dualSenseTouchpad: .pointer,
+            pointerAcceleration: true,
+            pointerAccelerationAmount: 0.47,
+            pointerSpeed: 0.32,
+            hapticGestureSpeed: 0.29,
+            wheelScrollSpeed: 0.97,
+            naturalScrolling: true,
             gestureSets: [
-                .touchpadOneFinger: .named(.windowNavigation),
-                .touchpadTwoFinger: .named(.mediaControls)
+                .touchpadOneFinger: .named(.mediaControls)
             ]
         )
     }
@@ -326,7 +344,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 private let mxMasterBindings: [DeviceButton: ControlAction] = [
     .mxHaptic: .gestures,
     .mxBack: .browserBack,
-    .mxForward: .browserForward
+    .mxForward: .browserForward,
+    .mxSmartShift: .rightOptionKey
 ]
 
 private let appleTVBindings: [DeviceButton: ControlAction] = [
@@ -334,7 +353,10 @@ private let appleTVBindings: [DeviceButton: ControlAction] = [
     .mute: .mediaMute,
     .volumeUp: .mediaVolumeUp,
     .volumeDown: .mediaVolumeDown,
-    .back: .escapeKey,
+    .back: .returnKey,
+    .tv: .rightOptionKey,
+    .siri: .none,
+    .power: .none,
     .clickSelect: .mouseLeft,
     .clickSelectLong: .mouseRight,
     .clickUp: .arrowUp,
@@ -348,11 +370,16 @@ private let dualSenseBindings: [DeviceButton: ControlAction] = [
     .dpadDown: .arrowDown,
     .dpadLeft: .arrowLeft,
     .dpadRight: .arrowRight,
-    .cross: .returnKey,
-    .circle: .escapeKey,
+    .cross: .rightOptionKey,
+    .circle: .returnKey,
     .square: .tabKey,
-    .triangle: .spaceKey,
+    .triangle: .escapeKey,
+    .l1: .spaceLeft,
+    .r1: .spaceRight,
+    .l2: .tabPrevious,
+    .r2: .tabNext,
+    .l3: .mouseLeft,
+    .r3: .mouseRight,
     .touchpadClick: .mouseLeft,
-    .touchpadOneFinger: .gestures,
-    .touchpadTwoFinger: .gestures
+    .touchpadOneFinger: .gestures
 ]

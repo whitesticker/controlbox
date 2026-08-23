@@ -16,6 +16,8 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
     case spaceRight
     case browserBack
     case browserForward
+    case tabPrevious
+    case tabNext
     case gestures
     case mediaNext
     case mediaPrevious
@@ -42,6 +44,8 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         case .spaceRight: return "Next desktop"
         case .browserBack: return "Back"
         case .browserForward: return "Forward"
+        case .tabPrevious: return "Previous tab"
+        case .tabNext: return "Next tab"
         case .gestures: return "Gestures"
         case .mediaNext: return "Next track"
         case .mediaPrevious: return "Previous track"
@@ -69,6 +73,13 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         }
     }
 
+    public var isTabSwitch: Bool {
+        switch self {
+        case .tabPrevious, .tabNext: return true
+        default: return false
+        }
+    }
+
     var isLiveSpace: Bool {
         switch self {
         case .spaceLeft, .spaceRight: return true
@@ -88,7 +99,8 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .mediaNext, .mediaPrevious, .mediaPlayPause, .mediaMute,
              .switchApplication, .switchApplicationBack,
-             .browserBack, .browserForward:
+             .browserBack, .browserForward,
+             .tabPrevious, .tabNext:
             return true
         default:
             return false
@@ -181,6 +193,8 @@ public extension ControlAction {
         .init(id: "spaceRight", title: "Next desktop", action: .spaceRight),
         .init(id: "browserBack", title: "Back", action: .browserBack),
         .init(id: "browserForward", title: "Forward", action: .browserForward),
+        .init(id: "tabPrevious", title: "Previous tab", action: .tabPrevious),
+        .init(id: "tabNext", title: "Next tab", action: .tabNext),
         .init(id: "switchApplication", title: "Next application", action: .switchApplication),
         .init(id: "switchApplicationBack", title: "Previous application", action: .switchApplicationBack),
         .init(id: "screenCapture", title: "Screen capture", action: .screenCapture),

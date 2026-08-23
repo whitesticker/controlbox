@@ -195,6 +195,8 @@ public struct ControlFrame: Equatable, Sendable {
     public var gestureActive: Bool
     public var gestureX: Double
     public var gestureY: Double
+    public var leftTrigger: Float
+    public var rightTrigger: Float
 
     public init(
         buttons: [DeviceButton: Bool] = [:],
@@ -206,7 +208,9 @@ public struct ControlFrame: Equatable, Sendable {
         gestureOwner: DeviceButton? = nil,
         gestureActive: Bool = false,
         gestureX: Double = 0,
-        gestureY: Double = 0
+        gestureY: Double = 0,
+        leftTrigger: Float = 0,
+        rightTrigger: Float = 0
     ) {
         self.buttons = buttons
         self.analog = analog
@@ -218,5 +222,7 @@ public struct ControlFrame: Equatable, Sendable {
         self.gestureActive = gestureActive
         self.gestureX = gestureX
         self.gestureY = gestureY
+        self.leftTrigger = leftTrigger
+        self.rightTrigger = rightTrigger
     }
 }

@@ -12,6 +12,8 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 - Pointer speed and gesture speed are **separate sliders**. DPI is sensor resolution only. Both speeds divide out DPI so 1000 DPI is the reference feel.
 - 3S: tap gesture button = click action; hold 100ms then move = swipe. Same ControlEngine path as MX4 haptic (owner `.mxHaptic`).
 - DualSense touchpad: **1-finger** and **2-finger** are separate Gestures owners (`touchpadOneFinger` / `touchpadTwoFinger`). Same `HoldGesture` path as MX. Physical click stays `touchpadClick`. Finger count can promote to 2-finger during the 100ms arm window, then locks.
+- DualSense L2/R2 mapped to Previous/Next tab use analog travel (mid = one tab, full hold = repeat). L1/R1 stay digital. Other devices unchanged.
+- Factory defaults match the live desk: DualSense L1/R1 desktops, L2/R2 tabs, 1-finger media, left stick pointer / right stick scroll; Apple TV Back = Return; MX pointer 21%, natural scroll off, Mode shift = Right Option.
 - **MX Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked. DualSense finger rows are allowed.
 - Do not attach Bolt receiver `C548`. Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
 

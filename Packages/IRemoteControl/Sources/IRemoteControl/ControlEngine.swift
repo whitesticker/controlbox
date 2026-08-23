@@ -32,6 +32,8 @@ public final class ControlEngine: @unchecked Sendable {
     private var volumeRepeatButton: DeviceButton?
     private var padGesture = HoldGesture()
     private var touchGesture = DualSenseTouchGesture()
+    private var leftTriggerTravel = DualSenseTriggerTravel()
+    private var rightTriggerTravel = DualSenseTriggerTravel()
 
     public init(profile: MappingProfile = MappingProfile.makeDefault(isAppleTVRemote: false)) {
         self.profile = profile
@@ -66,6 +68,8 @@ public final class ControlEngine: @unchecked Sendable {
         volumeRepeatButton = nil
         padGesture.cancel()
         touchGesture.reset()
+        leftTriggerTravel.reset()
+        rightTriggerTravel.reset()
         clearSelectHold()
         StickyTargeting.hide()
     }
@@ -92,6 +96,9 @@ public final class ControlEngine: @unchecked Sendable {
 
         let injectAll = !hostIsActive || postsWhenHostIsActive
         processGesture(frame, injectAll: injectAll)
+        if isDualSense {
+            processTriggerTabs(frame, injectAll: injectAll)
+        }
 
         stickyActive = profile.stickyTargeting == true
             && AnalogSource.allCases.contains { profile.mode(for: $0) == .pointer }
@@ -100,7 +107,8 @@ public final class ControlEngine: @unchecked Sendable {
             where button != .clickSelect
             && button != .clickSelectLong
             && button != .volumeUp
-            && button != .volumeDown {
+            && button != .volumeDown
+            && !usesTriggerTabs(button) {
             let wasPressed = previousButtons[button] ?? false
             if pressed != wasPressed {
                 let action = profile.bindings[button] ?? .none
@@ -379,6 +387,39 @@ public final class ControlEngine: @unchecked Sendable {
         }
     }
 
+    private func usesTriggerTabs(_ button: DeviceButton) -> Bool {
+        isDualSense && (button == .l2 || button == .r2) && (profile.bindings[button]?.isTabSwitch == true)
+    }
+
+    private func processTriggerTabs(_ frame: ControlFrame, injectAll: Bool) {
+        guard injectAll else {
+            leftTriggerTravel.reset()
+            rightTriggerTravel.reset()
+            return
+        }
+        let interval = profile.resolvedTabRepeatInterval
+        if usesTriggerTabs(.l2) {
+            let count = leftTriggerTravel.steps(value: frame.leftTrigger, interval: interval)
+            pulseTab(profile.bindings[.l2] ?? .none, times: count)
+        } else {
+            leftTriggerTravel.reset()
+        }
+        if usesTriggerTabs(.r2) {
+            let count = rightTriggerTravel.steps(value: frame.rightTrigger, interval: interval)
+            pulseTab(profile.bindings[.r2] ?? .none, times: count)
+        } else {
+            rightTriggerTravel.reset()
+        }
+    }
+
+    private func pulseTab(_ action: ControlAction, times: Int) {
+        guard action.isTabSwitch, times > 0 else { return }
+        for _ in 0..<times {
+            perform(action, down: true)
+            perform(action, down: false)
+        }
+    }
+
     private func analogScrollFactor(magnitude: Double, stick: Bool) -> Double {
         if isDualSense {
             return analogScrollGain * scrollAccelerationFactor(magnitude: magnitude, stick: stick)
@@ -595,6 +636,10 @@ public final class ControlEngine: @unchecked Sendable {
             EventPoster.key(33, flags: .maskCommand, down: down)
         case .browserForward:
             EventPoster.key(30, flags: .maskCommand, down: down)
+        case .tabPrevious:
+            EventPoster.key(33, flags: [.maskCommand, .maskShift], down: down)
+        case .tabNext:
+            EventPoster.key(30, flags: [.maskCommand, .maskShift], down: down)
         case .switchApplication:
             if down { EventPoster.system(.switchApplication) }
         case .switchApplicationBack:
