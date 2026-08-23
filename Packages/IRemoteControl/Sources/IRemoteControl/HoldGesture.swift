@@ -1,7 +1,7 @@
 import Foundation
 
-/// Hold-to-swipe for the **haptic thumb pad** only.
-/// Pad press and 12-bit X/Y share mouse report `0x02`.
+/// Hold-to-swipe for the MX haptic / gesture button and DualSense
+/// 1-finger / 2-finger touchpad owners.
 public struct HoldGesture {
     public static let armDelay: TimeInterval = 0.10
 

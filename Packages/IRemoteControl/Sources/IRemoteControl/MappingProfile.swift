@@ -12,6 +12,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var appleTVWheel: AnalogMode
     public var pointerAcceleration: Bool?
     public var pointerAccelerationAmount: Double?
+    public var scrollAcceleration: Bool?
+    public var scrollAccelerationAmount: Double?
     public var stickyTargeting: Bool?
     public var pointerSpeed: Double?
     public var hapticGestureSpeed: Double?
@@ -48,6 +50,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         appleTVWheel: AnalogMode = .off,
         pointerAcceleration: Bool? = true,
         pointerAccelerationAmount: Double? = 0.3,
+        scrollAcceleration: Bool? = false,
+        scrollAccelerationAmount: Double? = 0.3,
         stickyTargeting: Bool? = false,
         pointerSpeed: Double? = 0.5,
         hapticGestureSpeed: Double? = 0.5,
@@ -69,6 +73,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.appleTVWheel = appleTVWheel
         self.pointerAcceleration = pointerAcceleration
         self.pointerAccelerationAmount = pointerAccelerationAmount
+        self.scrollAcceleration = scrollAcceleration
+        self.scrollAccelerationAmount = scrollAccelerationAmount
         self.stickyTargeting = stickyTargeting
         self.pointerSpeed = pointerSpeed
         self.hapticGestureSpeed = hapticGestureSpeed
@@ -129,6 +135,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         case .dualSenseLeftStick: return leftStick
         case .dualSenseRightStick: return rightStick
         case .dualSenseTouchpad: return dualSenseTouchpad
+        case .dualSenseTouchpadSecondary: return .off
         case .appleTVClickpad: return appleTVClickpad
         case .appleTVWheel: return appleTVWheel
         }
@@ -139,13 +146,14 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         case .dualSenseLeftStick: leftStick = mode
         case .dualSenseRightStick: rightStick = mode
         case .dualSenseTouchpad: dualSenseTouchpad = mode
+        case .dualSenseTouchpadSecondary: break
         case .appleTVClickpad: appleTVClickpad = mode
         case .appleTVWheel: appleTVWheel = mode
         }
     }
 
     public mutating func setBinding(_ action: ControlAction, for button: DeviceButton) {
-        if action == .gestures, button != .mxHaptic {
+        if action == .gestures, !button.canOwnGestures {
             bindings[button] = Self.fallbackMXClickAction(for: button)
             return
         }
@@ -182,10 +190,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     }
 
     public func gestureSet(for button: DeviceButton) -> GestureSet? {
-        guard button == .mxHaptic else { return nil }
+        guard button.canOwnGestures else { return nil }
         if let set = gestureSets?[button] { return set }
         if bindings[button] == .gestures {
-            return .named(.windowNavigation)
+            return .named(Self.defaultGesturePreset(for: button))
         }
         if button == .mxHaptic, (gestureSets ?? [:]).isEmpty {
             return GestureSet(
@@ -208,10 +216,30 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     }
 
     public mutating func setGestureSet(_ set: GestureSet, for button: DeviceButton) {
-        guard button == .mxHaptic else { return }
+        guard button.canOwnGestures else { return }
         bindings[button] = .gestures
         var sets = gestureSets ?? [:]
         sets[button] = set
+        gestureSets = sets
+    }
+
+    private static func defaultGesturePreset(for button: DeviceButton) -> GesturePreset {
+        button == .touchpadTwoFinger ? .mediaControls : .windowNavigation
+    }
+
+    /// Saved DualSense profiles that never bound the finger rows get the
+    /// new 1-finger / 2-finger Gestures defaults. Pointer/scroll touchpad
+    /// profiles are left alone.
+    public mutating func ensureDualSenseTouchGestures() {
+        if bindings[.touchpadOneFinger] != nil || bindings[.touchpadTwoFinger] != nil {
+            return
+        }
+        guard dualSenseTouchpad == .off else { return }
+        bindings[.touchpadOneFinger] = .gestures
+        bindings[.touchpadTwoFinger] = .gestures
+        var sets = gestureSets ?? [:]
+        sets[.touchpadOneFinger] = .named(.windowNavigation)
+        sets[.touchpadTwoFinger] = .named(.mediaControls)
         gestureSets = sets
     }
 
@@ -242,6 +270,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             appleTVWheel: appleTVWheel,
             pointerAcceleration: pointerAcceleration,
             pointerAccelerationAmount: pointerAccelerationAmount,
+            scrollAcceleration: scrollAcceleration,
+            scrollAccelerationAmount: scrollAccelerationAmount,
             stickyTargeting: stickyTargeting,
             pointerSpeed: pointerSpeed,
             hapticGestureSpeed: hapticGestureSpeed,
@@ -283,8 +313,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         }
         return MappingProfile(
             name: name,
-            summary: "D-pad arrows, Cross for Return, Circle for Escape.",
-            bindings: dualSenseBindings
+            summary: "D-pad arrows, Cross for Return. Touchpad 1-finger and 2-finger are Gestures.",
+            bindings: dualSenseBindings,
+            gestureSets: [
+                .touchpadOneFinger: .named(.windowNavigation),
+                .touchpadTwoFinger: .named(.mediaControls)
+            ]
         )
     }
 }
@@ -318,5 +352,7 @@ private let dualSenseBindings: [DeviceButton: ControlAction] = [
     .circle: .escapeKey,
     .square: .tabKey,
     .triangle: .spaceKey,
-    .touchpadClick: .mouseLeft
+    .touchpadClick: .mouseLeft,
+    .touchpadOneFinger: .gestures,
+    .touchpadTwoFinger: .gestures
 ]

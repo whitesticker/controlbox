@@ -5,6 +5,7 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
     case dpadUp, dpadDown, dpadLeft, dpadRight
     case l1, r1, l2, r2, l3, r3
     case create, options, ps, touchpadClick
+    case touchpadOneFinger, touchpadTwoFinger
 
     case back, tv, siri, mute, playPause, power
     case volumeUp, volumeDown
@@ -28,12 +29,14 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         case .r1: return "R1"
         case .l2: return "L2"
         case .r2: return "R2"
-        case .l3: return "L3"
-        case .r3: return "R3"
+        case .l3: return "Left stick click"
+        case .r3: return "Right stick click"
         case .create: return "Create"
         case .options: return "Options"
         case .ps: return "PS"
         case .touchpadClick: return "Touchpad click"
+        case .touchpadOneFinger: return "1-finger swipe"
+        case .touchpadTwoFinger: return "2-finger swipe"
         case .back: return "Back"
         case .tv: return "TV"
         case .siri: return "Siri"
@@ -71,6 +74,7 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
     public static let appleTVButtons: [DeviceButton] = appleTVGroups.flatMap(\.buttons)
 
     public static let dualSenseButtons: [DeviceButton] = dualSenseGroups.flatMap(\.buttons)
+        + [.touchpadOneFinger, .touchpadTwoFinger]
 
     public static let appleTVGroups: [DeviceButtonGroup] = [
         DeviceButtonGroup(
@@ -122,7 +126,12 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         DeviceButtonGroup(
             id: "shoulders",
             title: "Shoulders",
-            buttons: [.l1, .r1, .l2, .r2, .l3, .r3]
+            buttons: [.l1, .r1, .l2, .r2]
+        ),
+        DeviceButtonGroup(
+            id: "sticks",
+            title: "Stick clicks",
+            buttons: [.l3, .r3]
         ),
         DeviceButtonGroup(
             id: "system",
@@ -130,6 +139,16 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
             buttons: [.create, .options, .ps, .touchpadClick]
         )
     ]
+
+    /// Hold-to-swipe owners: MX haptic / gesture button, DualSense finger counts.
+    public var canOwnGestures: Bool {
+        switch self {
+        case .mxHaptic, .touchpadOneFinger, .touchpadTwoFinger:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 public struct DeviceButtonGroup: Identifiable, Hashable, Sendable {
@@ -148,6 +167,7 @@ public enum AnalogSource: String, Codable, CaseIterable, Sendable {
     case dualSenseLeftStick
     case dualSenseRightStick
     case dualSenseTouchpad
+    case dualSenseTouchpadSecondary
     case appleTVClickpad
     case appleTVWheel
 }

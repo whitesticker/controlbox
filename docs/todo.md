@@ -36,5 +36,6 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
+- [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle) lives in [roadmap.md](roadmap.md).
+Product-facing work (mic, gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md).

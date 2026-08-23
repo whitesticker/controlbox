@@ -21,12 +21,15 @@ enum ControlFrameBuilder {
                 .create: snapshot.create,
                 .options: snapshot.options,
                 .ps: snapshot.ps,
-                .touchpadClick: snapshot.touchpadClick
+                .touchpadClick: snapshot.touchpadClick,
+                .touchpadOneFinger: snapshot.touch1.active && !snapshot.touch2.active,
+                .touchpadTwoFinger: snapshot.touch1.active && snapshot.touch2.active
             ],
             analog: [
                 .dualSenseLeftStick: AnalogSample(x: snapshot.leftStick.x, y: snapshot.leftStick.y, active: true),
                 .dualSenseRightStick: AnalogSample(x: snapshot.rightStick.x, y: snapshot.rightStick.y, active: true),
-                .dualSenseTouchpad: AnalogSample(x: snapshot.touch1.x, y: snapshot.touch1.y, active: snapshot.touch1.active)
+                .dualSenseTouchpad: AnalogSample(x: snapshot.touch1.x, y: snapshot.touch1.y, active: snapshot.touch1.active),
+                .dualSenseTouchpadSecondary: AnalogSample(x: snapshot.touch2.x, y: snapshot.touch2.y, active: snapshot.touch2.active)
             ]
         )
     }

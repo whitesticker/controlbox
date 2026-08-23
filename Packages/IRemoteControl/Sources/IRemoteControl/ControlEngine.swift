@@ -5,6 +5,7 @@ public final class ControlEngine: @unchecked Sendable {
     public var profile: MappingProfile
     public var enabled = false
     public var postsWhenHostIsActive = false
+    public var isDualSense = false
     public var pointerSpeed: Double = 14
     public var scrollSpeed: Double = 0.35
 
@@ -30,6 +31,7 @@ public final class ControlEngine: @unchecked Sendable {
     private var volumeRepeatAt = Date.distantPast
     private var volumeRepeatButton: DeviceButton?
     private var padGesture = HoldGesture()
+    private var touchGesture = DualSenseTouchGesture()
 
     public init(profile: MappingProfile = MappingProfile.makeDefault(isAppleTVRemote: false)) {
         self.profile = profile
@@ -63,6 +65,7 @@ public final class ControlEngine: @unchecked Sendable {
         volumeRepeatAt = .distantPast
         volumeRepeatButton = nil
         padGesture.cancel()
+        touchGesture.reset()
         clearSelectHold()
         StickyTargeting.hide()
     }
@@ -77,7 +80,7 @@ public final class ControlEngine: @unchecked Sendable {
         }
 
         pointerSpeed = 4 + profile.appliedPointerSpeed * 24
-        scrollSpeed = 0.08 + profile.appliedWheelScrollSpeed * 0.72
+        scrollSpeed = isDualSense ? analogScrollGain : (0.08 + profile.appliedWheelScrollSpeed * 0.72)
         postInjectedScroll(frame)
 
         guard enabled else {
@@ -225,6 +228,10 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func applyAnalog(source: AnalogSource, sample: AnalogSample, wheelDegrees: Double) {
+        if source == .dualSenseTouchpad, profile.bindings[.touchpadOneFinger] == .gestures {
+            lastAnalog[source] = sample
+            return
+        }
         let mode = profile.mode(for: source)
         defer { lastAnalog[source] = sample }
         guard mode != .off else { return }
@@ -250,6 +257,8 @@ public final class ControlEngine: @unchecked Sendable {
         switch source {
         case .dualSenseLeftStick, .dualSenseRightStick:
             moveStickPointer(sample: sample)
+        case .dualSenseTouchpadSecondary:
+            return
         case .dualSenseTouchpad, .appleTVClickpad:
             guard sample.active else {
                 pointerSmoothX = 0
@@ -298,6 +307,17 @@ public final class ControlEngine: @unchecked Sendable {
         12 + profile.resolvedPointerSpeed * 44
     }
 
+    /// Stick / clickpad / touchpad analog scroll. Uses the full 0…1 slider.
+    /// The MX `appliedWheelScrollSpeed` half-curve made 50%→100% only ~1.7×.
+    /// 50% matches the old mid feel; 0% is clearly slow and 100% is clearly fast.
+    private var analogScrollGain: Double {
+        let slider = profile.resolvedWheelScrollSpeed
+        if slider <= 0.5 {
+            return 0.04 + (slider / 0.5) * 0.22
+        }
+        return 0.26 + ((slider - 0.5) / 0.5) * 0.94
+    }
+
     private func moveStickPointer(sample: AnalogSample) {
         let dead = 0.10
         let x = Double(sample.x)
@@ -339,18 +359,42 @@ public final class ControlEngine: @unchecked Sendable {
             let dead: Float = 0.18
             let dy = abs(sample.y) > dead ? Double(-sample.y) : 0
             let dx = abs(sample.x) > dead ? Double(sample.x) : 0
-            EventPoster.scroll(deltaY: dy * scrollSpeed * 24 * scrollSign, deltaX: dx * scrollSpeed * 24 * scrollSign, continuous: true)
+            let mag = hypot(dx, dy)
+            let gain = analogScrollFactor(magnitude: mag, stick: true)
+            EventPoster.scroll(deltaY: dy * gain * 24 * scrollSign, deltaX: dx * gain * 24 * scrollSign, continuous: true)
+        case .dualSenseTouchpadSecondary:
+            return
         case .dualSenseTouchpad, .appleTVClickpad:
             guard sample.active, let previous = lastAnalog[source], previous.active else { return }
+            let dx = Double(sample.x - previous.x)
             let dy = Double(sample.y - previous.y) * (source == .dualSenseTouchpad ? -1 : 1)
+            let gain = analogScrollFactor(magnitude: hypot(dx, dy), stick: false)
             EventPoster.scroll(
-                deltaY: dy * scrollSpeed * 420 * scrollSign,
-                deltaX: Double(sample.x - previous.x) * scrollSpeed * 420 * scrollSign,
+                deltaY: dy * gain * 420 * scrollSign,
+                deltaX: dx * gain * 420 * scrollSign,
                 continuous: true
             )
         case .appleTVWheel:
             break
         }
+    }
+
+    private func analogScrollFactor(magnitude: Double, stick: Bool) -> Double {
+        if isDualSense {
+            return analogScrollGain * scrollAccelerationFactor(magnitude: magnitude, stick: stick)
+        }
+        return scrollSpeed
+    }
+
+    private func scrollAccelerationFactor(magnitude: Double, stick: Bool) -> Double {
+        guard isDualSense, profile.scrollAcceleration == true else { return 1 }
+        let amount = min(max(profile.scrollAccelerationAmount ?? 0.3, 0), 1)
+        if stick {
+            let t = min(max(magnitude, 0), 1)
+            return 0.55 + pow(t, 1.45) * (0.7 + amount * 2.2)
+        }
+        let t = min(max(magnitude * 40, 0), 4)
+        return 0.55 + pow(t, 1.3) * (0.15 + amount * 1.4)
     }
 
     private func applyWheel(mode: AnalogMode, degrees: Double, active: Bool) {
@@ -414,11 +458,12 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func processGesture(_ frame: ControlFrame, injectAll: Bool) {
-        let holding = frame.gestureActive
-            && frame.gestureOwner == .mxHaptic
-            && profile.bindings[.mxHaptic] == .gestures
+        let resolved = resolveGesture(frame)
+        let holding = resolved.active
+            && resolved.owner.canOwnGestures
+            && profile.bindings[resolved.owner] == .gestures
 
-        if holding, let set = profile.gestureSet(for: .mxHaptic) {
+        if holding, let set = profile.gestureSet(for: resolved.owner) {
             let allow = injectAll
                 || set.click.isSystemNavigation
                 || set.up.isSystemNavigation || set.down.isSystemNavigation
@@ -426,8 +471,10 @@ public final class ControlEngine: @unchecked Sendable {
                 || set.up.isLiveVolume || set.down.isLiveVolume
                 || set.left.isDiscreteSwipe || set.right.isDiscreteSwipe
             guard allow else { return }
-            if padGesture.owner != .mxHaptic { padGesture.begin(owner: .mxHaptic, set: set) }
-            if let action = padGesture.move(x: frame.gestureX, y: frame.gestureY) {
+            if padGesture.owner != resolved.owner {
+                padGesture.begin(owner: resolved.owner, set: set)
+            }
+            if let action = padGesture.move(x: resolved.x, y: resolved.y) {
                 perform(action, down: true)
                 perform(action, down: false)
             }
@@ -438,6 +485,33 @@ public final class ControlEngine: @unchecked Sendable {
             perform(tap, down: true)
             perform(tap, down: false)
         }
+    }
+
+    private func resolveGesture(_ frame: ControlFrame) -> (owner: DeviceButton, active: Bool, x: Double, y: Double) {
+        if profile.bindings[.touchpadOneFinger] == .gestures
+            || profile.bindings[.touchpadTwoFinger] == .gestures {
+            let scale = MappingProfile.gestureSpeedFactor(
+                slider: profile.resolvedHapticGestureSpeed,
+                dpi: MappingProfile.defaultSensorDPI
+            ) * DualSenseTouchGesture.pixelsPerUnit
+            touchGesture.update(
+                touch1: frame.analog[.dualSenseTouchpad] ?? AnalogSample(),
+                touch2: frame.analog[.dualSenseTouchpadSecondary] ?? AnalogSample(),
+                scale: scale
+            )
+            if let owner = touchGesture.owner {
+                return (owner, touchGesture.active, touchGesture.x, touchGesture.y)
+            }
+        } else if touchGesture.active || touchGesture.owner != nil {
+            touchGesture.reset()
+        }
+
+        return (
+            frame.gestureOwner ?? .mxHaptic,
+            frame.gestureActive,
+            frame.gestureX,
+            frame.gestureY
+        )
     }
 
     private func postInjectedScroll(_ frame: ControlFrame) {
@@ -502,9 +576,21 @@ public final class ControlEngine: @unchecked Sendable {
         case .showDesktop:
             if down { EventPoster.system(.showDesktop) }
         case .spaceLeft:
-            if down { EventPoster.system(.spaceLeft) }
+            if down {
+                if isDualSense {
+                    DockSwipe.playOneSpace(axis: .horizontal, towardPositive: false)
+                } else {
+                    EventPoster.system(.spaceLeft)
+                }
+            }
         case .spaceRight:
-            if down { EventPoster.system(.spaceRight) }
+            if down {
+                if isDualSense {
+                    DockSwipe.playOneSpace(axis: .horizontal, towardPositive: true)
+                } else {
+                    EventPoster.system(.spaceRight)
+                }
+            }
         case .browserBack:
             EventPoster.key(33, flags: .maskCommand, down: down)
         case .browserForward:

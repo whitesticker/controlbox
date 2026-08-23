@@ -264,6 +264,26 @@ final class DualSenseMonitor {
         }
     }
 
+    func setScrollAccelerationAmount(_ amount: Double) {
+        updateSelectedRecord { record in
+            guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
+            profile.scrollAccelerationAmount = min(max(amount, 0), 1)
+            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
+                record.profiles[index] = profile
+            }
+        }
+    }
+
+    func setScrollAcceleration(_ enabled: Bool) {
+        updateSelectedRecord { record in
+            guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
+            profile.scrollAcceleration = enabled
+            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
+                record.profiles[index] = profile
+            }
+        }
+    }
+
     func setPointerAcceleration(_ enabled: Bool) {
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
@@ -661,6 +681,7 @@ final class DualSenseMonitor {
         engine.profile = record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
+        engine.isDualSense = false
         reader.injectEnabled = record.controlEnabled
         reader.wheelsEnabled = accessibilityTrusted
         reader.setGestureOwners(record.selectedProfile.mxGestureOwners)
@@ -705,6 +726,7 @@ final class DualSenseMonitor {
         engine.profile = record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
+        engine.isDualSense = record.kind == .dualSense || record.kind == .dualSenseEdge
         if record.isMXMaster {
             return
         }
@@ -881,6 +903,11 @@ final class DualSenseMonitor {
                 if next.isMXMaster {
                     for index in next.profiles.indices {
                         next.profiles[index].restrictGesturesToHapticPad()
+                    }
+                }
+                if next.kind == .dualSense || next.kind == .dualSenseEdge {
+                    for index in next.profiles.indices {
+                        next.profiles[index].ensureDualSenseTouchGestures()
                     }
                 }
                 if next.isAppleTVRemote {

@@ -11,7 +11,8 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 - MX4 pointer / haptic stack is unchanged. How MX4 should feel is `docs/mx-master-4-pointer-and-haptic.md`.
 - Pointer speed and gesture speed are **separate sliders**. DPI is sensor resolution only. Both speeds divide out DPI so 1000 DPI is the reference feel.
 - 3S: tap gesture button = click action; hold 100ms then move = swipe. Same ControlEngine path as MX4 haptic (owner `.mxHaptic`).
-- **Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked.
+- DualSense touchpad: **1-finger** and **2-finger** are separate Gestures owners (`touchpadOneFinger` / `touchpadTwoFinger`). Same `HoldGesture` path as MX. Physical click stays `touchpadClick`. Finger count can promote to 2-finger during the 100ms arm window, then locks.
+- **MX Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked. DualSense finger rows are allowed.
 - Do not attach Bolt receiver `C548`. Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
 
 ## Device rule

@@ -68,6 +68,10 @@ struct DeviceProfilePane: View {
 
                     analogSection(for: record)
 
+                    if !record.isMXMaster && !record.isAppleTVRemote {
+                        dualSenseTouchpadGesturesSection(for: record)
+                    }
+
                     Section {
                         if record.isMXMaster {
                             dpiSlider
@@ -81,7 +85,24 @@ struct DeviceProfilePane: View {
                             speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
                         } else {
                             speedSlider("Pointer speed", value: pointerSpeedBinding)
+                            if dualSenseShowsGestureSpeed(record) {
+                                speedSlider("Gesture speed", value: hapticGestureSpeedBinding)
+                            }
                             speedSlider("Scroll speed", value: wheelSpeedBinding)
+                            if !record.isAppleTVRemote {
+                                Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
+                                    .disabled(!hasAnalogScrollSource(record))
+                                if (monitor.selectedProfile.scrollAcceleration == true),
+                                   hasAnalogScrollSource(record) {
+                                    Slider(value: scrollAccelerationAmountBinding, in: 0...1) {
+                                        Text("Amount")
+                                    } minimumValueLabel: {
+                                        Text("Low")
+                                    } maximumValueLabel: {
+                                        Text("High")
+                                    }
+                                }
+                            }
                         }
                         Picker("Scroll direction", selection: scrollDirectionBinding) {
                             Text("Natural").tag("natural")
@@ -94,7 +115,9 @@ struct DeviceProfilePane: View {
                         if record.isMXMaster {
                             Text(mxPointerScrollFooter(for: record))
                         } else {
-                            Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
+                            Text(record.isAppleTVRemote
+                                ? "Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed only applies when a stick or clickpad analog is set to Scroll. Natural matches the Mac’s default direction."
+                                : "Pointer speed scales stick and touchpad cursor motion. Gesture speed is 1-finger and 2-finger hold-to-swipe. Scroll speed and scroll acceleration only apply when a stick or Touchpad analog is set to Scroll — not touchpad Gestures. Natural matches the Mac’s default direction.")
                         }
                     }
 
@@ -103,7 +126,7 @@ struct DeviceProfilePane: View {
                             ForEach(group.buttons, id: \.self) { button in
                                 if button == .clickSelect {
                                     selectRow(for: record)
-                                } else if record.isMXMaster {
+                                } else if button.canOwnGestures {
                                     mxActionRow(label(for: button, kind: record.kind), button: button, record: record)
                                 } else {
                                     actionRow(label(for: button, kind: record.kind), button: button, current: record.selectedProfile.bindings[button] ?? .none)
@@ -116,6 +139,8 @@ struct DeviceProfilePane: View {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
                             } else if group.id == "buttons" {
                                 Text(mxButtonsFooter(for: record))
+                            } else if group.id == "sticks" {
+                                Text("L3 and R3 are clicks of the analog sticks, not extra shoulder buttons.")
                             }
                         }
                     }
@@ -193,7 +218,7 @@ struct DeviceProfilePane: View {
             Section {
                 analogPicker("Left stick", source: .dualSenseLeftStick)
                 analogPicker("Right stick", source: .dualSenseRightStick)
-                analogPicker("Touchpad", source: .dualSenseTouchpad)
+                analogPicker("Touchpad analog", source: .dualSenseTouchpad)
                 Toggle("Pointer acceleration", isOn: accelerationBinding)
                     .disabled(!dualSenseHasPointerSource(record))
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
@@ -211,8 +236,20 @@ struct DeviceProfilePane: View {
             } header: {
                 Text("Analog")
             } footer: {
-                Text("Sticks and the touchpad only move the pointer or scroll if you turn that source on. Pointer acceleration keeps small stick or touch moves precise and speeds up flicks. Sticky targeting outlines the control under the pointer and clicks that control. Haptic feedback rumbles the DualSense when you press a button.")
+                Text("Sticks only move the pointer or scroll if you turn that source on. Touchpad analog is pointer/scroll only — swipe mappings are in Touchpad gestures below. Pointer acceleration keeps small stick or touch moves precise and speeds up flicks. Sticky targeting outlines the control under the pointer and clicks that control. Haptic feedback rumbles the DualSense when you press a button.")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func dualSenseTouchpadGesturesSection(for record: DeviceRecord) -> some View {
+        Section {
+            mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
+            mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
+        } header: {
+            Text("Touchpad gestures")
+        } footer: {
+            Text("These are two separate Gestures, like the MX gesture button. One finger and two fingers each have their own preset. Hold and move for the four directions. Lift without moving is Click. The physical click is Touchpad click under System.")
         }
     }
 
@@ -241,7 +278,7 @@ struct DeviceProfilePane: View {
     private func mxActionRow(_ title: String, button: DeviceButton, record: DeviceRecord) -> some View {
         let current = record.selectedProfile.bindings[button] ?? .none
         Picker(title, selection: actionBinding(for: button)) {
-            if button == .mxHaptic {
+            if button.canOwnGestures {
                 Text("Gestures").tag("gestures")
                 Divider()
             }
@@ -424,11 +461,42 @@ struct DeviceProfilePane: View {
         )
     }
 
+    private func dualSenseShowsGestureSpeed(_ record: DeviceRecord) -> Bool {
+        let profile = record.selectedProfile
+        return profile.bindings[.touchpadOneFinger] == .gestures
+            || profile.bindings[.touchpadTwoFinger] == .gestures
+    }
+
+    private func hasAnalogScrollSource(_ record: DeviceRecord) -> Bool {
+        let profile = record.selectedProfile
+        if record.isAppleTVRemote {
+            return profile.mode(for: .appleTVClickpad) == .scroll
+                || profile.mode(for: .appleTVWheel) == .scroll
+        }
+        return profile.mode(for: .dualSenseLeftStick) == .scroll
+            || profile.mode(for: .dualSenseRightStick) == .scroll
+            || profile.mode(for: .dualSenseTouchpad) == .scroll
+    }
+
     private func dualSenseHasPointerSource(_ record: DeviceRecord) -> Bool {
         let profile = record.selectedProfile
         return profile.mode(for: .dualSenseLeftStick) == .pointer
             || profile.mode(for: .dualSenseRightStick) == .pointer
             || profile.mode(for: .dualSenseTouchpad) == .pointer
+    }
+
+    private var scrollAccelerationBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.selectedProfile.scrollAcceleration == true },
+            set: { monitor.setScrollAcceleration($0) }
+        )
+    }
+
+    private var scrollAccelerationAmountBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedProfile.scrollAccelerationAmount ?? 0.3 },
+            set: { monitor.setScrollAccelerationAmount($0) }
+        )
     }
 
     private var accelerationBinding: Binding<Bool> {

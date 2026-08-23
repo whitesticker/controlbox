@@ -60,14 +60,14 @@ enum DockSwipe {
         }
 
         @discardableResult
-        func end() -> Bool {
+        func end(exitSpeed: Double? = nil) -> Bool {
             guard started else { return false }
             if abs(pending - origin) > 0.00005 {
                 origin = pending
                 postAbsolute(origin, phase: .changed)
             }
             let commit = abs(origin) >= 0.28
-            postAbsolute(origin, phase: commit ? .ended : .cancelled)
+            postAbsolute(origin, phase: commit ? .ended : .cancelled, exitSpeed: exitSpeed)
             started = false
             origin = 0
             lastDelta = 0
@@ -84,7 +84,7 @@ enum DockSwipe {
             pending = 0
         }
 
-        private func postAbsolute(_ offset: Double, phase: Phase) {
+        private func postAbsolute(_ offset: Double, phase: Phase, exitSpeed: Double? = nil) {
             var resolved = phase
             if phase == .ended {
                 let lastSign = (lastDelta > 0 ? 1 : 0) - (lastDelta < 0 ? 1 : 0)
@@ -93,8 +93,13 @@ enum DockSwipe {
                     resolved = .cancelled
                 }
             }
-            let exitSpeed = (resolved == .ended || resolved == .cancelled) ? lastDelta * 100 : 0
-            postPair(offset: offset, axis: axis, phase: resolved, exitSpeed: exitSpeed)
+            let speed: Double
+            if let exitSpeed {
+                speed = exitSpeed
+            } else {
+                speed = (resolved == .ended || resolved == .cancelled) ? lastDelta * 100 : 0
+            }
+            postPair(offset: offset, axis: axis, phase: resolved, exitSpeed: speed)
         }
     }
 
@@ -107,6 +112,17 @@ enum DockSwipe {
             session.add(step, axis: axis)
         }
         session.end()
+    }
+
+    /// DualSense button desktop switch only. One Space; 1.5 peeks into the next.
+    static func playOneSpace(axis: Axis, towardPositive: Bool) {
+        let session = Session()
+        let sign = towardPositive ? 1.0 : -1.0
+        let steps = 10
+        for step in 1...steps {
+            session.setAbsolute(sign * Double(step) / Double(steps), axis: axis)
+        }
+        session.end(exitSpeed: 6 * sign)
     }
 
     static var horizontalSpan: Double {

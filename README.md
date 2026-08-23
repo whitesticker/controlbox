@@ -19,7 +19,7 @@ VibeRemote stays on your Mac. Nothing is uploaded.
 
 | Device | What you get |
 |---|---|
-| **DualSense / DualSense Edge** | Buttons, sticks, touchpad → pointer, keys, scroll. Pointer acceleration. Optional rumble. |
+| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures (same hold-to-swipe engine as MX). Analog pointer/scroll still available if you turn a stick or the pad on. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
 | **MX Master 3 / 3S** | Extra buttons + thumb **Gesture** (tap = click, hold + move = swipe). |
 | **MX Master 4** | Extra buttons + **Haptic** pad (same gesture engine, isolated HID++ reader). |
@@ -65,6 +65,7 @@ Tracked in [docs/roadmap.md](docs/roadmap.md):
 - First-run **onboarding**
 - Menu bar icon: a **circle**, matching the app icon (not a game-controller glyph)
 - **Background** (Allow in the Background) — request is in the Permissions pane; confirm after login
+- **Per-app mouse profiles** — different Control mappings when the frontmost app changes
 
 Generic mouse, Xbox, and other TV remotes are later. New hardware should land as a device family, not another special case in the host.
 
