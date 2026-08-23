@@ -14,6 +14,12 @@ struct MXMasterCalibrationView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(snapshot.connected ? snapshot.name : "Waiting for MX Master")
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    if snapshot.connected, DeviceIdentity.isConcrete(snapshot.address) {
+                        Text(DeviceIdentity.format(snapshot.address))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Palette.secondaryText(colorScheme))
+                            .textSelection(.enabled)
+                    }
                     Text(snapshot.status)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
@@ -171,63 +177,69 @@ private struct MXMasterSidebar: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            MXPanel(title: "Clicks") {
-                MXValueRow(label: "Left", value: down(snapshot.left))
-                MXValueRow(label: "Right", value: down(snapshot.right))
-                MXValueRow(label: "Middle", value: down(snapshot.middle))
-            }
-            MXPanel(title: "Wheels") {
-                MXValueRow(label: "Wheel up", value: down(snapshot.wheelUp))
-                MXValueRow(label: "Wheel down", value: down(snapshot.wheelDown))
-                MXValueRow(label: "Thumb left", value: down(snapshot.thumbLeft))
-                MXValueRow(label: "Thumb right", value: down(snapshot.thumbRight))
-            }
-            MXPanel(title: "Thumb") {
-                MXValueRow(label: "Back", value: down(snapshot.back))
-                MXValueRow(label: "Forward", value: down(snapshot.forward))
-                MXValueRow(label: "Mode shift", value: down(snapshot.smartShift))
-                MXValueRow(label: snapshot.kind.mxGestureControlTitle, value: down(snapshot.haptic))
-                ForEach(snapshot.extras) { extra in
-                    MXValueRow(label: extra.title, value: down(extra.down))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                MXPanel(title: "Clicks") {
+                    MXValueRow(label: "Left", value: down(snapshot.left))
+                    MXValueRow(label: "Right", value: down(snapshot.right))
+                    MXValueRow(label: "Middle", value: down(snapshot.middle))
                 }
-            }
-            MXPanel(title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture") {
-                MXValueRow(label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad", value: down(snapshot.haptic || snapshot.gestureDown))
-                MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
-                MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
-                MXValueRow(label: "Delta", value: String(format: "%+.0f, %+.0f", snapshot.gestureDX, snapshot.gestureDY))
-                MXValueRow(label: "HID++", value: snapshot.lastHIDEvent)
-                Text(snapshot.kind.isMXMaster3Family
-                     ? "Gesture means: hold the thumb gesture button and move the mouse. A tap without moving is Click. Quit Logi Options+ first."
-                     : "Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-            }
-            MXPanel(title: "Recent inputs") {
-                if snapshot.events.isEmpty {
-                    Text("Click, scroll, or hold the gesture button")
+                MXPanel(title: "Wheels") {
+                    MXValueRow(label: "Wheel up", value: down(snapshot.wheelUp))
+                    MXValueRow(label: "Wheel down", value: down(snapshot.wheelDown))
+                    MXValueRow(label: "Thumb left", value: down(snapshot.thumbLeft))
+                    MXValueRow(label: "Thumb right", value: down(snapshot.thumbRight))
+                }
+                MXPanel(title: "Thumb") {
+                    MXValueRow(label: "Back", value: down(snapshot.back))
+                    MXValueRow(label: "Forward", value: down(snapshot.forward))
+                    MXValueRow(label: "Mode shift", value: down(snapshot.smartShift))
+                    MXValueRow(label: snapshot.kind.mxGestureControlTitle, value: down(snapshot.haptic))
+                    ForEach(snapshot.extras) { extra in
+                        MXValueRow(label: extra.title, value: down(extra.down))
+                    }
+                }
+                MXPanel(title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture") {
+                    MXValueRow(
+                        label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad",
+                        value: down(snapshot.haptic || snapshot.gestureDown)
+                    )
+                    MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
+                    MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
+                    MXValueRow(
+                        label: "Delta",
+                        value: String(format: "%+.0f, %+.0f", snapshot.gestureDX, snapshot.gestureDY)
+                    )
+                    MXValueRow(label: "HID++", value: snapshot.lastHIDEvent)
+                    Text(snapshot.kind.isMXMaster3Family
+                         ? "Gesture means: hold the thumb gesture button and move the mouse. A tap without moving is Click. Quit Logi Options+ first."
+                         : "Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
-                        .font(.system(size: 12, design: .rounded))
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(snapshot.events) { event in
-                                HStack(spacing: 8) {
-                                    Text(event.pressed ? "↓" : "↑")
-                                        .foregroundStyle(event.pressed ? Palette.good : Palette.secondaryText(colorScheme))
-                                        .frame(width: 12)
-                                    Text(event.label)
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                    Spacer()
-                                    Text(event.date, style: .time)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                                }
+                    Text("macOS click events do not say which mouse produced them. Extra-button fallbacks are gated per model, so MX4 haptic (buttons 5/6) cannot start a 3S gesture.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
+                MXPanel(title: "Recent inputs") {
+                    if snapshot.events.isEmpty {
+                        Text("Click, scroll, or hold the gesture button")
+                            .foregroundStyle(Palette.secondaryText(colorScheme))
+                            .font(.system(size: 12, design: .rounded))
+                    } else {
+                        ForEach(snapshot.events) { event in
+                            HStack(spacing: 8) {
+                                Text(event.pressed ? "↓" : "↑")
+                                    .foregroundStyle(event.pressed ? Palette.good : Palette.secondaryText(colorScheme))
+                                    .frame(width: 12)
+                                Text(event.label)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                Spacer()
+                                Text(event.date, style: .time)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Palette.secondaryText(colorScheme))
                             }
                         }
                     }
-                    .frame(minHeight: 140)
                 }
             }
         }
@@ -264,6 +276,8 @@ private struct MXPanel<Content: View>: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(Palette.secondaryText(colorScheme))
                 .tracking(0.8)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 6) {
                 content
             }

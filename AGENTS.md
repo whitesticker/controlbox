@@ -4,14 +4,14 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 
 ## Current status (2026-08-22)
 
-- Active test device: **MX Master 3S** (BLE `0xB034`). Leave MX Master 4 disconnected. Master 3 is still later.
-- Device kinds stay split for the sidebar (3 vs 3S vs 4). HID modules are **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Shared code is the HID++ pipe and hold-to-swipe engine.
+- Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, and MX Master 4 can stay attached at once. Each device has its own **Control this Mac** toggle.
+- HID modules stay split: **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Each family has its own HID++ reader (product IDs only). Shared code is the HID++ pipe and hold-to-swipe engine.
 - 3S HID++ is nested on the mouse device (page `0xFF43`, report `0x11`). Gesture is thumb CID `0x00C3`. See `docs/mx-master-3s-hid.md`.
-- MX4 pointer / haptic stack is unchanged when that mouse is the active model. How MX4 should feel is `docs/mx-master-4-pointer-and-haptic.md`.
+- MX4 pointer / haptic stack is unchanged. How MX4 should feel is `docs/mx-master-4-pointer-and-haptic.md`.
 - Pointer speed and gesture speed are **separate sliders**. DPI is sensor resolution only. Both speeds divide out DPI so 1000 DPI is the reference feel.
 - 3S: tap gesture button = click action; hold 100ms then move = swipe. Same ControlEngine path as MX4 haptic (owner `.mxHaptic`).
 - **Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked.
-- Do not attach Bolt receiver `C548`. Do not open both 3S and 4 at once.
+- Do not attach Bolt receiver `C548`. Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
 
 ## Device rule
 
@@ -23,9 +23,7 @@ Treat these as **different devices**, not one “MX Master”:
 | MX Master 3S | BLE `0xB034`, Bolt `0xB043`. Nested `0xFF43` / report `0x11`. | Same CIDs as Master 3. Thumb gesture `0x00C3`. |
 | MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse. | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. |
 
-Focus on **MX Master 3S** while that mouse is the only Logitech device attached. Do not reopen dual-mouse attach or “open every Logitech interface.”
-
-Keep 3/3S and 4 as separate HID modules. Shared code should stay at “send a HID++ report” / “list HID devices” / hold-to-swipe, not one matcher for every Logitech interface.
+3S + 4 at once is allowed through **two isolated readers**, not one manager that opens every Logitech collection. Keep 3/3S and 4 as separate HID modules. Shared code should stay at “send a HID++ report” / “list HID devices” / hold-to-swipe.
 
 ## Hard constraints
 

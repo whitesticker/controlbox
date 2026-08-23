@@ -92,9 +92,7 @@ struct DeviceProfilePane: View {
                         Text("Pointer & scroll")
                     } footer: {
                         if record.isMXMaster {
-                            Text(record.kind.isMXMaster3Family
-                                 ? "DPI is sensor resolution. Pointer speed is the cursor. Gesture speed is hold-to-swipe on the thumb button. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed."
-                                 : "DPI is sensor resolution. Pointer speed is the cursor. Haptic gesture speed is the thumb pad. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed.")
+                            Text(mxPointerScrollFooter(for: record))
                         } else {
                             Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
                         }
@@ -117,9 +115,7 @@ struct DeviceProfilePane: View {
                             if group.id == "clickpad" {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
                             } else if group.id == "buttons" {
-                                Text(record.kind.isMXMaster3Family
-                                     ? "Gesture is the only Gestures button. Hold the thumb button and move for the four directions. A tap without moving is Click."
-                                     : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click.")
+                                Text(mxButtonsFooter(for: record))
                             }
                         }
                     }
@@ -198,12 +194,24 @@ struct DeviceProfilePane: View {
                 analogPicker("Left stick", source: .dualSenseLeftStick)
                 analogPicker("Right stick", source: .dualSenseRightStick)
                 analogPicker("Touchpad", source: .dualSenseTouchpad)
+                Toggle("Pointer acceleration", isOn: accelerationBinding)
+                    .disabled(!dualSenseHasPointerSource(record))
+                if (monitor.selectedProfile.pointerAcceleration ?? true),
+                   dualSenseHasPointerSource(record) {
+                    Slider(value: accelerationAmountBinding, in: 0...1) {
+                        Text("Amount")
+                    } minimumValueLabel: {
+                        Text("Low")
+                    } maximumValueLabel: {
+                        Text("High")
+                    }
+                }
                 Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                 Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
             } header: {
                 Text("Analog")
             } footer: {
-                Text("Sticks and the touchpad only move the pointer or scroll if you turn that source on. Sticky targeting outlines the control under the pointer and clicks that control. Haptic feedback rumbles the DualSense when you press a button.")
+                Text("Sticks and the touchpad only move the pointer or scroll if you turn that source on. Pointer acceleration keeps small stick or touch moves precise and speeds up flicks. Sticky targeting outlines the control under the pointer and clicks that control. Haptic feedback rumbles the DualSense when you press a button.")
             }
         }
     }
@@ -416,6 +424,13 @@ struct DeviceProfilePane: View {
         )
     }
 
+    private func dualSenseHasPointerSource(_ record: DeviceRecord) -> Bool {
+        let profile = record.selectedProfile
+        return profile.mode(for: .dualSenseLeftStick) == .pointer
+            || profile.mode(for: .dualSenseRightStick) == .pointer
+            || profile.mode(for: .dualSenseTouchpad) == .pointer
+    }
+
     private var accelerationBinding: Binding<Bool> {
         Binding(
             get: { monitor.selectedProfile.pointerAcceleration ?? true },
@@ -541,6 +556,22 @@ struct DeviceProfilePane: View {
             return DeviceIdentity.format(candidate)
         }
         return nil
+    }
+
+    private func mxPointerScrollFooter(for record: DeviceRecord) -> String {
+        let feel = record.kind.isMXMaster3Family
+            ? "DPI is sensor resolution on this mouse. Gesture speed is hold-to-swipe on the thumb button."
+            : "DPI is sensor resolution on this mouse. Haptic gesture speed is the thumb pad."
+        return feel
+            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed are shared by every MX mouse — there is one system scroll tap, so those cannot differ per mouse. Accessibility must be allowed for wheel speed."
+    }
+
+    private func mxButtonsFooter(for record: DeviceRecord) -> String {
+        let gesture = record.kind.isMXMaster3Family
+            ? "Gesture is the only Gestures button. Hold the thumb button and move for the four directions. A tap without moving is Click."
+            : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click."
+        return gesture
+            + " macOS click events do not say which physical mouse generated them, so extra-button fallbacks are gated per model: MX4 haptic (buttons 5/6) will not start a 3S gesture."
     }
 
     private func mxHIDPPStatus(for record: DeviceRecord) -> String {

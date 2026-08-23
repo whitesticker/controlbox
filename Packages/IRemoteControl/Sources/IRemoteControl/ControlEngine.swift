@@ -22,6 +22,9 @@ public final class ControlEngine: @unchecked Sendable {
     private var pointerSmoothX: Double = 0
     private var pointerSmoothY: Double = 0
     private var pointerSmoothGain: Double = 1
+    private var stickSmoothX: Double = 0
+    private var stickSmoothY: Double = 0
+    private var stickSmoothGain: Double = 1
     private var pointerFrozenUntil = Date.distantPast
     private var wheelGestureLatched = false
     private var volumeRepeatAt = Date.distantPast
@@ -52,6 +55,9 @@ public final class ControlEngine: @unchecked Sendable {
         pointerSmoothX = 0
         pointerSmoothY = 0
         pointerSmoothGain = 1
+        stickSmoothX = 0
+        stickSmoothY = 0
+        stickSmoothGain = 1
         pointerFrozenUntil = .distantPast
         wheelGestureLatched = false
         volumeRepeatAt = .distantPast
@@ -243,12 +249,7 @@ public final class ControlEngine: @unchecked Sendable {
     private func movePointer(source: AnalogSource, sample: AnalogSample) {
         switch source {
         case .dualSenseLeftStick, .dualSenseRightStick:
-            let dead: Float = 0.12
-            let dx = abs(sample.x) > dead ? Double(sample.x) : 0
-            let dy = abs(sample.y) > dead ? Double(-sample.y) : 0
-            if dx != 0 || dy != 0 {
-                EventPoster.moveMouse(dx: dx * pointerSpeed, dy: dy * pointerSpeed)
-            }
+            moveStickPointer(sample: sample)
         case .dualSenseTouchpad, .appleTVClickpad:
             guard sample.active else {
                 pointerSmoothX = 0
@@ -267,7 +268,7 @@ public final class ControlEngine: @unchecked Sendable {
             let mag = hypot(pointerSmoothX, pointerSmoothY)
             guard mag >= 0.0003 else { return }
 
-            let base = pointerSpeed * 40
+            let base = (source == .dualSenseTouchpad ? dualSensePointerSpeed : pointerSpeed) * 40
             var targetGain = 1.0
             if profile.pointerAcceleration ?? true {
                 let amount = min(max(profile.pointerAccelerationAmount ?? 0.3, 0), 1)
@@ -289,6 +290,47 @@ public final class ControlEngine: @unchecked Sendable {
         case .appleTVWheel:
             break
         }
+    }
+
+    /// DualSense does not use the MX half-speed curve. 100% should cross the
+    /// screen on a firm stick tilt.
+    private var dualSensePointerSpeed: Double {
+        12 + profile.resolvedPointerSpeed * 44
+    }
+
+    private func moveStickPointer(sample: AnalogSample) {
+        let dead = 0.10
+        let x = Double(sample.x)
+        let y = Double(-sample.y)
+        let mag = hypot(x, y)
+        if mag <= dead {
+            stickSmoothX *= 0.58
+            stickSmoothY *= 0.58
+            stickSmoothGain += (1 - stickSmoothGain) * 0.35
+            if hypot(stickSmoothX, stickSmoothY) < 0.008 {
+                stickSmoothX = 0
+                stickSmoothY = 0
+                return
+            }
+        } else {
+            let scaled = min((mag - dead) / (1 - dead), 1)
+            let targetX = x / mag * scaled
+            let targetY = y / mag * scaled
+            let blend = 0.55
+            stickSmoothX += (targetX - stickSmoothX) * blend
+            stickSmoothY += (targetY - stickSmoothY) * blend
+            var targetGain = 1.0
+            if profile.pointerAcceleration ?? true {
+                let amount = min(max(profile.pointerAccelerationAmount ?? 0.3, 0), 1)
+                let t = min(hypot(stickSmoothX, stickSmoothY), 1)
+                targetGain = 0.85 + pow(t, 1.35) * (0.35 + amount * 1.6)
+            }
+            stickSmoothGain += (targetGain - stickSmoothGain) * 0.38
+        }
+        EventPoster.moveMouse(
+            dx: stickSmoothX * dualSensePointerSpeed * stickSmoothGain,
+            dy: stickSmoothY * dualSensePointerSpeed * stickSmoothGain
+        )
     }
 
     private func scroll(source: AnalogSource, sample: AnalogSample) {

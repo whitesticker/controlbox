@@ -28,4 +28,7 @@ The 3S also uses HID++ usage page `0xFF43` (Master 4 uses `0xFF00`). One shared 
 
 - Seize Logitech HID managers
 - Open the standard mouse collection (`0x01` / `0x02`) to watch buttons
-- Attach every matching interface; talk to one target device at a time
+- Attach every matching interface with one shared matcher
+- Open Bolt receiver `C548`
+
+Two isolated readers (3/3S product IDs vs 4 product IDs) is the allowed shape for 3S + 4 at once.

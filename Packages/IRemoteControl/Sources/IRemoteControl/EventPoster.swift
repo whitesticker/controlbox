@@ -4,6 +4,9 @@ import CoreGraphics
 import Foundation
 
 enum EventPoster {
+    private static var fractionalCursor = CGPoint.zero
+    private static var hasFractionalCursor = false
+
     static func isTrusted() -> Bool {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
@@ -59,13 +62,20 @@ enum EventPoster {
     }
 
     static func moveMouse(dx: Double, dy: Double) {
-        let current = CGEvent(source: nil)?.location ?? .zero
-        var dest = CGPoint(x: current.x + dx, y: current.y + dy)
-        dest = clampToDisplays(dest)
+        guard abs(dx) > 0.0001 || abs(dy) > 0.0001 else { return }
+        let reported = CGEvent(source: nil)?.location ?? .zero
+        if !hasFractionalCursor || hypot(reported.x - fractionalCursor.x, reported.y - fractionalCursor.y) > 6 {
+            fractionalCursor = reported
+            hasFractionalCursor = true
+        }
+        fractionalCursor.x += CGFloat(dx)
+        fractionalCursor.y += CGFloat(dy)
+        fractionalCursor = clampToDisplays(fractionalCursor)
+        let source = CGEventSource(stateID: .hidSystemState)
         guard let event = CGEvent(
-            mouseEventSource: nil,
+            mouseEventSource: source,
             mouseType: .mouseMoved,
-            mouseCursorPosition: dest,
+            mouseCursorPosition: fractionalCursor,
             mouseButton: .left
         ) else { return }
         event.post(tap: .cghidEventTap)

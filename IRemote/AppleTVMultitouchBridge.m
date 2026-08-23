@@ -62,6 +62,7 @@ static MTUnregisterContactFrameCallbackFn gUnregister;
 static AppleTVTouchFrameCallback gCallback;
 static void *gContext;
 static MTDeviceRef gDevice;
+static MTDeviceRef gActiveTouchDevice;
 static int gFamilyID;
 static const size_t kMaxDevices = 16;
 static MTDeviceRef gStarted[kMaxDevices];
@@ -69,6 +70,14 @@ static size_t gStartedCount;
 
 static void *loadSymbol(const char *name) {
     return dlsym(gFramework, name);
+}
+
+static int familyIDOf(MTDeviceRef device) {
+    int family = 0;
+    if (gGetFamilyID) {
+        gGetFamilyID(device, &family);
+    }
+    return family;
 }
 
 static void touchFrame(
@@ -79,20 +88,33 @@ static void touchFrame(
     size_t frame,
     void *refcon
 ) {
-    (void)device;
     (void)timestamp;
     (void)frame;
     (void)refcon;
     if (!gCallback) { return; }
+    int family = familyIDOf(device);
     if (numTouches == 0 || touches == NULL) {
-        gCallback(0.5f, 0.5f, false, 0, gFamilyID, gContext);
+        if (gActiveTouchDevice != NULL && gActiveTouchDevice != device) {
+            return;
+        }
+        gActiveTouchDevice = NULL;
+        gCallback(0.5f, 0.5f, false, 0, family, gContext);
         return;
     }
     MTTouch touch = touches[0];
     float x = touch.normalizedVector.position.x;
     float y = 1.0f - touch.normalizedVector.position.y;
     bool active = touch.state >= 3 && touch.state <= 5;
-    gCallback(x, y, active, touch.zTotal, gFamilyID, gContext);
+    if (active) {
+        gActiveTouchDevice = device;
+        gCallback(x, y, active, touch.zTotal, family, gContext);
+        return;
+    }
+    if (gActiveTouchDevice != NULL && gActiveTouchDevice != device) {
+        return;
+    }
+    gActiveTouchDevice = NULL;
+    gCallback(x, y, false, touch.zTotal, family, gContext);
 }
 
 static bool shouldStartDevice(MTDeviceRef device, int *outFamily) {
@@ -142,16 +164,23 @@ void AppleTVMultitouchStart(AppleTVTouchFrameCallback callback, void *context) {
     if (!list) { return; }
 
     CFIndex count = CFArrayGetCount(list);
-    for (CFIndex i = 0; i < count && gStartedCount < kMaxDevices; i++) {
-        MTDeviceRef device = (MTDeviceRef)CFArrayGetValueAtIndex(list, i);
-        int family = 0;
-        if (!shouldStartDevice(device, &family)) { continue; }
-        gRegister(device, touchFrame, context);
-        gStart(device, 0);
-        gStarted[gStartedCount++] = device;
-        if (gDevice == NULL) {
-            gDevice = device;
-            gFamilyID = family;
+    bool startedExternal = false;
+    for (CFIndex pass = 0; pass < 2; pass++) {
+        for (CFIndex i = 0; i < count && gStartedCount < kMaxDevices; i++) {
+            MTDeviceRef device = (MTDeviceRef)CFArrayGetValueAtIndex(list, i);
+            int family = 0;
+            if (!shouldStartDevice(device, &family)) { continue; }
+            bool builtin = gIsBuiltIn && gIsBuiltIn(device);
+            if (pass == 0 && builtin) { continue; }
+            if (pass == 1 && (!builtin || startedExternal)) { continue; }
+            gRegister(device, touchFrame, context);
+            gStart(device, 0);
+            gStarted[gStartedCount++] = device;
+            if (!builtin) { startedExternal = true; }
+            if (gDevice == NULL || !builtin) {
+                gDevice = device;
+                gFamilyID = family;
+            }
         }
     }
     CFRelease(list);
@@ -170,6 +199,7 @@ void AppleTVMultitouchStop(void) {
     }
     gStartedCount = 0;
     gDevice = NULL;
+    gActiveTouchDevice = NULL;
     gFamilyID = 0;
     gCallback = NULL;
     gContext = NULL;

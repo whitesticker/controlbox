@@ -204,6 +204,8 @@ final class DualSenseMonitor {
     private var lastBatteryProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
     private var lastDeviceProbe = Date.distantPast
+    private var lastAppleTVTouchRescan = Date.distantPast
+    private var appleTVHIDWasLive = false
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
     private let haptics = DualSenseHaptics()
@@ -211,8 +213,11 @@ final class DualSenseMonitor {
     private let appleTVReader = AppleTVRemoteHIDReader()
     private let appleTVTouch = AppleTVTouchReader()
     private let appleTVBattery = AppleTVBatteryReader()
-    private let mxMasterReader = LogitechMXMasterReader(model: MXMasterHIDDiscovery.activeModel())
+    private let mx3Reader = LogitechMXMasterReader(model: MXMaster3Support.model)
+    private let mx4Reader = LogitechMXMasterReader(model: MXMaster4Support.model)
     private let mouseScrollTap = MouseScrollTap()
+
+    private var mxReaders: [LogitechMXMasterReader] { [mx3Reader, mx4Reader] }
 
     func start() {
         guard !didStart else { return }
@@ -222,7 +227,8 @@ final class DualSenseMonitor {
         appleTVReader.start()
         appleTVTouch.start()
         appleTVBattery.start()
-        mxMasterReader.start()
+        mx3Reader.start()
+        mx4Reader.start()
         loadDeviceRecords()
         updateControlActivity()
         refreshPermissions()
@@ -275,7 +281,7 @@ final class DualSenseMonitor {
         GCController.startWirelessControllerDiscovery(completionHandler: nil)
         attachPreferredController()
 
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.capture()
             }
@@ -295,7 +301,8 @@ final class DualSenseMonitor {
         appleTVReader.stop()
         appleTVTouch.stop()
         appleTVBattery.stop()
-        mxMasterReader.stop()
+        mx3Reader.stop()
+        mx4Reader.stop()
         mouseScrollTap.stop()
         haptics.detach()
         GCController.stopWirelessControllerDiscovery()
@@ -308,10 +315,7 @@ final class DualSenseMonitor {
     func selectDevice(id: String?) {
         guard selectedDeviceID != id else { return }
         selectedDeviceID = id
-        controller = nil
         previousButtons = [:]
-        snapshot = DualSenseSnapshot()
-        appleTVSnapshot = AppleTVRemoteSnapshot()
         if let id {
             engines[id]?.reset()
             ensureRecord(for: id)
@@ -387,7 +391,7 @@ final class DualSenseMonitor {
     }
 
     func setPointerSpeed(_ speed: Double) {
-        updateSelectedProfile { $0.pointerSpeed = min(max(speed, 0), 1) }
+        updateMXSharedOrSelected { $0.pointerSpeed = min(max(speed, 0), 1) }
     }
 
     func setHapticGestureSpeed(_ speed: Double) {
@@ -395,15 +399,15 @@ final class DualSenseMonitor {
     }
 
     func setWheelScrollSpeed(_ speed: Double) {
-        updateSelectedProfile { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
+        updateMXSharedOrSelected { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setThumbScrollSpeed(_ speed: Double) {
-        updateSelectedProfile { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+        updateMXSharedOrSelected { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setNaturalScrolling(_ enabled: Bool) {
-        updateSelectedProfile { $0.naturalScrolling = enabled }
+        updateMXSharedOrSelected { $0.naturalScrolling = enabled }
     }
 
     func setSensorDPI(_ dpi: Int) {
@@ -411,7 +415,7 @@ final class DualSenseMonitor {
     }
 
     func setSmoothScrolling(_ enabled: Bool) {
-        updateSelectedProfile { $0.smoothScrolling = enabled }
+        updateMXSharedOrSelected { $0.smoothScrolling = enabled }
     }
 
     func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
@@ -430,6 +434,46 @@ final class DualSenseMonitor {
                 record.profiles[index] = profile
             }
         }
+    }
+
+    private func updateMXSharedOrSelected(_ mutate: (inout MappingProfile) -> Void) {
+        updateSelectedProfile(mutate)
+        guard selectedRecord?.isMXMaster == true, let source = selectedRecord?.selectedProfile else { return }
+        propagateSharedMXPointerScroll(from: source)
+    }
+
+    private func propagateSharedMXPointerScroll(from source: MappingProfile) {
+        var changed = false
+        for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
+            let selectedID = deviceRecords[index].selectedProfileID
+            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == selectedID }) else {
+                continue
+            }
+            var profile = deviceRecords[index].profiles[profileIndex]
+            if Self.sharedMXPointerScrollMatches(profile, source) { continue }
+            Self.applySharedMXPointerScroll(&profile, from: source)
+            deviceRecords[index].profiles[profileIndex] = profile
+            changed = true
+        }
+        if changed {
+            persistDeviceRecords()
+        }
+    }
+
+    private static func sharedMXPointerScrollMatches(_ profile: MappingProfile, _ source: MappingProfile) -> Bool {
+        profile.pointerSpeed == source.pointerSpeed
+            && profile.naturalScrolling == source.naturalScrolling
+            && profile.smoothScrolling == source.smoothScrolling
+            && profile.wheelScrollSpeed == source.wheelScrollSpeed
+            && profile.thumbScrollSpeed == source.thumbScrollSpeed
+    }
+
+    private static func applySharedMXPointerScroll(_ profile: inout MappingProfile, from source: MappingProfile) {
+        profile.pointerSpeed = source.pointerSpeed
+        profile.naturalScrolling = source.naturalScrolling
+        profile.smoothScrolling = source.smoothScrolling
+        profile.wheelScrollSpeed = source.wheelScrollSpeed
+        profile.thumbScrollSpeed = source.thumbScrollSpeed
     }
 
     func setButtonAction(_ action: ControlAction, for button: DeviceButton) {
@@ -625,7 +669,8 @@ final class DualSenseMonitor {
     }
 
     private func attachPreferredController() {
-        guard let selected = selectedDevice, selected.isSupported else {
+        let dualSenses = GCController.controllers().filter { $0.extendedGamepad is GCDualSenseGamepad }
+        guard !dualSenses.isEmpty else {
             if controller != nil {
                 controller = nil
                 haptics.detach()
@@ -634,21 +679,12 @@ final class DualSenseMonitor {
             }
             return
         }
-
-        if selected.deviceKind == .appleTVRemote || selected.deviceKind.isMXMaster {
-            if controller != nil {
-                controller = nil
-                haptics.detach()
-                snapshot = DualSenseSnapshot()
-            }
-            return
-        }
-
-        let dualSenses = GCController.controllers().filter { $0.extendedGamepad is GCDualSenseGamepad }
+        let preferredName = deviceRecords.first {
+            $0.kind == .dualSense || $0.kind == .dualSenseEdge
+        }?.name
         let match = dualSenses.first { controller in
-            (controller.vendorName ?? "") == selected.name
+            (controller.vendorName ?? "") == preferredName
         } ?? dualSenses.first
-
         attachIfNeeded(match)
     }
 
@@ -688,15 +724,17 @@ final class DualSenseMonitor {
             refreshPermissions()
         }
 
-        if mxMasterReader.current.connected || selectedKind.isMXMaster {
-            captureMXMaster()
-            if selectedKind.isMXMaster { return }
-        }
-        if selectedKind == .appleTVRemote {
+        captureDualSense()
+        captureMXMasters()
+        if appleTVShouldCapture {
             captureAppleTV()
-            return
+        } else if appleTVSnapshot.connected {
+            appleTVSnapshot = AppleTVRemoteSnapshot()
+            appleTVHIDWasLive = false
         }
+    }
 
+    private func captureDualSense() {
         guard let controller else {
             if snapshot.connected {
                 snapshot = DualSenseSnapshot()
@@ -772,15 +810,31 @@ final class DualSenseMonitor {
         }
 
         next.events = updatedEvents(from: next)
-        if selectedRecord?.hapticFeedbackEnabled == true, next.hadButtonDown(from: snapshot) {
+        if liveDualSenseRecord()?.hapticFeedbackEnabled == true, next.hadButtonDown(from: snapshot) {
             haptics.pulse()
         }
         snapshot = next
-        ingestControl(ControlFrameBuilder.make(from: next))
+        if let record = liveDualSenseRecord() {
+            ingestControl(ControlFrameBuilder.make(from: next), record: record)
+        }
     }
 
     private func captureAppleTV() {
-        guard let selected = selectedDevice, selected.deviceKind == .appleTVRemote else {
+        let hidLive = appleTVReader.snapshot.connected
+        if hidLive && !appleTVHIDWasLive {
+            appleTVTouch.restart()
+            lastAppleTVTouchRescan = Date()
+        } else if hidLive, !appleTVTouch.snapshot.available,
+                  Date().timeIntervalSince(lastAppleTVTouchRescan) > 2 {
+            appleTVTouch.restart()
+            lastAppleTVTouchRescan = Date()
+        }
+        appleTVHIDWasLive = hidLive
+
+        let device = connectedDevices.first(where: {
+            $0.deviceKind == .appleTVRemote && $0.isConnected
+        }) ?? connectedDevices.first(where: { $0.deviceKind == .appleTVRemote })
+        guard hidLive || device != nil || selectedKind == .appleTVRemote else {
             if appleTVSnapshot.connected {
                 appleTVSnapshot = AppleTVRemoteSnapshot()
             }
@@ -789,15 +843,18 @@ final class DualSenseMonitor {
 
         appleTVReader.applyTouch(appleTVTouch.snapshot)
         var next = appleTVReader.snapshot
-        next.connected = true
-        next.name = selected.name
+        next.connected = hidLive || device?.isConnected == true
+        next.name = device?.name ?? next.name
         next.product = "Siri Remote A2540"
         if Date().timeIntervalSince(lastBatteryProbe) > 2 {
             lastBatteryProbe = Date()
             appleTVBattery.refresh()
         }
         if !next.batteryAvailable,
-           let percent = appleTVBattery.percent(serial: selected.name, address: selected.address) {
+           let percent = appleTVBattery.percent(
+               serial: device?.name ?? next.name,
+               address: device?.address ?? ""
+           ) {
             appleTVReader.applyBatteryPercent(percent)
             next.batteryAvailable = true
             next.batteryPercent = percent
@@ -806,53 +863,90 @@ final class DualSenseMonitor {
         }
         next.events = updatedAppleTVEvents(from: next)
         appleTVSnapshot = next
-        ingestControl(ControlFrameBuilder.make(from: next))
-    }
-
-    private func captureMXMaster() {
-        mxMasterReader.pollGesturePointer()
-        let next = mxMasterReader.current
-        mxMasterSnapshot = next
-        if let record = liveMXRecord(for: next) {
-            ingestMX(record, ControlFrameBuilder.make(from: next))
+        if let record = liveAppleTVRecord() {
+            ingestControl(ControlFrameBuilder.make(from: next), record: record)
         }
-        _ = mxMasterReader.consumePendingGesture()
-        mxMasterReader.consumePendingScroll()
     }
 
-    private func ingestMX(_ record: DeviceRecord, _ frame: ControlFrame) {
+    private func captureMXMasters() {
+        for reader in mxReaders {
+            reader.pollGesturePointer()
+            let next = reader.current
+            if let record = liveMXRecord(for: next) {
+                ingestMX(reader, record, ControlFrameBuilder.make(from: next))
+            }
+            _ = reader.consumePendingGesture()
+            reader.consumePendingScroll()
+        }
+        mxMasterSnapshot = displayMXSnapshot()
+        applyMouseScrollTap()
+    }
+
+    private func reader(for kind: DeviceKind) -> LogitechMXMasterReader? {
+        if kind.isMXMaster3Family { return mx3Reader }
+        if kind == .logitechMXMaster4 || kind == .logitechMXMaster { return mx4Reader }
+        return nil
+    }
+
+    private func displayMXSnapshot() -> MXMasterSnapshot {
+        if selectedKind.isMXMaster, let reader = reader(for: selectedKind) {
+            return reader.current
+        }
+        return mxReaders.map(\.current).first(where: \.connected) ?? MXMasterSnapshot()
+    }
+
+    private func ingestMX(_ reader: LogitechMXMasterReader, _ record: DeviceRecord, _ frame: ControlFrame) {
         let engine = engine(for: record.id)
         engine.profile = record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
-        mxMasterReader.injectEnabled = record.controlEnabled
-        mxMasterReader.wheelsEnabled = accessibilityTrusted
-        mxMasterReader.setGestureOwners(record.selectedProfile.mxGestureOwners)
-        mxMasterReader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
-        mxMasterReader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
-        mxMasterReader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
-        mxMasterReader.applySmoothScrolling(record.selectedProfile.resolvedSmoothScrolling)
-        mxMasterReader.applyScrollDirection(record.selectedProfile.resolvedNaturalScrolling)
-        mouseScrollTap.wantNatural = record.selectedProfile.resolvedNaturalScrolling
-        mouseScrollTap.smoothScrolling = record.selectedProfile.resolvedSmoothScrolling
-        mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
-        mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
-        mouseScrollTap.setActive(accessibilityTrusted)
+        reader.injectEnabled = record.controlEnabled
+        reader.wheelsEnabled = accessibilityTrusted
+        reader.setGestureOwners(record.selectedProfile.mxGestureOwners)
+        reader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
+        reader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
+        reader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
         engine.process(frame, hostIsActive: NSApp.isActive)
     }
 
-    private func ingestControl(_ frame: ControlFrame) {
-        guard let deviceID = selectedDeviceID else { return }
-        ensureRecord(for: deviceID)
-        guard let record = deviceRecords.first(where: { $0.id == deviceID }) else { return }
-        let engine = engine(for: deviceID)
+    var controllingMXRecords: [DeviceRecord] {
+        mxReaders.compactMap { liveMXRecord(for: $0.current) }.filter(\.controlEnabled)
+    }
+
+    var sharedMXScrollRecord: DeviceRecord? {
+        if selectedKind.isMXMaster, let selected = selectedRecord, selected.controlEnabled {
+            return selected
+        }
+        return controllingMXRecords.first
+    }
+
+    private func applyMouseScrollTap() {
+        guard let record = sharedMXScrollRecord, accessibilityTrusted else {
+            mouseScrollTap.setActive(false)
+            return
+        }
+        let natural = record.selectedProfile.resolvedNaturalScrolling
+        let smooth = record.selectedProfile.resolvedSmoothScrolling
+        mouseScrollTap.wantNatural = natural
+        mouseScrollTap.smoothScrolling = smooth
+        mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
+        mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
+        mouseScrollTap.setActive(true)
+        for reader in mxReaders where reader.current.connected {
+            reader.applySmoothScrolling(smooth)
+            reader.applyScrollDirection(natural)
+        }
+        propagateSharedMXPointerScroll(from: record.selectedProfile)
+    }
+
+    private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
+        let engine = engine(for: record.id)
         engine.profile = record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
         if record.isMXMaster {
             return
         }
-        mouseScrollTap.setActive(false)
         engine.process(frame, hostIsActive: NSApp.isActive)
     }
 
@@ -910,6 +1004,33 @@ final class DualSenseMonitor {
             name: record.name,
             live: live ?? mxMasterSnapshot
         )
+    }
+
+    private var appleTVShouldCapture: Bool {
+        appleTVReader.snapshot.connected
+            || selectedKind == .appleTVRemote
+            || connectedDevices.contains { $0.deviceKind == .appleTVRemote && $0.isConnected }
+    }
+
+    private func liveAppleTVRecord() -> DeviceRecord? {
+        if let match = deviceRecords.first(where: { $0.kind == .appleTVRemote }) {
+            return match
+        }
+        if let device = connectedDevices.first(where: { $0.deviceKind == .appleTVRemote && $0.isConnected }) {
+            ensureRecord(for: device.id)
+            return matchingRecord(for: device) ?? deviceRecords.first { $0.id == device.id }
+        }
+        return nil
+    }
+
+    private func liveDualSenseRecord() -> DeviceRecord? {
+        if let name = controller?.vendorName,
+           let match = deviceRecords.first(where: {
+               ($0.kind == .dualSense || $0.kind == .dualSenseEdge) && namesMatch($0.name, name)
+           }) {
+            return match
+        }
+        return deviceRecords.first { $0.kind == .dualSense || $0.kind == .dualSenseEdge }
     }
 
     private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
@@ -1215,30 +1336,8 @@ final class DualSenseMonitor {
 
     private func refreshDevices() {
         var devices = BluetoothDeviceCatalog.availableDevices()
-        let mx = mxMasterReader.current
-        if mx.connected {
-            if let index = devices.firstIndex(where: {
-                isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: mx)
-            }) {
-                devices[index].deviceKind = mx.kind
-                devices[index].isConnected = true
-                devices[index].name = mx.name
-                if DeviceIdentity.isConcrete(mx.address) {
-                    devices[index].address = mx.address
-                }
-                devices[index].detail = mx.status
-            } else {
-                devices.append(
-                    ConnectedBluetoothDevice(
-                        id: "mx:\(DeviceIdentity.isConcrete(mx.address) ? mx.address : mx.name)",
-                        name: mx.name,
-                        address: DeviceIdentity.isConcrete(mx.address) ? mx.address : DeviceIdentity.hidFallback,
-                        deviceKind: mx.kind,
-                        detail: mx.status,
-                        isConnected: true
-                    )
-                )
-            }
+        for reader in mxReaders {
+            mergeLiveMX(reader.current, into: &devices)
         }
         for index in devices.indices {
             if let record = matchingRecord(for: devices[index]) {
@@ -1272,19 +1371,35 @@ final class DualSenseMonitor {
     }
 
     private func mergeMXMasterStatus() {
-        let mx = mxMasterReader.current
-        guard mx.connected else { return }
-        if let index = connectedDevices.firstIndex(where: {
-            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: mx)
-        }) {
-            connectedDevices[index].deviceKind = mx.kind
-            connectedDevices[index].isConnected = true
-            connectedDevices[index].name = mx.name
-            if DeviceIdentity.isConcrete(mx.address) {
-                connectedDevices[index].address = mx.address
-            }
-            connectedDevices[index].detail = mx.status
+        for reader in mxReaders {
+            mergeLiveMX(reader.current, into: &connectedDevices)
         }
+    }
+
+    private func mergeLiveMX(_ live: MXMasterSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
+        guard live.connected else { return }
+        if let index = devices.firstIndex(where: {
+            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+        }) {
+            devices[index].deviceKind = live.kind
+            devices[index].isConnected = true
+            devices[index].name = live.name
+            if DeviceIdentity.isConcrete(live.address) {
+                devices[index].address = live.address
+            }
+            devices[index].detail = live.status
+            return
+        }
+        devices.append(
+            ConnectedBluetoothDevice(
+                id: "mx:\(DeviceIdentity.isConcrete(live.address) ? live.address : live.name)",
+                name: live.name,
+                address: DeviceIdentity.isConcrete(live.address) ? live.address : DeviceIdentity.hidFallback,
+                deviceKind: live.kind,
+                detail: live.status,
+                isConnected: true
+            )
+        )
     }
 
     private func refreshAudioInputs() {

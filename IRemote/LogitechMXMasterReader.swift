@@ -537,7 +537,7 @@ final class LogitechMXMasterReader {
         case .rightMouseDown, .rightMouseUp:
             return gestureOwnerButtons.contains(.mxRight)
         case .otherMouseDown, .otherMouseUp:
-            if let owner = Self.gestureOwner(forOtherMouse: event) {
+            if let owner = gestureOwner(forOtherMouse: event) {
                 return gestureOwnerButtons.contains(owner)
             }
             return false
@@ -575,7 +575,7 @@ final class LogitechMXMasterReader {
             } else if button == 4, snapshot.forward != down {
                 snapshot.forward = down
                 logs.append(("Forward", down))
-            } else if button == 6 || button == 5 {
+            } else if (button == 6 || button == 5), model.nativeHapticButtonBit != nil {
                 if snapshot.haptic != down {
                     snapshot.haptic = down
                     logs.append((model.gestureControlTitle, down))
@@ -620,11 +620,11 @@ final class LogitechMXMasterReader {
         case .rightMouseUp:
             removeHoldSource(.mxRight, "cg")
         case .otherMouseDown:
-            if let owner = Self.gestureOwner(forOtherMouse: event) {
+            if let owner = gestureOwner(forOtherMouse: event) {
                 addHoldSource(owner, "cg")
             }
         case .otherMouseUp:
-            if let owner = Self.gestureOwner(forOtherMouse: event) {
+            if let owner = gestureOwner(forOtherMouse: event) {
                 removeHoldSource(owner, "cg")
             }
         default:
@@ -1920,12 +1920,13 @@ final class LogitechMXMasterReader {
         return dx < 0 ? .mxGestureLeft : .mxGestureRight
     }
 
-    private static func gestureOwner(forOtherMouse event: CGEvent) -> DeviceButton? {
+    private func gestureOwner(forOtherMouse event: CGEvent) -> DeviceButton? {
         switch event.getIntegerValueField(.mouseEventButtonNumber) {
         case 2: return .mxMiddle
         case 3: return .mxBack
         case 4: return .mxForward
-        case 5, 6: return .mxHaptic
+        case 5, 6:
+            return model.nativeHapticButtonBit != nil ? .mxHaptic : nil
         default: return nil
         }
     }

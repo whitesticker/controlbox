@@ -26,6 +26,11 @@ final class AppleTVTouchReader {
         return snapshotValue
     }
 
+    func restart() {
+        stop()
+        start()
+    }
+
     func start() {
         guard !started else { return }
         started = true

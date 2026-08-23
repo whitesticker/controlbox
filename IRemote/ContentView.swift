@@ -429,6 +429,8 @@ private struct Panel<Content: View>: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(Palette.secondaryText(colorScheme))
                 .tracking(0.8)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 6) {
                 content
             }

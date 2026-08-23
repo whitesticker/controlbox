@@ -1,6 +1,6 @@
 # Fix list
 
-Open items for MX Master / HID++ work. Active test device is MX Master 3S; MX4 stays disconnected.
+Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separate HID++ readers).
 
 ## Done
 
@@ -28,7 +28,7 @@ Open items for MX Master / HID++ work. Active test device is MX Master 3S; MX4 s
 
 - [ ] Never call `IOBluetoothDevice.pairedDevices()`
 - [ ] Keep Apple Development signing (do not go back to ad-hoc)
-- [ ] Two mice at once (3S + 4) — after MX4 is stable
+- [x] Two mice at once (3S + 4) — isolated HID++ readers; still needs a 3S+4 hardware pass
 
 ## Later
 
