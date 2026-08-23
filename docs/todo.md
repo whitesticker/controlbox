@@ -19,6 +19,7 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [x] 100ms arm delay so a haptic tap is not a swipe (see `docs/haptic-tap-starts-swipe.md`)
 - [x] App Exposé is a discrete down-swipe, not live DockSwipe (see `docs/dockswipe-down-skips-app-expose.md`)
 - [x] Media gesture left/right fires previous/next track (see `docs/media-gesture-skip-dead.md`)
+- [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `docs/haptic-vs-back-gesture.md`)
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 
@@ -33,3 +34,4 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [ ] MX Master 3S reader (`0xFF43`, CID `0x00C3`)
 - [ ] MX Master 3 reader
 - [ ] Logi Options+ / LogiPluginService occupying HID++
+- [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.

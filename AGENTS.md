@@ -9,6 +9,7 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 - Pointer, wheel, extra buttons, and haptic hold-to-swipe work on BLE MX4. How that stack is supposed to feel is `docs/mx-master-4-pointer-and-haptic.md`.
 - Pointer speed and haptic gesture speed are **separate sliders**. DPI is sensor resolution only (smoother tracking). Both speeds divide out DPI so 1000 DPI is the reference feel.
 - Haptic: tap = click action; hold 100ms then move = swipe. Left/right and up are live DockSwipe. Down (App Exposé) is a discrete system action.
+- **Gestures is haptic-pad only.** Click-as-gesture on Back / Forward / etc. is parked (laser XY is not the pad; direction and follow never settled). Do not HID++-divert left/right/middle to invent a second pad.
 - Do **not** change HID++ / MX reader code until the user says they have this status and want implementation.
 
 ## Device rule

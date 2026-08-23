@@ -66,7 +66,10 @@ enum ControlFrameBuilder {
             .mxForward: snapshot.forward,
             .mxSmartShift: snapshot.smartShift,
             .mxModeShift: snapshot.modeShift,
-            .mxHaptic: snapshot.haptic
+            .mxHaptic: snapshot.haptic,
+            .mxLeft: snapshot.left,
+            .mxRight: snapshot.right,
+            .mxMiddle: snapshot.middle
         ]
         return ControlFrame(
             buttons: buttons,

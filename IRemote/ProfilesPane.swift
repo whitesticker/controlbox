@@ -88,7 +88,7 @@ struct DeviceProfilePane: View {
                         Text("Pointer & scroll")
                     } footer: {
                         if record.isMXMaster {
-                            Text("DPI is sensor resolution (smoother tracking). Pointer speed is the cursor. Haptic gesture speed is hold-to-swipe only. Smooth scrolling is the wheel equivalent. Accessibility must be allowed for wheel speed.")
+                            Text("DPI is sensor resolution. Pointer speed is the cursor. Haptic gesture speed is the thumb pad. Smooth scrolling is the wheel. Accessibility must be allowed for wheel speed.")
                         } else {
                             Text("Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed scales analog scroll. Natural matches the Mac’s default direction.")
                         }
@@ -111,7 +111,7 @@ struct DeviceProfilePane: View {
                             if group.id == "clickpad" {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
                             } else if group.id == "buttons" {
-                                Text("Assign Gestures to any button. Hold that button and move the mouse for the four directions. A tap without moving is Click.")
+                                Text("Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click.")
                             }
                         }
                     }
@@ -225,12 +225,15 @@ struct DeviceProfilePane: View {
     private func mxActionRow(_ title: String, button: DeviceButton, record: DeviceRecord) -> some View {
         let current = record.selectedProfile.bindings[button] ?? .none
         Picker(title, selection: actionBinding(for: button)) {
-            Text("Gestures").tag("gestures")
-            Divider()
+            if button == .mxHaptic {
+                Text("Gestures").tag("gestures")
+                Divider()
+            }
             mappingOptions
         }
         if current == .gestures {
             gestureEditor(for: button, record: record)
+                .id("gesture-editor-\(button.rawValue)")
         } else if showsRecorder(for: button, current: current) {
             LabeledContent("Shortcut") {
                 shortcutRecorder(for: button, current: current)
@@ -242,24 +245,32 @@ struct DeviceProfilePane: View {
     private func gestureEditor(for button: DeviceButton, record: DeviceRecord) -> some View {
         let set = record.selectedProfile.gestureSet(for: button) ?? .named(.windowNavigation)
         gestureNestedRow {
-            Picker("Preset", selection: gesturePresetBinding(for: button, current: set.preset)) {
+            Picker(selection: gesturePresetBinding(for: button)) {
                 ForEach(GesturePreset.allCases, id: \.self) { preset in
                     Text(preset.title).tag(preset)
                 }
+            } label: {
+                Text("Preset")
             }
+            .id("\(button.rawValue)-preset")
         }
         ForEach(GestureSlot.allCases, id: \.self) { slot in
             gestureNestedRow {
-                Picker(slot.title, selection: gestureSlotBinding(for: button, slot: slot)) {
+                Picker(selection: gestureSlotBinding(for: button, slot: slot)) {
                     mappingOptions
+                } label: {
+                    Text(slot.title)
                 }
+                .id("\(button.rawValue)-\(slot.rawValue)")
             }
+            .id("\(button.rawValue)-\(slot.rawValue)-row")
             if showsGestureRecorder(for: button, slot: slot, current: set.action(for: slot)) {
                 gestureNestedRow {
                     LabeledContent("Shortcut") {
                         gestureShortcutRecorder(for: button, slot: slot, current: set.action(for: slot))
                     }
                 }
+                .id("\(button.rawValue)-\(slot.rawValue)-recorder")
             }
         }
     }
@@ -557,9 +568,11 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private func gesturePresetBinding(for button: DeviceButton, current: GesturePreset) -> Binding<GesturePreset> {
+    private func gesturePresetBinding(for button: DeviceButton) -> Binding<GesturePreset> {
         Binding(
-            get: { current },
+            get: {
+                monitor.selectedProfile.gestureSet(for: button)?.preset ?? .windowNavigation
+            },
             set: { monitor.setGesturePreset($0, for: button) }
         )
     }

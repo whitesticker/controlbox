@@ -26,7 +26,7 @@ public final class ControlEngine: @unchecked Sendable {
     private var wheelGestureLatched = false
     private var volumeRepeatAt = Date.distantPast
     private var volumeRepeatButton: DeviceButton?
-    private var liveGesture = LiveGestureState()
+    private var padGesture = HoldGesture()
 
     public init(profile: MappingProfile = MappingProfile.makeDefault(isAppleTVRemote: false)) {
         self.profile = profile
@@ -56,7 +56,7 @@ public final class ControlEngine: @unchecked Sendable {
         wheelGestureLatched = false
         volumeRepeatAt = .distantPast
         volumeRepeatButton = nil
-        liveGesture.cancel()
+        padGesture.cancel()
         clearSelectHold()
         StickyTargeting.hide()
     }
@@ -372,38 +372,30 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func processGesture(_ frame: ControlFrame, injectAll: Bool) {
-        let owner = frame.gestureOwner ?? liveGesture.owner ?? .mxHaptic
-        let set = profile.gestureSet(for: owner)
-        let allow = injectAll
-            || set?.click.isSystemNavigation == true
-            || set?.up.isSystemNavigation == true
-            || set?.down.isSystemNavigation == true
-            || set?.left.isSystemNavigation == true
-            || set?.right.isSystemNavigation == true
-            || set?.up.isLiveVolume == true
-            || set?.down.isLiveVolume == true
-            || set?.left.isDiscreteSwipe == true
-            || set?.right.isDiscreteSwipe == true
+        let holding = frame.gestureActive
+            && frame.gestureOwner == .mxHaptic
+            && profile.bindings[.mxHaptic] == .gestures
 
-        if frame.gestureActive {
+        if holding, let set = profile.gestureSet(for: .mxHaptic) {
+            let allow = injectAll
+                || set.click.isSystemNavigation
+                || set.up.isSystemNavigation || set.down.isSystemNavigation
+                || set.left.isSystemNavigation || set.right.isSystemNavigation
+                || set.up.isLiveVolume || set.down.isLiveVolume
+                || set.left.isDiscreteSwipe || set.right.isDiscreteSwipe
             guard allow else { return }
-            if let action = liveGesture.handleMove(x: frame.gestureX, y: frame.gestureY, owner: owner, set: set) {
+            if padGesture.owner != .mxHaptic { padGesture.begin(owner: .mxHaptic, set: set) }
+            if let action = padGesture.move(x: frame.gestureX, y: frame.gestureY) {
                 perform(action, down: true)
                 perform(action, down: false)
             }
             return
         }
 
-        liveGesture.end()
-
-        guard let slotButton = frame.gestureSlot,
-              let slot = GestureSlot.slot(for: slotButton),
-              slot == .click
-        else { return }
-        let action = profile.action(forGesture: slot, owner: owner)
-        guard injectAll || action.isSystemNavigation else { return }
-        perform(action, down: true)
-        perform(action, down: false)
+        if let tap = padGesture.isActive ? padGesture.end() : nil {
+            perform(tap, down: true)
+            perform(tap, down: false)
+        }
     }
 
     private func postInjectedScroll(_ frame: ControlFrame) {
@@ -484,147 +476,5 @@ public final class ControlEngine: @unchecked Sendable {
         case .closeWindow:
             EventPoster.key(13, flags: .maskCommand, down: down)
         }
-    }
-}
-
-private struct LiveGestureState {
-    enum Axis {
-        case horizontal
-        case vertical
-    }
-
-    var owner: DeviceButton?
-    var isLive: Bool { owner != nil }
-    private var lastX = 0.0
-    private var lastY = 0.0
-    private var hasSample = false
-    private var axis: Axis?
-    private var space = DockSwipe.Session()
-    private var volumeHold = 0.0
-    private var firedAppExpose = false
-    private var firedDiscrete: ControlAction?
-    private var holdStartedAt: Date?
-    private static let swipeArmDelay: TimeInterval = 0.10
-
-    mutating func handleMove(x: Double, y: Double, owner: DeviceButton, set: GestureSet?) -> ControlAction? {
-        self.owner = owner
-        if holdStartedAt == nil {
-            holdStartedAt = Date()
-        }
-        let dy = hasSample ? y - lastY : y
-        if hasSample {
-            let jump = hypot(x - lastX, y - lastY)
-            let previous = hypot(lastX, lastY)
-            // A reset or dropped sample looks like a teleport toward the origin.
-            // Applying that as a delta springs Spaces / Mission Control backward.
-            if jump > 64, previous > 24, hypot(x, y) < previous * 0.45 {
-                return nil
-            }
-        }
-        lastX = x
-        lastY = y
-        hasSample = true
-        guard let started = holdStartedAt,
-              Date().timeIntervalSince(started) >= Self.swipeArmDelay
-        else { return nil }
-        guard let set else { return nil }
-        let travel = hypot(x, y)
-        resolveAxis(x: x, y: y, travel: travel)
-        guard let axis else { return nil }
-
-        switch axis {
-        case .horizontal:
-            return applyHorizontal(x: x, set: set)
-        case .vertical:
-            return applyVertical(y: y, dy: dy, set: set)
-        }
-    }
-
-    mutating func end() {
-        space.end()
-        resetTracking()
-    }
-
-    mutating func cancel() {
-        space.cancel()
-        resetTracking()
-    }
-
-    private mutating func resetTracking() {
-        owner = nil
-        lastX = 0
-        lastY = 0
-        hasSample = false
-        axis = nil
-        volumeHold = 0
-        firedAppExpose = false
-        firedDiscrete = nil
-        holdStartedAt = nil
-    }
-
-    private mutating func resolveAxis(x: Double, y: Double, travel: Double) {
-        guard axis == nil else { return }
-        if abs(y) >= 6, abs(y) >= abs(x) {
-            axis = .vertical
-            return
-        }
-        if travel >= 10 {
-            axis = .horizontal
-        }
-    }
-
-    private mutating func applyHorizontal(x: Double, set: GestureSet) -> ControlAction? {
-        if set.right.isLiveSpace || set.left.isLiveSpace {
-            applySpace(x: x, set: set)
-            return nil
-        }
-        guard firedDiscrete == nil else { return nil }
-        let action: ControlAction
-        if x <= -40 {
-            action = set.left
-        } else if x >= 40 {
-            action = set.right
-        } else {
-            return nil
-        }
-        guard action.isDiscreteSwipe else { return nil }
-        firedDiscrete = action
-        return action
-    }
-
-    private mutating func applySpace(x: Double, set: GestureSet) {
-        let flip = set.right == .spaceLeft || set.left == .spaceRight
-        space.setAbsolute((flip ? -x : x) / DockSwipe.horizontalSpan, axis: .horizontal)
-    }
-
-    private mutating func applyVertical(y: Double, dy: Double, set: GestureSet) -> ControlAction? {
-        if set.down == .appExpose, y >= 40, !firedAppExpose {
-            space.cancel()
-            firedAppExpose = true
-            return .appExpose
-        }
-        if set.up.isLiveMissionSwipe, -y > 0.002 {
-            space.setAbsolute(-y / DockSwipe.liveVerticalSpan, axis: .vertical)
-            return nil
-        }
-        if set.down.isLiveMissionSwipe, set.down != .appExpose {
-            space.setAbsolute(-y / DockSwipe.liveVerticalSpan, axis: .vertical)
-            return nil
-        }
-        applyVolume(dy: dy, set: set)
-        return nil
-    }
-
-    private mutating func applyVolume(dy: Double, set: GestureSet) {
-        let action = dy < 0 ? set.up : set.down
-        guard action.isLiveVolume else { return }
-        let pixels = abs(dy)
-        let amount = pixels / DockSwipe.verticalSpan
-        volumeHold += action == .mediaVolumeUp ? amount : -amount
-        guard abs(volumeHold) >= 0.001 else { return }
-        if let level = SystemVolume.adjust(by: volumeHold) {
-            VolumeHUD.show(level: level)
-        }
-        volumeHold = 0
     }
 }

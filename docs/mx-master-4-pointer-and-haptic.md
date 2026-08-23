@@ -42,6 +42,18 @@ HID++ diverted raw XY (`handleRawXY`) uses the same scaler when that pipe exists
 
 Without the DPI term, 2000 DPI felt like twice the swipe of 1000 DPI. At 1000 DPI the haptic bar felt right; other DPI values now match that physical travel. See [haptic-swipe-scales-with-dpi.md](haptic-swipe-scales-with-dpi.md).
 
+## Hold-to-swipe module
+
+`HoldGesture` in IRemoteControl is the only place that decides tap vs swipe, axis, Spaces, Mission Control, App Exposé, media skip, and volume. `ControlEngine` starts it when the haptic pad is held and that binding is Gestures.
+
+The MX reader only captures pad down + raw XY and a pinned cursor. It does not know about media vs window navigation.
+
+## Gestures is the haptic pad only
+
+Profiles expose **Gestures** on the haptic pad. Back, Forward, and the other clicks stay ordinary button bindings.
+
+Click-as-gesture (hold Back and move the mouse) is parked. The Back button has no pad XY; the only motion is the desk laser, and that path never controlled live Spaces reliably. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+
 ## Tap vs swipe
 
 A short press is a **tap** (the click action, default Mission Control). Hold + move is a **swipe**.

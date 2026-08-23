@@ -82,8 +82,10 @@ final class LogitechMXMasterReader {
     private var gestureCID: UInt16 = 0x01A0
     private var hapticCID: UInt16 = 0x01A0
     private var gestureCIDs: Set<UInt16> = [0x01A0]
+    private var gestureOwnerButtons: Set<DeviceButton> = [.mxHaptic]
+    private var holdSources: [DeviceButton: Set<String>] = [:]
     private var activeGestureCID: UInt16?
-    private var lastDivertedNative: Set<UInt16> = []
+    private var lastHapticBit = false
     private var ignoreNextRawXY = false
     private var pressed = Set<UInt16>()
     private var running = false
@@ -153,7 +155,6 @@ final class LogitechMXMasterReader {
             value.gestureDX = live.width
             value.gestureDY = live.height
             value.gestureDown = true
-            value.haptic = true
             value.gestureHeld = true
         }
         return value
@@ -173,6 +174,8 @@ final class LogitechMXMasterReader {
         hapticReleaseWork?.cancel()
         hapticReleaseWork = nil
         hapticDownAt = nil
+        lastHapticBit = false
+        holdSources.removeAll()
         hidppEpoch += 1
         unfreezeCursor()
         unlockCursor()
@@ -218,6 +221,7 @@ final class LogitechMXMasterReader {
         desiredDPI = MappingProfile.defaultSensorDPI
         desiredPointerSpeed = 0.5
         desiredHapticGestureSpeed = 0.5
+        lastHapticBit = false
         desiredSmoothScrolling = true
         naturalScrolling = true
         injectEnabled = false
@@ -257,8 +261,10 @@ final class LogitechMXMasterReader {
     }
 
     func setGestureOwners(_ buttons: Set<DeviceButton>) {
-        var cids = Set(buttons.flatMap(Self.cids(for:)))
-        cids.formUnion(Self.physicalHapticCIDs)
+        let owners = buttons.intersection([.mxHaptic])
+        gestureOwnerButtons = owners
+        var cids = Set(owners.flatMap(Self.cids(for:)))
+        cids.subtract(Self.nativeClickCIDs)
         guard cids != gestureCIDs else { return }
         gestureCIDs = cids
         if let haptic = cids.first(where: { $0 == hapticCID }) {
@@ -266,7 +272,6 @@ final class LogitechMXMasterReader {
         } else {
             gestureCID = cids.first ?? hapticCID
         }
-        divertNativeGestureOwners()
     }
 
     func applyScrollDirection(_ natural: Bool) {
@@ -348,15 +353,26 @@ final class LogitechMXMasterReader {
             unlockCursor()
             return
         }
-        freezeCursor()
-        unlockCursor()
+        pinCursor(forceWarp: false)
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
         snapshot.gestureHeld = true
         snapshot.gestureDown = true
-        snapshot.haptic = true
         lock.unlock()
+    }
+
+    private func pinCursor(forceWarp: Bool) {
+        if gestureOrigin == .zero {
+            gestureOrigin = CGEvent(source: nil)?.location ?? .zero
+        }
+        CGAssociateMouseAndMouseCursorPosition(0)
+        let now = CGEvent(source: nil)?.location ?? gestureOrigin
+        if forceWarp || hypot(now.x - gestureOrigin.x, now.y - gestureOrigin.y) > 2 {
+            CGWarpMouseCursorPosition(gestureOrigin)
+        }
+        cursorFrozen = true
+        cursorLocked = true
     }
 
     private func lockCursor() {
@@ -493,10 +509,10 @@ final class LogitechMXMasterReader {
             callback: { _, type, event, context in
                 guard let context else { return Unmanaged.passUnretained(event) }
                 let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
-                if reader.shouldSwallowPointerEvent(type) {
+                reader.handleClickEvent(type: type, event: event)
+                if reader.shouldSwallowPointerEvent(type, event: event) {
                     return nil
                 }
-                reader.handleClickEvent(type: type, event: event)
                 return Unmanaged.passUnretained(event)
             },
             userInfo: pointer
@@ -508,10 +524,19 @@ final class LogitechMXMasterReader {
         clickSource = source
     }
 
-    private func shouldSwallowPointerEvent(_ type: CGEventType) -> Bool {
+    private func shouldSwallowPointerEvent(_ type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
             return activeGestureCID != nil || cursorFrozen
+        case .leftMouseDown, .leftMouseUp:
+            return gestureOwnerButtons.contains(.mxLeft)
+        case .rightMouseDown, .rightMouseUp:
+            return gestureOwnerButtons.contains(.mxRight)
+        case .otherMouseDown, .otherMouseUp:
+            if let owner = Self.gestureOwner(forOtherMouse: event) {
+                return gestureOwnerButtons.contains(owner)
+            }
+            return false
         default:
             return false
         }
@@ -540,10 +565,10 @@ final class LogitechMXMasterReader {
             if button == 2, snapshot.middle != down {
                 snapshot.middle = down
                 logs.append(("Middle", down))
-            } else if button == 3, !ready, snapshot.back != down {
+            } else if button == 3, snapshot.back != down {
                 snapshot.back = down
                 logs.append(("Back", down))
-            } else if button == 4, !ready, snapshot.forward != down {
+            } else if button == 4, snapshot.forward != down {
                 snapshot.forward = down
                 logs.append(("Forward", down))
             } else if button == 6 || button == 5 {
@@ -581,44 +606,98 @@ final class LogitechMXMasterReader {
             break
         }
         lock.unlock()
-        if logs.contains(where: { $0.0 == "Haptic" && $0.1 }) {
-            applyHapticEdge(down: true)
+        switch type {
+        case .leftMouseDown:
+            addHoldSource(.mxLeft, "cg")
+        case .leftMouseUp:
+            removeHoldSource(.mxLeft, "cg")
+        case .rightMouseDown:
+            addHoldSource(.mxRight, "cg")
+        case .rightMouseUp:
+            removeHoldSource(.mxRight, "cg")
+        case .otherMouseDown:
+            if let owner = Self.gestureOwner(forOtherMouse: event) {
+                addHoldSource(owner, "cg")
+            }
+        case .otherMouseUp:
+            if let owner = Self.gestureOwner(forOtherMouse: event) {
+                removeHoldSource(owner, "cg")
+            }
+        default:
+            break
         }
         for (label, pressed) in logs {
             logEvent(label, pressed: pressed)
         }
     }
 
-    private func applyHapticEdge(down: Bool) {
-        if down {
-            cancelHapticRelease()
-            guard activeGestureCID == nil else {
-                freezeCursor()
-                lock.lock()
-                snapshot.haptic = true
-                snapshot.gestureDown = true
-                snapshot.gestureHeld = true
-                lock.unlock()
-                return
-            }
-            activeGestureCID = MXMaster4Support.hapticCID
-            usingRawXY = true
-            ignoreNextRawXY = false
-            hapticDownAt = Date()
-            gestureDelta = .zero
-            pointerDelta = .zero
-            gestureOrigin = CGEvent(source: nil)?.location ?? .zero
-            pointerOrigin = gestureOrigin
-            freezeCursor()
+    private func isGestureOwner(_ button: DeviceButton) -> Bool {
+        gestureOwnerButtons.contains(button)
+    }
+
+    private func addHoldSource(_ owner: DeviceButton, _ source: String) {
+        guard isGestureOwner(owner) else { return }
+        var sources = holdSources[owner] ?? []
+        sources.insert(source)
+        holdSources[owner] = sources
+        beginGesture(owner: owner)
+    }
+
+    private func removeHoldSource(_ owner: DeviceButton, _ source: String) {
+        var sources = holdSources[owner] ?? []
+        sources.remove(source)
+        if sources.isEmpty {
+            holdSources[owner] = nil
+            endGesture(owner: owner)
+        } else {
+            holdSources[owner] = sources
+        }
+    }
+
+    private func beginGesture(owner: DeviceButton) {
+        guard isGestureOwner(owner) else { return }
+        cancelHapticRelease()
+        if activeGestureCID != nil {
+            pinCursor(forceWarp: false)
             lock.lock()
-            snapshot.haptic = true
             snapshot.gestureDown = true
             snapshot.gestureHeld = true
-            snapshot.liveGestureOwner = .mxHaptic
+            if owner == .mxHaptic { snapshot.haptic = true }
             lock.unlock()
-            noteLastEvent("haptic down")
+            return
+        }
+        activeGestureCID = Self.cids(for: owner).first ?? MXMaster4Support.hapticCID
+        usingRawXY = true
+        ignoreNextRawXY = false
+        hapticDownAt = Date()
+        gestureDelta = .zero
+        pointerDelta = .zero
+        gestureOrigin = CGEvent(source: nil)?.location ?? .zero
+        pointerOrigin = gestureOrigin
+        pinCursor(forceWarp: true)
+        lock.lock()
+        snapshot.gestureDown = true
+        snapshot.gestureHeld = true
+        snapshot.liveGestureOwner = owner
+        if owner == .mxHaptic { snapshot.haptic = true }
+        lock.unlock()
+        noteLastEvent("\(owner.title) gesture down")
+    }
+
+    private func endGesture(owner: DeviceButton) {
+        guard isGestureOwner(owner) else { return }
+        lock.lock()
+        let current = snapshot.liveGestureOwner
+        lock.unlock()
+        guard current == nil || current == owner else { return }
+        finishHapticNow()
+    }
+
+    private func applyHapticEdge(down: Bool) {
+        if down {
+            addHoldSource(.mxHaptic, "pad")
         } else {
-            finishHapticNow()
+            removeHoldSource(.mxHaptic, "pad")
         }
     }
 
@@ -632,6 +711,9 @@ final class LogitechMXMasterReader {
         guard activeGestureCID != nil else { return }
         let cid = activeGestureCID ?? MXMaster4Support.hapticCID
         activeGestureCID = nil
+        if let owner = snapshot.liveGestureOwner {
+            holdSources[owner] = nil
+        }
         finishGesture(released: cid)
     }
 
@@ -1469,18 +1551,18 @@ final class LogitechMXMasterReader {
 
     private func handleNativeMouseReport(_ report: UnsafePointer<UInt8>, length: Int) {
         guard length >= 2 else { return }
-        let down = report[1] & MXMaster4Support.nativeHapticButtonBit != 0
-        let wasDown = activeGestureCID != nil || pressed.contains(MXMaster4Support.hapticCID)
-        if down != wasDown {
-            if down {
+        let hapticDown = report[1] & MXMaster4Support.nativeHapticButtonBit != 0
+        if hapticDown != lastHapticBit {
+            lastHapticBit = hapticDown
+            if hapticDown {
                 pressed.insert(MXMaster4Support.hapticCID)
             } else {
                 pressed.remove(MXMaster4Support.hapticCID)
             }
             applyPressed(pressed)
-            applyHapticEdge(down: down)
+            applyHapticEdge(down: hapticDown)
         }
-        guard down, length >= 5 else { return }
+        guard activeGestureCID != nil, length >= 5 else { return }
         let dx = Self.signExtend12(Int(report[2]) | (Int(report[3] & 0x0F) << 8))
         let dy = Self.signExtend12((Int(report[3]) >> 4) | (Int(report[4]) << 4))
         guard dx != 0 || dy != 0 else { return }
@@ -1490,7 +1572,6 @@ final class LogitechMXMasterReader {
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
-        snapshot.haptic = true
         snapshot.gestureDown = true
         snapshot.gestureHeld = true
         lock.unlock()
@@ -1514,25 +1595,15 @@ final class LogitechMXMasterReader {
         }
         applyPressed(next)
 
-        if added.contains(where: { gestureCIDs.contains($0) || $0 == hapticCID }) {
-            applyHapticEdge(down: true)
+        for cid in added {
+            guard let button = Self.button(for: cid), isGestureOwner(button) else { continue }
+            if Self.nativeClickCIDs.contains(cid) { continue }
+            addHoldSource(button, "hidpp")
         }
-        if activeGestureCID == nil, let cid = added.first(where: { gestureCIDs.contains($0) || $0 == hapticCID }) {
-            activeGestureCID = cid
-            if hapticDownAt == nil { hapticDownAt = Date() }
-            lock.lock()
-            snapshot.liveGestureOwner = Self.button(for: cid) ?? .mxHaptic
-            snapshot.gestureDown = true
-            lock.unlock()
-            noteLastEvent("gesture down")
-        }
-        if let cid = activeGestureCID, removed.contains(cid) {
-            if Self.physicalHapticCIDs.contains(cid) {
-                finishHapticNow()
-            } else {
-                activeGestureCID = nil
-                finishGesture(released: cid)
-            }
+        for cid in removed {
+            guard let button = Self.button(for: cid) else { continue }
+            if Self.nativeClickCIDs.contains(cid) { continue }
+            removeHoldSource(button, "hidpp")
         }
     }
 
@@ -1547,7 +1618,7 @@ final class LogitechMXMasterReader {
         snapshot.modeShift = next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)
         let hidppHaptic = next.contains(where: { Self.physicalHapticCIDs.contains($0) })
         let holding = activeGestureCID != nil
-        snapshot.haptic = hidppHaptic || holding
+        snapshot.haptic = hidppHaptic || lastHapticBit
         snapshot.extras = extras
         snapshot.gestureDown = snapshot.haptic
             || next.contains(where: { self.gestureCIDs.contains($0) })
@@ -1713,16 +1784,16 @@ final class LogitechMXMasterReader {
         case (0x09, 6):
             snapshot.smartShift = integer != 0
         case (0x09, 7):
-            snapshot.haptic = integer != 0 || activeGestureCID != nil
-            snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown
+            snapshot.haptic = integer != 0 || lastHapticBit
+            snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown || activeGestureCID != nil
         case (0x01, 0x30):
-            if snapshot.haptic || snapshot.gestureDown, integer != 0 {
+            if activeGestureCID != nil, snapshot.liveGestureOwner == .mxHaptic, integer != 0 {
                 usingRawXY = true
                 addGestureHID(dx: Double(integer), dy: 0)
                 snapshot.gestureDX = gestureDelta.width
             }
         case (0x01, 0x31):
-            if snapshot.haptic || snapshot.gestureDown, integer != 0 {
+            if activeGestureCID != nil, snapshot.liveGestureOwner == .mxHaptic, integer != 0 {
                 usingRawXY = true
                 addGestureHID(dx: 0, dy: Double(integer))
                 snapshot.gestureDY = gestureDelta.height
@@ -1836,6 +1907,16 @@ final class LogitechMXMasterReader {
         return dx < 0 ? .mxGestureLeft : .mxGestureRight
     }
 
+    private static func gestureOwner(forOtherMouse event: CGEvent) -> DeviceButton? {
+        switch event.getIntegerValueField(.mouseEventButtonNumber) {
+        case 2: return .mxMiddle
+        case 3: return .mxBack
+        case 4: return .mxForward
+        case 5, 6: return .mxHaptic
+        default: return nil
+        }
+    }
+
     private static func button(for cid: UInt16) -> DeviceButton? {
         switch cid {
         case 0x0050: return .mxLeft
@@ -1898,16 +1979,6 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func divertNativeGestureOwners() {
-        guard ready, let reprogIndex else { return }
-        let extra = gestureCIDs.intersection(Self.nativeClickCIDs)
-        guard extra != lastDivertedNative else { return }
-        lastDivertedNative = extra
-        let jobs = extra.map {
-            DivertJob(cid: $0, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0)
-        }
-        divert(jobs: jobs, reprogIndex: reprogIndex) { }
-    }
     private static let physicalHapticCIDs: Set<UInt16> = [0x01A0, 0x00C3]
     private static let knownGestureCIDs: Set<UInt16> = [0x00C3, 0x00D6, 0x00D7]
     private static let nativeClickCIDs: Set<UInt16> = [0x0050, 0x0051, 0x0052]

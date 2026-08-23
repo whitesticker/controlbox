@@ -145,6 +145,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     }
 
     public mutating func setBinding(_ action: ControlAction, for button: DeviceButton) {
+        if action == .gestures, button != .mxHaptic {
+            bindings[button] = Self.fallbackMXClickAction(for: button)
+            return
+        }
         bindings[button] = action
         if action != .gestures {
             gestureSets?[button] = nil
@@ -156,19 +160,33 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    /// Hold-to-swipe is the haptic pad only. Click-as-gesture on Back / etc. is parked.
+    public mutating func restrictGesturesToHapticPad() {
+        for button in bindings.keys where button != .mxHaptic && bindings[button] == .gestures {
+            bindings[button] = Self.fallbackMXClickAction(for: button)
+        }
+        if let sets = gestureSets {
+            let kept = sets.filter { $0.key == .mxHaptic }
+            gestureSets = kept.isEmpty ? nil : kept
+        }
+    }
+
     public var mxGestureOwners: Set<DeviceButton> {
-        var owners = Set((gestureSets ?? [:]).keys)
-        for (button, action) in bindings where action == .gestures {
-            owners.insert(button)
+        if bindings[.mxHaptic] == .gestures || gestureSets?[.mxHaptic] != nil {
+            return [.mxHaptic]
         }
-        if owners.isEmpty, bindings[.mxGesture] != nil || bindings[.mxGestureUp] != nil {
-            owners.insert(.mxHaptic)
+        if bindings[.mxGesture] != nil || bindings[.mxGestureUp] != nil {
+            return [.mxHaptic]
         }
-        return owners
+        return []
     }
 
     public func gestureSet(for button: DeviceButton) -> GestureSet? {
+        guard button == .mxHaptic else { return nil }
         if let set = gestureSets?[button] { return set }
+        if bindings[button] == .gestures {
+            return .named(.windowNavigation)
+        }
         if button == .mxHaptic, (gestureSets ?? [:]).isEmpty {
             return GestureSet(
                 preset: .custom,
@@ -190,10 +208,19 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     }
 
     public mutating func setGestureSet(_ set: GestureSet, for button: DeviceButton) {
+        guard button == .mxHaptic else { return }
         bindings[button] = .gestures
         var sets = gestureSets ?? [:]
         sets[button] = set
         gestureSets = sets
+    }
+
+    private static func fallbackMXClickAction(for button: DeviceButton) -> ControlAction {
+        switch button {
+        case .mxBack: return .browserBack
+        case .mxForward: return .browserForward
+        default: return .none
+        }
     }
 
     public mutating func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
@@ -235,7 +262,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if isMXMaster {
             return MappingProfile(
                 name: name,
-                summary: "Assign Gestures to any button, then hold and move. A tap without moving is Click.",
+                summary: "Haptic pad is Gestures. Back and Forward are browser buttons.",
                 bindings: mxMasterBindings,
                 sensorDPI: defaultSensorDPI,
                 smoothScrolling: true,

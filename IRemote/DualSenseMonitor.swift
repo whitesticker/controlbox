@@ -944,6 +944,11 @@ final class DualSenseMonitor {
                     next.profiles = [profile]
                     next.selectedProfileID = profile.id
                 }
+                if next.isMXMaster {
+                    for index in next.profiles.indices {
+                        next.profiles[index].restrictGesturesToHapticPad()
+                    }
+                }
                 if next.isAppleTVRemote {
                     for index in next.profiles.indices {
                         if next.profiles[index].appleTVClickpad != .off {

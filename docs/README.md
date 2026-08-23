@@ -18,6 +18,8 @@ Working model (read this first for MX4 feel): [mx-master-4-pointer-and-haptic.md
 | [haptic-tap-starts-swipe.md](haptic-tap-starts-swipe.md) | A tap also peeks Spaces or Mission Control |
 | [dockswipe-progress-snapback.md](dockswipe-progress-snapback.md) | Spaces / Mission Control jump backward mid-swipe |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
+| [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only |
+| [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked |
 
 Open work: [todo.md](todo.md).
 
