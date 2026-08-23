@@ -563,7 +563,7 @@ struct DeviceProfilePane: View {
             ? "DPI is sensor resolution on this mouse. Gesture speed is hold-to-swipe on the thumb button."
             : "DPI is sensor resolution on this mouse. Haptic gesture speed is the thumb pad."
         return feel
-            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed are shared by every MX mouse — there is one system scroll tap, so those cannot differ per mouse. Accessibility must be allowed for wheel speed."
+            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed are shared by every mouse — there is one system scroll tap, so those cannot differ per mouse. Accessibility must be allowed for wheel speed."
     }
 
     private func mxButtonsFooter(for record: DeviceRecord) -> String {

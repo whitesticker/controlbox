@@ -5,6 +5,7 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 ## Current status (2026-08-22)
 
 - Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, and MX Master 4 can stay attached at once. Each device has its own **Control this Mac** toggle.
+- Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
 - HID modules stay split: **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Each family has its own HID++ reader (product IDs only). Shared code is the HID++ pipe and hold-to-swipe engine.
 - 3S HID++ is nested on the mouse device (page `0xFF43`, report `0x11`). Gesture is thumb CID `0x00C3`. See `docs/mx-master-3s-hid.md`.
 - MX4 pointer / haptic stack is unchanged. How MX4 should feel is `docs/mx-master-4-pointer-and-haptic.md`.

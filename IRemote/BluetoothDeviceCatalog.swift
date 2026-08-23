@@ -62,7 +62,7 @@ enum DeviceSupport {
     static let dualSenseProductID = 0x0CE6
     static let dualSenseEdgeProductID = 0x0DF2
     static let appleVendorID = 0x004C
-    static let appleTVRemoteProductIDs: Set<Int> = [0x0314, 0x0315, 0x0266, 0x0267]
+    static var appleTVRemoteProductIDs: Set<Int> { AppleTVRemoteGenerations.productIDs }
     static let logitechVendorID = 0x046D
     static let mxMasterProductIDs: Set<Int> =
         MXMaster3Support.productIDs

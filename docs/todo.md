@@ -29,9 +29,12 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Never call `IOBluetoothDevice.pairedDevices()`
 - [ ] Keep Apple Development signing (do not go back to ad-hoc)
 - [x] Two mice at once (3S + 4) — isolated HID++ readers; still needs a 3S+4 hardware pass
+- [x] Device family sessions (DualSense, Apple TV A2540); host no longer owns those readers
 
 ## Later
 
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
+
+Product-facing work (mic, gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle) lives in [roadmap.md](roadmap.md).

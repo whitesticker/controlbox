@@ -5,100 +5,7 @@ import GameController
 import IOKit.hid
 import IRemoteControl
 import Observation
-
-struct Vec3: Equatable, Sendable {
-    var x: Double
-    var y: Double
-    var z: Double
-
-    static let zero = Vec3(x: 0, y: 0, z: 0)
-
-    var magnitude: Double {
-        sqrt(x * x + y * y + z * z)
-    }
-}
-
-struct TouchFinger: Equatable, Sendable {
-    var x: Float
-    var y: Float
-    var active: Bool
-}
-
-struct InputLogEvent: Identifiable, Equatable, Sendable {
-    let id: UUID
-    let date: Date
-    let label: String
-    let pressed: Bool
-}
-
-struct DualSenseSnapshot: Equatable, Sendable {
-    var connected = false
-    var name = "No controller"
-    var product = ""
-    var isDualSense = false
-    var playerIndex = -1
-
-    var cross = false
-    var circle = false
-    var square = false
-    var triangle = false
-    var dpadUp = false
-    var dpadDown = false
-    var dpadLeft = false
-    var dpadRight = false
-    var l1 = false
-    var r1 = false
-    var l3 = false
-    var r3 = false
-    var create = false
-    var options = false
-    var ps = false
-    var touchpadClick = false
-
-    var l2: Float = 0
-    var r2: Float = 0
-    var leftStick = SIMD2<Float>(repeating: 0)
-    var rightStick = SIMD2<Float>(repeating: 0)
-
-    var touch1 = TouchFinger(x: 0, y: 0, active: false)
-    var touch2 = TouchFinger(x: 0, y: 0, active: false)
-
-    var gravity = Vec3.zero
-    var userAcceleration = Vec3.zero
-    var rotationRate = Vec3.zero
-    var hasMotion = false
-
-    var batteryPercent: Int?
-    var batteryCharging = false
-    var batteryFull = false
-    var batteryAvailable = false
-    var batteryStateDescription = "Unknown"
-
-    var events: [InputLogEvent] = []
-
-    func hadButtonDown(from previous: DualSenseSnapshot) -> Bool {
-        func rose(_ now: Bool, _ was: Bool) -> Bool { now && !was }
-        if rose(cross, previous.cross) { return true }
-        if rose(circle, previous.circle) { return true }
-        if rose(square, previous.square) { return true }
-        if rose(triangle, previous.triangle) { return true }
-        if rose(dpadUp, previous.dpadUp) { return true }
-        if rose(dpadDown, previous.dpadDown) { return true }
-        if rose(dpadLeft, previous.dpadLeft) { return true }
-        if rose(dpadRight, previous.dpadRight) { return true }
-        if rose(l1, previous.l1) { return true }
-        if rose(r1, previous.r1) { return true }
-        if rose(l3, previous.l3) { return true }
-        if rose(r3, previous.r3) { return true }
-        if rose(create, previous.create) { return true }
-        if rose(options, previous.options) { return true }
-        if rose(ps, previous.ps) { return true }
-        if rose(touchpadClick, previous.touchpadClick) { return true }
-        if previous.l2 <= 0.2 && l2 > 0.2 { return true }
-        if previous.r2 <= 0.2 && r2 > 0.2 { return true }
-        return false
-    }
-}
+import ServiceManagement
 
 @Observable
 @MainActor
@@ -113,10 +20,15 @@ final class DualSenseMonitor {
     var deviceRecords: [DeviceRecord] = []
     var accessibilityTrusted = false
     var inputMonitoringTrusted = false
+    var backgroundAllowed = false
     let controlEngine = ControlEngine()
 
     var allPermissionsGranted: Bool {
-        accessibilityTrusted && inputMonitoringTrusted
+        accessibilityTrusted && inputMonitoringTrusted && backgroundAllowed
+    }
+
+    var needsRelaunchForPermissions: Bool {
+        !accessibilityTrusted || !inputMonitoringTrusted
     }
     private var suppressedDeviceKeys: Set<String> = []
 
@@ -195,38 +107,27 @@ final class DualSenseMonitor {
         connectedDevices.filter { !$0.isSupported && $0.isConnected }
     }
 
-    private var controller: GCController?
     private var pollTimer: Timer?
     private var controlActivity: NSObjectProtocol?
-    private var previousButtons: [String: Bool] = [:]
     private var observers: [NSObjectProtocol] = []
     private var lastAudioProbe = Date.distantPast
-    private var lastBatteryProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
     private var lastDeviceProbe = Date.distantPast
-    private var lastAppleTVTouchRescan = Date.distantPast
-    private var appleTVHIDWasLive = false
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
-    private let haptics = DualSenseHaptics()
-    private let hidBattery = DualSenseHIDBatteryReader()
-    private let appleTVReader = AppleTVRemoteHIDReader()
-    private let appleTVTouch = AppleTVTouchReader()
-    private let appleTVBattery = AppleTVBatteryReader()
+    private let dualSense = DualSenseSession()
+    private let appleTV = AppleTVRemoteSession()
     private let mx3Reader = LogitechMXMasterReader(model: MXMaster3Support.model)
     private let mx4Reader = LogitechMXMasterReader(model: MXMaster4Support.model)
     private let mouseScrollTap = MouseScrollTap()
 
     private var mxReaders: [LogitechMXMasterReader] { [mx3Reader, mx4Reader] }
+    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV] }
 
     func start() {
         guard !didStart else { return }
         didStart = true
-        GCController.shouldMonitorBackgroundEvents = true
-        hidBattery.start()
-        appleTVReader.start()
-        appleTVTouch.start()
-        appleTVBattery.start()
+        familySessions.forEach { $0.start() }
         mx3Reader.start()
         mx4Reader.start()
         loadDeviceRecords()
@@ -248,6 +149,7 @@ final class DualSenseMonitor {
                 Task { @MainActor in
                     self?.refreshDevices()
                     self?.attachPreferredController()
+                    self?.snapshot = self?.dualSense.snapshot ?? DualSenseSnapshot()
                 }
             }
         )
@@ -261,7 +163,9 @@ final class DualSenseMonitor {
                 guard let controller = notification.object as? GCController else { return }
                 Task { @MainActor in
                     self?.refreshDevices()
-                    self?.handleDisconnect(controller)
+                    self?.dualSense.handleDisconnect(controller)
+                    self?.attachPreferredController()
+                    self?.snapshot = self?.dualSense.snapshot ?? DualSenseSnapshot()
                 }
             }
         )
@@ -278,7 +182,6 @@ final class DualSenseMonitor {
             }
         )
 
-        GCController.startWirelessControllerDiscovery(completionHandler: nil)
         attachPreferredController()
 
         let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
@@ -297,15 +200,10 @@ final class DualSenseMonitor {
         endControlActivity()
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
-        hidBattery.stop()
-        appleTVReader.stop()
-        appleTVTouch.stop()
-        appleTVBattery.stop()
+        familySessions.forEach { $0.stop() }
         mx3Reader.stop()
         mx4Reader.stop()
         mouseScrollTap.stop()
-        haptics.detach()
-        GCController.stopWirelessControllerDiscovery()
     }
 
     func selectDevice(_ device: ConnectedBluetoothDevice) {
@@ -315,7 +213,6 @@ final class DualSenseMonitor {
     func selectDevice(id: String?) {
         guard selectedDeviceID != id else { return }
         selectedDeviceID = id
-        previousButtons = [:]
         if let id {
             engines[id]?.reset()
             ensureRecord(for: id)
@@ -343,7 +240,7 @@ final class DualSenseMonitor {
     func setHapticFeedback(_ enabled: Bool) {
         updateSelectedRecord { $0.hapticFeedback = enabled }
         if enabled {
-            haptics.pulse()
+            dualSense.pulse()
         }
     }
 
@@ -391,7 +288,7 @@ final class DualSenseMonitor {
     }
 
     func setPointerSpeed(_ speed: Double) {
-        updateMXSharedOrSelected { $0.pointerSpeed = min(max(speed, 0), 1) }
+        updateSharedMouseScroll { $0.pointerSpeed = min(max(speed, 0), 1) }
     }
 
     func setHapticGestureSpeed(_ speed: Double) {
@@ -399,15 +296,15 @@ final class DualSenseMonitor {
     }
 
     func setWheelScrollSpeed(_ speed: Double) {
-        updateMXSharedOrSelected { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
+        updateSharedMouseScroll { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setThumbScrollSpeed(_ speed: Double) {
-        updateMXSharedOrSelected { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+        updateSharedMouseScroll { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setNaturalScrolling(_ enabled: Bool) {
-        updateMXSharedOrSelected { $0.naturalScrolling = enabled }
+        updateSharedMouseScroll { $0.naturalScrolling = enabled }
     }
 
     func setSensorDPI(_ dpi: Int) {
@@ -415,7 +312,7 @@ final class DualSenseMonitor {
     }
 
     func setSmoothScrolling(_ enabled: Bool) {
-        updateMXSharedOrSelected { $0.smoothScrolling = enabled }
+        updateSharedMouseScroll { $0.smoothScrolling = enabled }
     }
 
     func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
@@ -436,13 +333,15 @@ final class DualSenseMonitor {
         }
     }
 
-    private func updateMXSharedOrSelected(_ mutate: (inout MappingProfile) -> Void) {
+    /// Scroll invert / wheel speed / pointer speed for every system mouse
+    /// (MX now; generic mouse later). Gamepads stay on their own profile.
+    private func updateSharedMouseScroll(_ mutate: (inout MappingProfile) -> Void) {
         updateSelectedProfile(mutate)
         guard selectedRecord?.isMXMaster == true, let source = selectedRecord?.selectedProfile else { return }
-        propagateSharedMXPointerScroll(from: source)
+        propagateSharedMouseScroll(from: source)
     }
 
-    private func propagateSharedMXPointerScroll(from source: MappingProfile) {
+    private func propagateSharedMouseScroll(from source: MappingProfile) {
         var changed = false
         for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
             let selectedID = deviceRecords[index].selectedProfileID
@@ -450,8 +349,8 @@ final class DualSenseMonitor {
                 continue
             }
             var profile = deviceRecords[index].profiles[profileIndex]
-            if Self.sharedMXPointerScrollMatches(profile, source) { continue }
-            Self.applySharedMXPointerScroll(&profile, from: source)
+            if Self.sharedMouseScrollMatches(profile, source) { continue }
+            Self.applySharedMouseScroll(&profile, from: source)
             deviceRecords[index].profiles[profileIndex] = profile
             changed = true
         }
@@ -460,7 +359,7 @@ final class DualSenseMonitor {
         }
     }
 
-    private static func sharedMXPointerScrollMatches(_ profile: MappingProfile, _ source: MappingProfile) -> Bool {
+    private static func sharedMouseScrollMatches(_ profile: MappingProfile, _ source: MappingProfile) -> Bool {
         profile.pointerSpeed == source.pointerSpeed
             && profile.naturalScrolling == source.naturalScrolling
             && profile.smoothScrolling == source.smoothScrolling
@@ -468,7 +367,7 @@ final class DualSenseMonitor {
             && profile.thumbScrollSpeed == source.thumbScrollSpeed
     }
 
-    private static func applySharedMXPointerScroll(_ profile: inout MappingProfile, from source: MappingProfile) {
+    private static func applySharedMouseScroll(_ profile: inout MappingProfile, from source: MappingProfile) {
         profile.pointerSpeed = source.pointerSpeed
         profile.naturalScrolling = source.naturalScrolling
         profile.smoothScrolling = source.smoothScrolling
@@ -579,6 +478,22 @@ final class DualSenseMonitor {
         ])
     }
 
+    func promptForBackgroundActivity() {
+        do {
+            try SMAppService.mainApp.register()
+        } catch {
+            openBackgroundSettings()
+        }
+        refreshPermissions()
+        if SMAppService.mainApp.status == .requiresApproval {
+            openBackgroundSettings()
+        }
+    }
+
+    func openBackgroundSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
     func relaunchApp() {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
@@ -598,6 +513,10 @@ final class DualSenseMonitor {
         let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
         if inputMonitoringTrusted != inputMonitoring {
             inputMonitoringTrusted = inputMonitoring
+        }
+        let background = SMAppService.mainApp.status == .enabled
+        if backgroundAllowed != background {
+            backgroundAllowed = background
         }
     }
 
@@ -661,53 +580,18 @@ final class DualSenseMonitor {
                 ensureRecord(for: selectedDeviceID)
             }
         }
-        controller = nil
-        previousButtons = [:]
+        dualSense.detach()
         snapshot = DualSenseSnapshot()
         appleTVSnapshot = AppleTVRemoteSnapshot()
         attachPreferredController()
     }
 
     private func attachPreferredController() {
-        let dualSenses = GCController.controllers().filter { $0.extendedGamepad is GCDualSenseGamepad }
-        guard !dualSenses.isEmpty else {
-            if controller != nil {
-                controller = nil
-                haptics.detach()
-                snapshot = DualSenseSnapshot()
-                previousButtons = [:]
-            }
-            return
-        }
         let preferredName = deviceRecords.first {
             $0.kind == .dualSense || $0.kind == .dualSenseEdge
         }?.name
-        let match = dualSenses.first { controller in
-            (controller.vendorName ?? "") == preferredName
-        } ?? dualSenses.first
-        attachIfNeeded(match)
-    }
-
-    private func attachIfNeeded(_ incoming: GCController?) {
-        guard let incoming, incoming.extendedGamepad is GCDualSenseGamepad else { return }
-        if let current = controller, current == incoming { return }
-
-        controller = incoming
-        incoming.handlerQueue = .main
-        incoming.motion?.sensorsActive = true
-        previousButtons = [:]
-        haptics.attach(incoming)
-        capture()
-    }
-
-    private func handleDisconnect(_ disconnected: GCController) {
-        if controller == disconnected {
-            controller = nil
-            haptics.detach()
-            snapshot = DualSenseSnapshot()
-            previousButtons = [:]
-        }
-        attachPreferredController()
+        dualSense.attachPreferred(named: preferredName)
+        snapshot = dualSense.snapshot
     }
 
     private func capture() {
@@ -724,147 +608,24 @@ final class DualSenseMonitor {
             refreshPermissions()
         }
 
-        captureDualSense()
+        dualSense.poll(hapticEnabled: liveDualSenseRecord()?.hapticFeedbackEnabled == true)
+        snapshot = dualSense.snapshot
+        if let record = liveDualSenseRecord(), snapshot.connected {
+            ingestControl(ControlFrameBuilder.make(from: snapshot), record: record)
+        }
         captureMXMasters()
         if appleTVShouldCapture {
-            captureAppleTV()
+            let device = connectedDevices.first(where: {
+                $0.deviceKind == .appleTVRemote && $0.isConnected
+            }) ?? connectedDevices.first(where: { $0.deviceKind == .appleTVRemote })
+            appleTV.poll(catalogDevice: device, selected: selectedKind == .appleTVRemote)
+            appleTVSnapshot = appleTV.snapshot
+            if let record = liveAppleTVRecord(), appleTVSnapshot.connected {
+                ingestControl(ControlFrameBuilder.make(from: appleTVSnapshot), record: record)
+            }
         } else if appleTVSnapshot.connected {
-            appleTVSnapshot = AppleTVRemoteSnapshot()
-            appleTVHIDWasLive = false
-        }
-    }
-
-    private func captureDualSense() {
-        guard let controller else {
-            if snapshot.connected {
-                snapshot = DualSenseSnapshot()
-            }
-            return
-        }
-
-        var next = DualSenseSnapshot()
-        next.connected = true
-        next.name = controller.vendorName ?? "Game Controller"
-        next.product = controller.productCategory
-        next.playerIndex = controller.playerIndex.rawValue
-        next.hasMotion = controller.motion != nil
-
-        applyBattery(to: &next, controller: controller)
-
-        if let pad = controller.extendedGamepad as? GCDualSenseGamepad {
-            next.isDualSense = true
-            next.cross = pad.buttonA.isPressed
-            next.circle = pad.buttonB.isPressed
-            next.square = pad.buttonX.isPressed
-            next.triangle = pad.buttonY.isPressed
-            next.dpadUp = pad.dpad.up.isPressed
-            next.dpadDown = pad.dpad.down.isPressed
-            next.dpadLeft = pad.dpad.left.isPressed
-            next.dpadRight = pad.dpad.right.isPressed
-            next.l1 = pad.leftShoulder.isPressed
-            next.r1 = pad.rightShoulder.isPressed
-            next.l3 = isPressed(pad.leftThumbstickButton)
-            next.r3 = isPressed(pad.rightThumbstickButton)
-            next.create = isPressed(pad.buttonOptions)
-            next.options = isPressed(pad.buttonMenu)
-            next.touchpadClick = pad.touchpadButton.isPressed
-            next.l2 = pad.leftTrigger.value
-            next.r2 = pad.rightTrigger.value
-            next.leftStick = SIMD2(pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value)
-            next.rightStick = SIMD2(pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value)
-            next.touch1 = finger(from: pad.touchpadPrimary)
-            next.touch2 = finger(from: pad.touchpadSecondary)
-        } else if let pad = controller.extendedGamepad {
-            next.cross = pad.buttonA.isPressed
-            next.circle = pad.buttonB.isPressed
-            next.square = pad.buttonX.isPressed
-            next.triangle = pad.buttonY.isPressed
-            next.dpadUp = pad.dpad.up.isPressed
-            next.dpadDown = pad.dpad.down.isPressed
-            next.dpadLeft = pad.dpad.left.isPressed
-            next.dpadRight = pad.dpad.right.isPressed
-            next.l1 = pad.leftShoulder.isPressed
-            next.r1 = pad.rightShoulder.isPressed
-            next.l2 = pad.leftTrigger.value
-            next.r2 = pad.rightTrigger.value
-            next.leftStick = SIMD2(pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value)
-            next.rightStick = SIMD2(pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value)
-        }
-
-        if let home = controller.physicalInputProfile.buttons[GCInputButtonHome] {
-            next.ps = home.isPressed
-        }
-
-        if let motion = controller.motion {
-            next.gravity = Vec3(x: motion.gravity.x, y: motion.gravity.y, z: motion.gravity.z)
-            next.userAcceleration = Vec3(
-                x: motion.userAcceleration.x,
-                y: motion.userAcceleration.y,
-                z: motion.userAcceleration.z
-            )
-            next.rotationRate = Vec3(
-                x: motion.rotationRate.x,
-                y: motion.rotationRate.y,
-                z: motion.rotationRate.z
-            )
-        }
-
-        next.events = updatedEvents(from: next)
-        if liveDualSenseRecord()?.hapticFeedbackEnabled == true, next.hadButtonDown(from: snapshot) {
-            haptics.pulse()
-        }
-        snapshot = next
-        if let record = liveDualSenseRecord() {
-            ingestControl(ControlFrameBuilder.make(from: next), record: record)
-        }
-    }
-
-    private func captureAppleTV() {
-        let hidLive = appleTVReader.snapshot.connected
-        if hidLive && !appleTVHIDWasLive {
-            appleTVTouch.restart()
-            lastAppleTVTouchRescan = Date()
-        } else if hidLive, !appleTVTouch.snapshot.available,
-                  Date().timeIntervalSince(lastAppleTVTouchRescan) > 2 {
-            appleTVTouch.restart()
-            lastAppleTVTouchRescan = Date()
-        }
-        appleTVHIDWasLive = hidLive
-
-        let device = connectedDevices.first(where: {
-            $0.deviceKind == .appleTVRemote && $0.isConnected
-        }) ?? connectedDevices.first(where: { $0.deviceKind == .appleTVRemote })
-        guard hidLive || device != nil || selectedKind == .appleTVRemote else {
-            if appleTVSnapshot.connected {
-                appleTVSnapshot = AppleTVRemoteSnapshot()
-            }
-            return
-        }
-
-        appleTVReader.applyTouch(appleTVTouch.snapshot)
-        var next = appleTVReader.snapshot
-        next.connected = hidLive || device?.isConnected == true
-        next.name = device?.name ?? next.name
-        next.product = "Siri Remote A2540"
-        if Date().timeIntervalSince(lastBatteryProbe) > 2 {
-            lastBatteryProbe = Date()
-            appleTVBattery.refresh()
-        }
-        if !next.batteryAvailable,
-           let percent = appleTVBattery.percent(
-               serial: device?.name ?? next.name,
-               address: device?.address ?? ""
-           ) {
-            appleTVReader.applyBatteryPercent(percent)
-            next.batteryAvailable = true
-            next.batteryPercent = percent
-            next.batteryFull = percent >= 95
-            next.batteryStateDescription = next.batteryFull ? "Full" : "Discharging"
-        }
-        next.events = updatedAppleTVEvents(from: next)
-        appleTVSnapshot = next
-        if let record = liveAppleTVRecord() {
-            ingestControl(ControlFrameBuilder.make(from: next), record: record)
+            appleTV.clearIfIdle()
+            appleTVSnapshot = appleTV.snapshot
         }
     }
 
@@ -936,7 +697,7 @@ final class DualSenseMonitor {
             reader.applySmoothScrolling(smooth)
             reader.applyScrollDirection(natural)
         }
-        propagateSharedMXPointerScroll(from: record.selectedProfile)
+        propagateSharedMouseScroll(from: record.selectedProfile)
     }
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
@@ -1007,7 +768,7 @@ final class DualSenseMonitor {
     }
 
     private var appleTVShouldCapture: Bool {
-        appleTVReader.snapshot.connected
+        appleTV.hidConnected
             || selectedKind == .appleTVRemote
             || connectedDevices.contains { $0.deviceKind == .appleTVRemote && $0.isConnected }
     }
@@ -1024,7 +785,7 @@ final class DualSenseMonitor {
     }
 
     private func liveDualSenseRecord() -> DeviceRecord? {
-        if let name = controller?.vendorName,
+        if let name = dualSense.vendorName,
            let match = deviceRecords.first(where: {
                ($0.kind == .dualSense || $0.kind == .dualSenseEdge) && namesMatch($0.name, name)
            }) {
@@ -1191,148 +952,6 @@ final class DualSenseMonitor {
     private static let deviceRecordsDefaultsKey = "iremote.deviceRecords.v1"
     private static let selectedDeviceDefaultsKey = "iremote.selectedDeviceID"
     private static let suppressedDevicesDefaultsKey = "iremote.suppressedDevices.v1"
-
-    private func applyBattery(to next: inout DualSenseSnapshot, controller: GCController) {
-        if let percent = hidBattery.percent {
-            next.batteryAvailable = true
-            next.batteryPercent = percent
-            next.batteryCharging = hidBattery.isCharging
-            next.batteryFull = hidBattery.isFull
-            if hidBattery.isFull {
-                next.batteryStateDescription = "Full"
-            } else if hidBattery.isCharging {
-                next.batteryStateDescription = "Charging"
-            } else {
-                next.batteryStateDescription = "Discharging"
-            }
-            return
-        }
-
-        guard let battery = controller.battery, battery.batteryState != .unknown else { return }
-        next.batteryAvailable = true
-        next.batteryPercent = Int((battery.batteryLevel * 100).rounded())
-        switch battery.batteryState {
-        case .charging:
-            next.batteryCharging = true
-            next.batteryStateDescription = "Charging"
-        case .full:
-            next.batteryFull = true
-            next.batteryStateDescription = "Full"
-        case .discharging:
-            next.batteryStateDescription = "Discharging"
-        default:
-            next.batteryStateDescription = "Unknown"
-        }
-    }
-
-    private func isPressed(_ button: GCControllerButtonInput?) -> Bool {
-        button?.isPressed ?? false
-    }
-
-    private func finger(from pad: GCControllerDirectionPad) -> TouchFinger {
-        let x = pad.xAxis.value
-        let y = pad.yAxis.value
-        let digital = pad.up.isPressed || pad.down.isPressed || pad.left.isPressed || pad.right.isPressed
-        let analog = abs(x) > 0.001 || abs(y) > 0.001
-        return TouchFinger(x: x, y: y, active: digital || analog)
-    }
-
-    private func updatedEvents(from next: DualSenseSnapshot) -> [InputLogEvent] {
-        let current: [(String, Bool)] = [
-            ("Cross", next.cross),
-            ("Circle", next.circle),
-            ("Square", next.square),
-            ("Triangle", next.triangle),
-            ("D-pad Up", next.dpadUp),
-            ("D-pad Down", next.dpadDown),
-            ("D-pad Left", next.dpadLeft),
-            ("D-pad Right", next.dpadRight),
-            ("L1", next.l1),
-            ("R1", next.r1),
-            ("L2", next.l2 > 0.15),
-            ("R2", next.r2 > 0.15),
-            ("L3", next.l3),
-            ("R3", next.r3),
-            ("Create", next.create),
-            ("Options", next.options),
-            ("PS", next.ps),
-            ("Touchpad click", next.touchpadClick),
-            ("Touch 1", next.touch1.active),
-            ("Touch 2", next.touch2.active)
-        ]
-
-        var events = snapshot.events
-        for (label, pressed) in current {
-            if previousButtons[label] != pressed {
-                events.insert(
-                    InputLogEvent(id: UUID(), date: Date(), label: label, pressed: pressed),
-                    at: 0
-                )
-            }
-            previousButtons[label] = pressed
-        }
-        if events.count > 40 {
-            events = Array(events.prefix(40))
-        }
-        return events
-    }
-
-    private func updatedAppleTVEvents(from next: AppleTVRemoteSnapshot) -> [InputLogEvent] {
-        let current: [(String, Bool)] = [
-            ("Back", next.back),
-            ("TV", next.tv),
-            ("Siri", next.siri),
-            ("Mute", next.mute),
-            ("Play/Pause", next.playPause),
-            ("Power", next.power),
-            ("Volume Up", next.volumeUp),
-            ("Volume Down", next.volumeDown),
-            ("Select", next.select),
-            ("Clickpad Up", next.clickUp),
-            ("Clickpad Down", next.clickDown),
-            ("Clickpad Left", next.clickLeft),
-            ("Clickpad Right", next.clickRight)
-        ]
-
-        var events = appleTVSnapshot.events
-        if next.touchActive != appleTVSnapshot.touchActive {
-            events.insert(
-                InputLogEvent(id: UUID(), date: Date(), label: "Clickpad finger", pressed: next.touchActive),
-                at: 0
-            )
-        }
-        if next.wheelActive != appleTVSnapshot.wheelActive {
-            events.insert(
-                InputLogEvent(id: UUID(), date: Date(), label: "Click wheel", pressed: next.wheelActive),
-                at: 0
-            )
-        }
-        if next.micActive != appleTVSnapshot.micActive {
-            events.insert(
-                InputLogEvent(id: UUID(), date: Date(), label: "Siri mic HID", pressed: next.micActive),
-                at: 0
-            )
-        }
-        if next.lastHIDSignal != "Press a button",
-           next.lastHIDSignal != appleTVSnapshot.lastHIDSignal {
-            events.insert(
-                InputLogEvent(
-                    id: UUID(),
-                    date: Date(),
-                    label: "\(next.lastHIDMappedName) · \(next.lastHIDSignal)",
-                    pressed: true
-                ),
-                at: 0
-            )
-        }
-        for (label, pressed) in current {
-            previousButtons[label] = pressed
-        }
-        if events.count > 40 {
-            events = Array(events.prefix(40))
-        }
-        return events
-    }
 
     private func refreshDevices() {
         var devices = BluetoothDeviceCatalog.availableDevices()

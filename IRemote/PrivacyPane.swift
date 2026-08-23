@@ -17,8 +17,8 @@ struct PrivacyPane: View {
                     }
                 } footer: {
                     Text(monitor.allPermissionsGranted
-                         ? "VibeRemote can listen to input and inject keyboard, pointer, and scroll events."
-                         : "Turn on both Accessibility and Input Monitoring, then relaunch VibeRemote. macOS does not apply a new grant to a process that is already running.")
+                         ? "VibeRemote can listen to input, inject keyboard, pointer, and scroll events, and stay allowed in the background."
+                         : "Turn on Accessibility, Input Monitoring, and Allow in the Background. Accessibility and Input Monitoring need a relaunch after you grant them.")
                 }
 
                 Section {
@@ -55,7 +55,24 @@ struct PrivacyPane: View {
                     Text("Needed to intercept the mouse wheel so scroll speed and direction can be applied.")
                 }
 
-                if !monitor.allPermissionsGranted {
+                Section {
+                    permissionRow(
+                        title: "Background",
+                        allowed: monitor.backgroundAllowed
+                    )
+                    if !monitor.backgroundAllowed {
+                        Button("Request Background Access…") {
+                            monitor.promptForBackgroundActivity()
+                        }
+                        Button("Open Login Items & Background Settings") {
+                            monitor.openBackgroundSettings()
+                        }
+                    }
+                } footer: {
+                    Text("Needed so VibeRemote can keep mapping devices after you close the window, and can start again after login. macOS lists this under System Settings → General → Login Items & Extensions → Allow in the Background.")
+                }
+
+                if monitor.needsRelaunchForPermissions {
                     Section {
                         Button("Relaunch VibeRemote") {
                             monitor.relaunchApp()
