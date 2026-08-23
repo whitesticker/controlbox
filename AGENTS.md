@@ -6,7 +6,9 @@ VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple 
 
 - Active test device: **MX Master 4 only**. Leave MX Master 3 / 3S disconnected until MX4 is stable.
 - Device kinds are split (`logitechMXMaster3`, `logitechMXMaster3S`, `logitechMXMaster4`). Only MX Master 4 opens HID++. 3 and 3S are classified only.
-- Pointer and wheel can work through normal HID + a listen-only event tap. Extra buttons and haptic hold-to-swipe go through Logitech **HID++**. Getting one working has repeatedly broken the other.
+- Pointer, wheel, extra buttons, and haptic hold-to-swipe work on BLE MX4. How that stack is supposed to feel is `docs/mx-master-4-pointer-and-haptic.md`.
+- Pointer speed and haptic gesture speed are **separate sliders**. DPI is sensor resolution only (smoother tracking). Both speeds divide out DPI so 1000 DPI is the reference feel.
+- Haptic: tap = click action; hold 100ms then move = swipe. Left/right and up are live DockSwipe. Down (App Exposé) is a discrete system action.
 - Do **not** change HID++ / MX reader code until the user says they have this status and want implementation.
 
 ## Device rule

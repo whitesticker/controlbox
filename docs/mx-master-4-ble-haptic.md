@@ -45,6 +45,7 @@ Opening the standard mouse collection **only to watch buttons** can still steal 
 
 ## Related
 
+- [mx-master-4-pointer-and-haptic.md](mx-master-4-pointer-and-haptic.md) — pointer vs haptic sliders, live swipe, tap delay
 - [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md)
 - [hidpp-divert-steals-pointer.md](hidpp-divert-steals-pointer.md)
 - [mx-master-3s-wrong-usage-page.md](mx-master-3s-wrong-usage-page.md)

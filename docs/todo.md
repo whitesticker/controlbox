@@ -16,7 +16,10 @@ Open items for MX Master / HID++ work. MX Master 4 first.
 - [x] MX4 sensor DPI + smooth scrolling (HiRes wheel), with settings controls
 - [x] Haptic swipes keep 1000-DPI physical travel; pointer speed stays on its own slider.
 - [x] BLE MX4 haptic is native HID button 7 (see `docs/mx-master-4-ble-haptic.md`)
-- [ ] Confirm window-navigation actions fire on haptic hold + swipe without mid-swipe DockSwipe cancel/flicker
+- [x] 100ms arm delay so a haptic tap is not a swipe (see `docs/haptic-tap-starts-swipe.md`)
+- [x] App Exposé is a discrete down-swipe, not live DockSwipe (see `docs/dockswipe-down-skips-app-expose.md`)
+- [x] Media gesture left/right fires previous/next track (see `docs/media-gesture-skip-dead.md`)
+- [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 
 ## Do not regress

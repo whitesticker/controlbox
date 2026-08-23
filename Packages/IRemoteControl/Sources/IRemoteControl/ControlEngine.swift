@@ -382,6 +382,8 @@ public final class ControlEngine: @unchecked Sendable {
             || set?.right.isSystemNavigation == true
             || set?.up.isLiveVolume == true
             || set?.down.isLiveVolume == true
+            || set?.left.isDiscreteSwipe == true
+            || set?.right.isDiscreteSwipe == true
 
         if frame.gestureActive {
             guard allow else { return }
@@ -500,6 +502,7 @@ private struct LiveGestureState {
     private var space = DockSwipe.Session()
     private var volumeHold = 0.0
     private var firedAppExpose = false
+    private var firedDiscrete: ControlAction?
     private var holdStartedAt: Date?
     private static let swipeArmDelay: TimeInterval = 0.10
 
@@ -531,8 +534,7 @@ private struct LiveGestureState {
 
         switch axis {
         case .horizontal:
-            applySpace(x: x, set: set)
-            return nil
+            return applyHorizontal(x: x, set: set)
         case .vertical:
             return applyVertical(y: y, dy: dy, set: set)
         }
@@ -556,6 +558,7 @@ private struct LiveGestureState {
         axis = nil
         volumeHold = 0
         firedAppExpose = false
+        firedDiscrete = nil
         holdStartedAt = nil
     }
 
@@ -570,8 +573,26 @@ private struct LiveGestureState {
         }
     }
 
+    private mutating func applyHorizontal(x: Double, set: GestureSet) -> ControlAction? {
+        if set.right.isLiveSpace || set.left.isLiveSpace {
+            applySpace(x: x, set: set)
+            return nil
+        }
+        guard firedDiscrete == nil else { return nil }
+        let action: ControlAction
+        if x <= -40 {
+            action = set.left
+        } else if x >= 40 {
+            action = set.right
+        } else {
+            return nil
+        }
+        guard action.isDiscreteSwipe else { return nil }
+        firedDiscrete = action
+        return action
+    }
+
     private mutating func applySpace(x: Double, set: GestureSet) {
-        guard set.right.isLiveSpace || set.left.isLiveSpace else { return }
         let flip = set.right == .spaceLeft || set.left == .spaceRight
         space.setAbsolute((flip ? -x : x) / DockSwipe.horizontalSpan, axis: .horizontal)
     }

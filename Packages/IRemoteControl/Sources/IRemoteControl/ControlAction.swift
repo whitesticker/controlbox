@@ -82,6 +82,18 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         default: return false
         }
     }
+
+    /// One-shot hold+move. Not live DockSwipe.
+    var isDiscreteSwipe: Bool {
+        switch self {
+        case .mediaNext, .mediaPrevious, .mediaPlayPause, .mediaMute,
+             .switchApplication, .switchApplicationBack,
+             .browserBack, .browserForward:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 public struct ControlActionOption: Identifiable, Hashable, Sendable {
