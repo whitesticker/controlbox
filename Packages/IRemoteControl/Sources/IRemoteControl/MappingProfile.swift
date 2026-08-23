@@ -323,7 +323,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         }
         return MappingProfile(
             name: name,
-            summary: "L1/R1 switch desktops. L2/R2 switch tabs. Left stick pointer, right stick scroll. 1-finger is media.",
+            summary: "L1/R1 desktops, L2/R2 tabs. D-pad Mission Control, Desktop, and app switch. Left stick pointer, right stick scroll. 1-finger is media.",
             bindings: dualSenseBindings,
             leftStick: .pointer,
             rightStick: .scroll,
@@ -366,13 +366,13 @@ private let appleTVBindings: [DeviceButton: ControlAction] = [
 ]
 
 private let dualSenseBindings: [DeviceButton: ControlAction] = [
-    .dpadUp: .arrowUp,
-    .dpadDown: .arrowDown,
-    .dpadLeft: .arrowLeft,
-    .dpadRight: .arrowRight,
+    .dpadUp: .missionControl,
+    .dpadDown: .showDesktop,
+    .dpadLeft: .switchApplicationBack,
+    .dpadRight: .switchApplication,
     .cross: .rightOptionKey,
     .circle: .returnKey,
-    .square: .tabKey,
+    .square: .mouseLeft,
     .triangle: .escapeKey,
     .l1: .spaceLeft,
     .r1: .spaceRight,

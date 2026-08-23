@@ -32,6 +32,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [haptic-tap-starts-swipe.md](haptic-tap-starts-swipe.md) | A tap also peeks Spaces or Mission Control |
 | [dockswipe-progress-snapback.md](dockswipe-progress-snapback.md) | Spaces / Mission Control jump backward mid-swipe |
 | [dockswipe-button-overshoot.md](dockswipe-button-overshoot.md) | L1/R1 desktop switch peeks into the next Space and bounces |
+| [app-switcher-no-bar.md](app-switcher-no-bar.md) | Next/Previous application swaps apps with no Command-Tab bar |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
 | [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only (enforcement) |
 | [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |

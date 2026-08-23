@@ -23,9 +23,9 @@ enum SystemNavigation {
         case .spaceRight:
             DockSwipe.play(axis: .horizontal, offset: 1.5)
         case .switchApplication:
-            chord(virtualKey: 48, flags: .maskCommand)
+            AppSwitcher.step(back: false)
         case .switchApplicationBack:
-            chord(virtualKey: 48, flags: [.maskCommand, .maskShift])
+            AppSwitcher.step(back: true)
         default:
             break
         }
@@ -116,5 +116,66 @@ enum SystemNavigation {
         if let number = value as? Int { return number }
         if let number = value as? NSNumber { return number.intValue }
         return 0
+    }
+}
+
+/// Command-Tab only shows the app switcher while Command stays down.
+/// Shift must stay down too for Previous, or the bar never opens in reverse.
+enum AppSwitcher {
+    private static let queue = DispatchQueue(label: "iremote.app-switcher")
+    private static var commandHeld = false
+    private static var shiftHeld = false
+    private static var releaseWork: DispatchWorkItem?
+    private static let holdAfterTap: TimeInterval = 1.15
+
+    static func step(back: Bool) {
+        queue.async {
+            releaseWork?.cancel()
+            releaseWork = nil
+            if !commandHeld {
+                EventPoster.key(55, flags: .maskCommand, down: true)
+                commandHeld = true
+                Thread.sleep(forTimeInterval: 0.03)
+            }
+            if back {
+                if !shiftHeld {
+                    EventPoster.key(56, flags: [.maskCommand, .maskShift], down: true)
+                    shiftHeld = true
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+            } else if shiftHeld {
+                EventPoster.key(56, flags: .maskCommand, down: false)
+                shiftHeld = false
+            }
+            var flags: CGEventFlags = .maskCommand
+            if back { flags.insert(.maskShift) }
+            EventPoster.key(48, flags: flags, down: true)
+            EventPoster.key(48, flags: flags, down: false)
+            let work = DispatchWorkItem {
+                queue.async { releaseModifiers() }
+            }
+            releaseWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + holdAfterTap, execute: work)
+        }
+    }
+
+    static func cancel() {
+        queue.sync {
+            releaseWork?.cancel()
+            releaseWork = nil
+            releaseModifiers()
+        }
+    }
+
+    private static func releaseModifiers() {
+        if shiftHeld {
+            EventPoster.key(56, flags: commandHeld ? .maskCommand : [], down: false)
+            shiftHeld = false
+        }
+        if commandHeld {
+            EventPoster.key(55, flags: [], down: false)
+            commandHeld = false
+        }
+        releaseWork = nil
     }
 }

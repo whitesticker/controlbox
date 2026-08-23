@@ -36,6 +36,7 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
         }
         if device.deviceKind == .logitechMXMaster4 {
             profile.hapticGestureSpeed = 0.61
+            profile.sensorDPI = 4000
         }
         return DeviceRecord(
             id: device.id,

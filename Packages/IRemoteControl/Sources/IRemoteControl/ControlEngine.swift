@@ -70,6 +70,7 @@ public final class ControlEngine: @unchecked Sendable {
         touchGesture.reset()
         leftTriggerTravel.reset()
         rightTriggerTravel.reset()
+        AppSwitcher.cancel()
         clearSelectHold()
         StickyTargeting.hide()
     }
@@ -90,6 +91,7 @@ public final class ControlEngine: @unchecked Sendable {
         guard enabled else {
             previousButtons = frame.buttons
             lastAnalog = frame.analog
+            AppSwitcher.cancel()
             clearSelectHold()
             return
         }
@@ -577,6 +579,12 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func perform(_ action: ControlAction, down: Bool) {
+        switch action {
+        case .switchApplication, .switchApplicationBack, .none, .gestures:
+            break
+        default:
+            AppSwitcher.cancel()
+        }
         switch action {
         case .none, .gestures:
             return
