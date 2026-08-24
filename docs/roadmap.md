@@ -5,7 +5,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 ## Input and devices
 
 - [x] **DualSense touchpad gestures.** 1-finger and 2-finger are separate Gestures (window navigation / media by default). Same hold-to-swipe engine as the MX gesture button.
-- [ ] **Microphone.** Capture and use the DualSense and Apple TV remote mics on macOS (Bluetooth HID-only today; USB DualSense jack is untested).
+- [ ] **Microphone.** DualSense Bluetooth HID Opus capture works in a standalone probe (~47 mic frames/s on this Mac, coils can latch). Not in the app. See [dualsense-bluetooth-mic.md](dualsense-bluetooth-mic.md). USB DualSense jack and Apple TV remote mic still open.
 - [ ] **MX Master 4 extra button.** MX4 has one more control than the 3 / 3S. Identify it and show it in calibration + mappings.
 - [ ] **MX keyboard.** Add Logitech MX Keys (and family) as a new device family, same host registration as mice / remotes.
 - [ ] **MX4 gesture feel.** Haptic-pad swipes on MX4 are less smooth than the 3S gesture button. Measure HID++ XY vs CG fallback and match 3S feel without seizing the pointer.

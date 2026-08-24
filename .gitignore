@@ -7,3 +7,4 @@ build/
 DerivedData/
 *.zip
 dist/
+tools/*.wav

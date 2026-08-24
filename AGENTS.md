@@ -41,4 +41,4 @@ Treat these as **different devices**, not one “MX Master”:
 
 ## Docs
 
-Start at `docs/README.md`. MX4 feel and architecture: `docs/mx-master-4-pointer-and-haptic.md`. Why Gestures is haptic-only: `docs/haptic-vs-back-gesture.md`. Open work: `docs/todo.md`. One issue type per file. Update those when a new failure mode or fix item shows up.
+Start at `docs/README.md`. MX4 feel and architecture: `docs/mx-master-4-pointer-and-haptic.md`. Why Gestures is haptic-only: `docs/haptic-vs-back-gesture.md`. DualSense Bluetooth mic probe (not in the app): `docs/dualsense-bluetooth-mic.md`. Open work: `docs/todo.md`. One issue type per file. Update those when a new failure mode or fix item shows up.
