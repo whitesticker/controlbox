@@ -21,6 +21,7 @@ final class DualSenseMonitor {
     var accessibilityTrusted = false
     var inputMonitoringTrusted = false
     var backgroundAllowed = false
+    var screenCaptureTrusted = false
     let controlEngine = ControlEngine()
 
     var allPermissionsGranted: Bool {
@@ -56,6 +57,18 @@ final class DualSenseMonitor {
                 isAppleTVRemote: selectedKind == .appleTVRemote,
                 isMXMaster: selectedKind.isMXMaster
             )
+    }
+
+    var hasMXMaster: Bool {
+        deviceRecords.contains(where: \.isMXMaster)
+    }
+
+    var macMouseProfile: MappingProfile {
+        if let record = selectedRecord, record.isMXMaster {
+            return record.selectedProfile
+        }
+        return deviceRecords.first(where: \.isMXMaster)?.selectedProfile
+            ?? MappingProfile.makeDefault(isAppleTVRemote: false, isMXMaster: true)
     }
 
     var sidebarDevices: [SidebarDevice] {
@@ -365,6 +378,43 @@ final class DualSenseMonitor {
         propagateSharedMouseScroll(from: source)
     }
 
+    func setMacPointerSpeed(_ speed: Double) {
+        updateAllMXProfiles { $0.pointerSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setMacWheelScrollSpeed(_ speed: Double) {
+        updateAllMXProfiles { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setMacThumbScrollSpeed(_ speed: Double) {
+        updateAllMXProfiles { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+    }
+
+    func setMacNaturalScrolling(_ enabled: Bool) {
+        updateAllMXProfiles { $0.naturalScrolling = enabled }
+    }
+
+    func setMacSmoothScrolling(_ enabled: Bool) {
+        updateAllMXProfiles { $0.smoothScrolling = enabled }
+    }
+
+    private func updateAllMXProfiles(_ mutate: (inout MappingProfile) -> Void) {
+        var changed = false
+        for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
+            let selectedID = deviceRecords[index].selectedProfileID
+            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == selectedID }) else {
+                continue
+            }
+            var profile = deviceRecords[index].profiles[profileIndex]
+            mutate(&profile)
+            deviceRecords[index].profiles[profileIndex] = profile
+            changed = true
+        }
+        if changed {
+            persistDeviceRecords()
+        }
+    }
+
     private func propagateSharedMouseScroll(from source: MappingProfile) {
         var changed = false
         for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
@@ -502,6 +552,15 @@ final class DualSenseMonitor {
         ])
     }
 
+    func promptForScreenCapture() {
+        _ = AppVolumeMixer.requestCaptureAccess()
+        refreshPermissions()
+    }
+
+    func openScreenCaptureSettings() {
+        AppVolumeMixer.openCaptureSettings()
+    }
+
     func promptForBackgroundActivity() {
         do {
             try SMAppService.mainApp.register()
@@ -541,6 +600,10 @@ final class DualSenseMonitor {
         let background = SMAppService.mainApp.status == .enabled
         if backgroundAllowed != background {
             backgroundAllowed = background
+        }
+        let screenCapture = AppVolumeMixer.hasCaptureAccess
+        if screenCaptureTrusted != screenCapture {
+            screenCaptureTrusted = screenCapture
         }
     }
 
@@ -742,19 +805,19 @@ final class DualSenseMonitor {
     }
 
     func setWindowMoveEnabled(_ enabled: Bool) {
-        updateSelectedProfile { $0.windowMoveEnabled = enabled }
+        updateAllMXProfiles { $0.windowMoveEnabled = enabled }
     }
 
     func setWindowResizeEnabled(_ enabled: Bool) {
-        updateSelectedProfile { $0.windowResizeEnabled = enabled }
+        updateAllMXProfiles { $0.windowResizeEnabled = enabled }
     }
 
     func setWindowMoveFlags(_ flags: UInt64) {
-        updateSelectedProfile { $0.windowMoveFlags = flags == 0 ? MappingProfile.defaultWindowMoveFlags : flags }
+        updateAllMXProfiles { $0.windowMoveFlags = flags == 0 ? MappingProfile.defaultWindowMoveFlags : flags }
     }
 
     func setWindowResizeFlags(_ flags: UInt64) {
-        updateSelectedProfile { $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags }
+        updateAllMXProfiles { $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags }
     }
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {

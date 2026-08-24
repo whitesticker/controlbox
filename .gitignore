@@ -4,6 +4,7 @@
 xcuserdata/
 *.xcuserstate
 build/
+.build/
 DerivedData/
 *.zip
 dist/
