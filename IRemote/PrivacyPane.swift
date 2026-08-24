@@ -72,6 +72,23 @@ struct PrivacyPane: View {
                     Text("Needed so VibeRemote can keep mapping devices after you close the window, and can start again after login. macOS lists this under System Settings → General → Login Items & Extensions → Allow in the Background.")
                 }
 
+                Section {
+                    permissionRow(
+                        title: "Screen & System Audio Recording",
+                        allowed: monitor.screenCaptureTrusted
+                    )
+                    if !monitor.screenCaptureTrusted {
+                        Button("Request Screen & System Audio Recording…") {
+                            monitor.promptForScreenCapture()
+                        }
+                        Button("Open Screen Recording Settings") {
+                            monitor.openScreenCaptureSettings()
+                        }
+                    }
+                } footer: {
+                    Text("Needed only for per-app volume on Sound. Input mapping does not use this.")
+                }
+
                 if monitor.needsRelaunchForPermissions {
                     Section {
                         Button("Relaunch VibeRemote") {

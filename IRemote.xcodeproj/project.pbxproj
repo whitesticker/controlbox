@@ -222,7 +222,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VibeRemote checks whether the DualSense microphone appears as an audio input on this Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VibeRemote checks whether the DualSense microphone appears as an audio input, and may need mic access when a speaker device also has inputs so per-app volume can ignore those streams.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "VibeRemote taps an app’s audio so you can set that app’s volume without changing the rest of the Mac.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "VibeRemote lists connected Bluetooth devices so you can choose a PS5 controller.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "VibeRemote lists connected Bluetooth devices so you can choose a PS5 controller.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -259,7 +260,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VibeRemote checks whether the DualSense microphone appears as an audio input on this Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VibeRemote checks whether the DualSense microphone appears as an audio input, and may need mic access when a speaker device also has inputs so per-app volume can ignore those streams.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "VibeRemote taps an app’s audio so you can set that app’s volume without changing the rest of the Mac.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "VibeRemote lists connected Bluetooth devices so you can choose a PS5 controller.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "VibeRemote lists connected Bluetooth devices so you can choose a PS5 controller.";
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -36,3 +36,5 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
 | [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only (enforcement) |
 | [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |
+| [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md) | Displays lists an extra monitor; a named slider does not drive that panel |
+| [process-tap-exclusive.md](process-tap-exclusive.md) | Per-app volume does nothing while FineTune or another tap mixer is open |

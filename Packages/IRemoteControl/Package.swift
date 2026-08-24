@@ -16,8 +16,10 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
+                .linkedFramework("AudioToolbox"),
                 .linkedFramework("CoreAudio"),
-                .linkedFramework("CoreGraphics")
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("IOKit")
             ]
         )
     ]

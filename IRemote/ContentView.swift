@@ -4,11 +4,19 @@ struct ContentView: View {
     @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
-    @State private var showPermissions = false
+    @State private var selection: SidebarItem = .displays
+    @State private var displayCatalog = DisplayCatalog()
+    @State private var soundCatalog = SoundCatalog()
 
     var body: some View {
         NavigationSplitView {
-            List(selection: deviceSelection) {
+            List(selection: sidebarSelection) {
+                Section("Mac") {
+                    macRow(.displays)
+                    macRow(.sound)
+                    macRow(.pointerScroll)
+                    macRow(.windowGrab)
+                }
                 Section("Devices") {
                     if monitor.sidebarDevices.isEmpty {
                         Text("No devices yet")
@@ -16,32 +24,25 @@ struct ContentView: View {
                     } else {
                         ForEach(monitor.sidebarDevices) { device in
                             DeviceSidebarRow(device: device)
-                                .tag(Optional(device.id))
+                                .tag(SidebarItem.device(device.id))
                         }
                     }
+                }
+                Section("App") {
+                    HStack(spacing: 8) {
+                        SettingsGlyph(symbol: SidebarItem.permissions.symbol, tint: SidebarItem.permissions.tint)
+                        Text(SidebarItem.permissions.title)
+                        Spacer(minLength: 8)
+                        Circle()
+                            .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
+                            .frame(width: 8, height: 8)
+                    }
+                    .tag(SidebarItem.permissions)
                 }
             }
             .listStyle(.sidebar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
-                    Divider()
-                    Button {
-                        showPermissions = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Label("Permissions", systemImage: "lock.shield")
-                            Spacer(minLength: 8)
-                            Circle()
-                                .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
-                                .frame(width: 8, height: 8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background(showPermissions ? Color.accentColor.opacity(0.14) : Color.clear)
                     Divider()
                     Button {
                         showAddDevice = true
@@ -61,9 +62,18 @@ struct ContentView: View {
                 AddDeviceSheet(monitor: monitor)
             }
         } detail: {
-            if showPermissions {
+            switch selection {
+            case .displays:
+                DisplaysPane(catalog: displayCatalog)
+            case .sound:
+                SoundPane(catalog: soundCatalog)
+            case .pointerScroll:
+                PointerScrollPane(monitor: monitor)
+            case .windowGrab:
+                WindowGrabPane(monitor: monitor)
+            case .permissions:
                 PrivacyPane(monitor: monitor)
-            } else {
+            case .device:
                 DeviceProfilePane(monitor: monitor)
             }
         }
@@ -72,12 +82,22 @@ struct ContentView: View {
         .background(Palette.background(colorScheme).ignoresSafeArea())
     }
 
-    private var deviceSelection: Binding<String?> {
+    private func macRow(_ item: SidebarItem) -> some View {
+        HStack(spacing: 8) {
+            SettingsGlyph(symbol: item.symbol, tint: item.tint)
+            Text(item.title)
+        }
+        .tag(item)
+    }
+
+    private var sidebarSelection: Binding<SidebarItem> {
         Binding(
-            get: { showPermissions ? nil : monitor.selectedDeviceID },
-            set: {
-                showPermissions = false
-                monitor.selectDevice(id: $0)
+            get: { selection },
+            set: { item in
+                selection = item
+                if case .device(let id) = item {
+                    monitor.selectDevice(id: id)
+                }
             }
         )
     }

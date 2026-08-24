@@ -69,26 +69,24 @@ struct DeviceProfilePane: View {
 
                     analogSection(for: record)
 
-                    if record.isMXMaster {
-                        windowGrabSection
-                    }
-
                     if !record.isMXMaster && !record.isAppleTVRemote {
                         dualSenseTouchpadGesturesSection(for: record)
                     }
 
-                    Section {
-                        if record.isMXMaster {
+                    if record.isMXMaster {
+                        Section {
                             dpiSlider
-                            speedSlider("Pointer speed", value: pointerSpeedBinding)
                             speedSlider(
                                 record.kind.isMXMaster3Family ? "Gesture speed" : "Haptic gesture speed",
                                 value: hapticGestureSpeedBinding
                             )
-                            Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
-                            speedSlider("Wheel speed", value: wheelSpeedBinding)
-                            speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
-                        } else {
+                        } header: {
+                            Text("This mouse")
+                        } footer: {
+                            Text(mxPointerScrollFooter(for: record))
+                        }
+                    } else {
+                        Section {
                             speedSlider("Pointer speed", value: pointerSpeedBinding)
                             if dualSenseShowsGestureSpeed(record) {
                                 speedSlider("Gesture speed", value: hapticGestureSpeedBinding)
@@ -108,18 +106,14 @@ struct DeviceProfilePane: View {
                                     }
                                 }
                             }
-                        }
-                        Picker("Scroll direction", selection: scrollDirectionBinding) {
-                            Text("Natural").tag("natural")
-                            Text("Standard").tag("standard")
-                        }
-                        .pickerStyle(.radioGroup)
-                    } header: {
-                        Text("Pointer & scroll")
-                    } footer: {
-                        if record.isMXMaster {
-                            Text(mxPointerScrollFooter(for: record))
-                        } else {
+                            Picker("Scroll direction", selection: scrollDirectionBinding) {
+                                Text("Natural").tag("natural")
+                                Text("Standard").tag("standard")
+                            }
+                            .pickerStyle(.radioGroup)
+                        } header: {
+                            Text("Pointer & scroll")
+                        } footer: {
                             Text(record.isAppleTVRemote
                                 ? "Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed only applies when a stick or clickpad analog is set to Scroll. Natural matches the Mac’s default direction."
                                 : "Pointer speed scales stick and touchpad cursor motion. Gesture speed is 1-finger and 2-finger hold-to-swipe. Scroll speed and scroll acceleration only apply when a stick or Touchpad analog is set to Scroll — not touchpad Gestures. Natural matches the Mac’s default direction.")
@@ -209,45 +203,6 @@ struct DeviceProfilePane: View {
 
     private var sidebarDevice: SidebarDevice? {
         monitor.sidebarDevices.first { $0.id == monitor.selectedDeviceID }
-    }
-
-    private var windowGrabSection: some View {
-        Section {
-            Toggle("Move window", isOn: windowMoveEnabledBinding)
-            modifierChordRow("Move keys", flags: windowMoveFlagsBinding)
-            Toggle("Resize window", isOn: windowResizeEnabledBinding)
-            modifierChordRow("Resize keys", flags: windowResizeFlagsBinding)
-        } header: {
-            Text("Window grab")
-        } footer: {
-            Text("Hold the move keys and move the pointer to drag a window from anywhere, like grabbing the title bar. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. Control this Mac must be on.")
-        }
-    }
-
-    private func modifierChordRow(_ title: String, flags: Binding<UInt64>) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            modifierChip("⌃", .maskControl, flags)
-            modifierChip("⇧", .maskShift, flags)
-            modifierChip("⌥", .maskAlternate, flags)
-            modifierChip("⌘", .maskCommand, flags)
-        }
-    }
-
-    private func modifierChip(_ label: String, _ bit: CGEventFlags, _ flags: Binding<UInt64>) -> some View {
-        let on = CGEventFlags(rawValue: flags.wrappedValue).contains(bit)
-        return Button(label) {
-            var next = CGEventFlags(rawValue: flags.wrappedValue)
-            if on {
-                next.remove(bit)
-            } else {
-                next.insert(bit)
-            }
-            flags.wrappedValue = next.rawValue
-        }
-        .buttonStyle(.bordered)
-        .tint(on ? Color.accentColor : Color.secondary)
     }
 
     @ViewBuilder
@@ -601,34 +556,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private var windowMoveEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedWindowMoveEnabled },
-            set: { monitor.setWindowMoveEnabled($0) }
-        )
-    }
-
-    private var windowResizeEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedWindowResizeEnabled },
-            set: { monitor.setWindowResizeEnabled($0) }
-        )
-    }
-
-    private var windowMoveFlagsBinding: Binding<UInt64> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedWindowMoveFlags.rawValue },
-            set: { monitor.setWindowMoveFlags($0) }
-        )
-    }
-
-    private var windowResizeFlagsBinding: Binding<UInt64> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedWindowResizeFlags.rawValue },
-            set: { monitor.setWindowResizeFlags($0) }
-        )
-    }
-
     private var pointerSpeedBinding: Binding<Double> {
         Binding(
             get: { monitor.selectedProfile.resolvedPointerSpeed },
@@ -640,13 +567,6 @@ struct DeviceProfilePane: View {
         Binding(
             get: { monitor.selectedProfile.resolvedHapticGestureSpeed },
             set: { monitor.setHapticGestureSpeed($0) }
-        )
-    }
-
-    private var smoothScrollingBinding: Binding<Bool> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedSmoothScrolling },
-            set: { monitor.setSmoothScrolling($0) }
         )
     }
 
@@ -693,13 +613,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private var thumbSpeedBinding: Binding<Double> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedThumbScrollSpeed },
-            set: { monitor.setThumbScrollSpeed($0) }
-        )
-    }
-
     private var scrollDirectionBinding: Binding<String> {
         Binding(
             get: { monitor.selectedProfile.resolvedNaturalScrolling ? "natural" : "standard" },
@@ -733,7 +646,7 @@ struct DeviceProfilePane: View {
             ? "DPI is sensor resolution on this mouse. Gesture speed is hold-to-swipe on the thumb button."
             : "DPI is sensor resolution on this mouse. Haptic gesture speed is the thumb pad."
         return feel
-            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed are shared by every mouse — there is one system scroll tap, so those cannot differ per mouse. Accessibility must be allowed for wheel speed."
+            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed live under Mac → Pointer & Scroll because one system scroll tap is shared by every mouse."
     }
 
     private func mxButtonsFooter(for record: DeviceRecord) -> String {
