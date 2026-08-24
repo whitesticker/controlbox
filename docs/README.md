@@ -35,4 +35,5 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [app-switcher-no-bar.md](app-switcher-no-bar.md) | Next/Previous application swaps apps with no Command-Tab bar |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
 | [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only (enforcement) |
+| [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |
 | [dualsense-bluetooth-mic.md](dualsense-bluetooth-mic.md) | DualSense BT mic: HID Opus works; ~47 fps on macOS; coils latch |
