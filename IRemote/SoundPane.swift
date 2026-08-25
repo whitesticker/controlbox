@@ -43,7 +43,7 @@ struct SoundPane: View {
                                 .foregroundStyle(.secondary)
                         }
                         if !catalog.hasCaptureAccess {
-                            Text("macOS will ask for Screen & System Audio Recording the first time a slider creates a tap.")
+                            Text("On a MacBook, grant System Audio Recording for VibeRemote. Screen Recording alone mutes the app and plays nothing back.")
                                 .foregroundStyle(.secondary)
                             Button("Request Screen & System Audio Recording…") {
                                 catalog.requestCaptureAccess()

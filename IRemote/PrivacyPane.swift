@@ -86,7 +86,7 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed only for per-app volume on Sound. Input mapping does not use this.")
+                    Text("Needed only for per-app volume on Sound. On macOS 15, VibeRemote needs System Audio Recording — Screen Recording by itself leaves sliders silent. Input mapping does not use this.")
                 }
 
                 if monitor.needsRelaunchForPermissions {
