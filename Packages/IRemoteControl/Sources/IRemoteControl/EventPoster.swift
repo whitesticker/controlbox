@@ -6,10 +6,19 @@ import Foundation
 enum EventPoster {
     private static var fractionalCursor = CGPoint.zero
     private static var hasFractionalCursor = false
+    private static var cachedTrusted = false
+    private static var lastTrustCheck = Date.distantPast
+    private static let trustCacheInterval: TimeInterval = 1
 
     static func isTrusted() -> Bool {
+        let now = Date()
+        if now.timeIntervalSince(lastTrustCheck) < trustCacheInterval {
+            return cachedTrusted
+        }
+        lastTrustCheck = now
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        cachedTrusted = AXIsProcessTrustedWithOptions(options)
+        return cachedTrusted
     }
 
     static func promptForTrust() {

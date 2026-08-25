@@ -2,13 +2,29 @@ import CoreBluetooth
 import Foundation
 import IOKit
 
+/// BLE Battery Service first; IORegistry only as a throttled fallback.
+/// Do not walk the registry on the 120 Hz device poll — that pegs a core.
 final class AppleTVBatteryReader: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var central: CBCentralManager?
     private var peripherals: [UUID: CBPeripheral] = [:]
     private let lock = NSLock()
+    private let registryQueue = DispatchQueue(label: "iremote.appletv-battery")
     private var blePercent: Int?
+    private var registryPercent: Int?
+    private var lastBLERefresh = Date.distantPast
+    private var lastRegistryProbe = Date.distantPast
+    private var lastSerial = ""
+    private var lastAddress = ""
+    private var registryProbeInFlight = false
+    private var stopped = true
+
+    private static let bleRefreshInterval: TimeInterval = 8
+    private static let registryInterval: TimeInterval = 15
 
     func start() {
+        lock.lock()
+        stopped = false
+        lock.unlock()
         central = CBCentralManager(
             delegate: self,
             queue: .main,
@@ -17,23 +33,37 @@ final class AppleTVBatteryReader: NSObject, CBCentralManagerDelegate, CBPeripher
     }
 
     func stop() {
+        lock.lock()
+        stopped = true
+        blePercent = nil
+        registryPercent = nil
+        lastBLERefresh = .distantPast
+        lastRegistryProbe = .distantPast
+        lastSerial = ""
+        lastAddress = ""
+        registryProbeInFlight = false
+        lock.unlock()
         central = nil
         peripherals.removeAll()
-        lock.lock()
-        blePercent = nil
-        lock.unlock()
     }
 
     func percent(serial: String, address: String) -> Int? {
         lock.lock()
-        let ble = blePercent
+        let live = !stopped
         lock.unlock()
-        if let ble { return ble }
-        return registryPercent(serial: serial, address: address)
+        guard live else { return nil }
+        refreshBLEIfNeeded()
+        scheduleRegistryProbe(serial: serial, address: address)
+        lock.lock()
+        defer { lock.unlock() }
+        return blePercent ?? registryPercent
     }
 
     func refresh() {
-        guard let central, central.state == .poweredOn else { return }
+        lock.lock()
+        let live = !stopped
+        lock.unlock()
+        guard live, let central, central.state == .poweredOn else { return }
         let battery = CBUUID(string: "180F")
         let found = central.retrieveConnectedPeripherals(withServices: [battery])
             + central.retrieveConnectedPeripherals(withServices: [CBUUID(string: "180A")])
@@ -83,18 +113,66 @@ final class AppleTVBatteryReader: NSObject, CBCentralManagerDelegate, CBPeripher
         lock.unlock()
     }
 
-    private func registryPercent(serial: String, address: String) -> Int? {
+    private func refreshBLEIfNeeded() {
+        lock.lock()
+        let due = Date().timeIntervalSince(lastBLERefresh) >= Self.bleRefreshInterval
+        if due { lastBLERefresh = Date() }
+        lock.unlock()
+        guard due else { return }
+        if Thread.isMainThread {
+            refresh()
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
+        }
+    }
+
+    private func scheduleRegistryProbe(serial: String, address: String) {
+        lock.lock()
+        if serial != lastSerial || address != lastAddress {
+            lastSerial = serial
+            lastAddress = address
+            lastRegistryProbe = .distantPast
+            registryPercent = nil
+        }
+        let ble = blePercent
+        let due = Date().timeIntervalSince(lastRegistryProbe) >= Self.registryInterval
+        let shouldScan = !stopped
+            && ble == nil
+            && due
+            && !registryProbeInFlight
+            && (!serial.isEmpty || !address.isEmpty)
+        if shouldScan {
+            registryProbeInFlight = true
+            lastRegistryProbe = Date()
+        }
+        lock.unlock()
+        guard shouldScan else { return }
+
+        registryQueue.async { [weak self] in
+            guard let self else { return }
+            let value = Self.scanRegistry(serial: serial, address: address)
+            self.lock.lock()
+            self.registryProbeInFlight = false
+            if !self.stopped, self.lastSerial == serial, self.lastAddress == address {
+                self.registryPercent = value
+            }
+            self.lock.unlock()
+        }
+    }
+
+    private static func scanRegistry(serial: String, address: String) -> Int? {
+        let needleSerial = serial.uppercased()
+        let needleAddress = address
+            .uppercased()
+            .replacingOccurrences(of: ":", with: "-")
+        guard !needleSerial.isEmpty || !needleAddress.isEmpty else { return nil }
+
         var iterator = io_iterator_t()
         let options = IOOptionBits(kIORegistryIterateRecursively)
         guard IORegistryCreateIterator(kIOMainPortDefault, kIOServicePlane, options, &iterator) == KERN_SUCCESS else {
             return nil
         }
         defer { IOObjectRelease(iterator) }
-
-        let needleSerial = serial.uppercased()
-        let needleAddress = address
-            .uppercased()
-            .replacingOccurrences(of: ":", with: "-")
 
         var object = IOIteratorNext(iterator)
         while object != 0 {
@@ -103,13 +181,16 @@ final class AppleTVBatteryReader: NSObject, CBCentralManagerDelegate, CBPeripher
                 object = IOIteratorNext(iterator)
             }
 
-            let product = stringProperty("Product", object) ?? stringProperty("Bluetooth Product Name", object) ?? ""
+            let product = stringProperty("Product", object)
+                ?? stringProperty("Bluetooth Product Name", object)
+                ?? ""
             let serialValue = stringProperty("SerialNumber", object) ?? ""
             let deviceAddress = (stringProperty("DeviceAddress", object) ?? "")
                 .uppercased()
                 .replacingOccurrences(of: ":", with: "-")
 
-            let matchesName = product.uppercased() == needleSerial || serialValue.uppercased() == needleSerial
+            let matchesName = !needleSerial.isEmpty
+                && (product.uppercased() == needleSerial || serialValue.uppercased() == needleSerial)
             let matchesAddress = !needleAddress.isEmpty && deviceAddress == needleAddress
             guard matchesName || matchesAddress else { continue }
 
@@ -120,14 +201,14 @@ final class AppleTVBatteryReader: NSObject, CBCentralManagerDelegate, CBPeripher
         return nil
     }
 
-    private func stringProperty(_ key: String, _ object: io_object_t) -> String? {
+    private static func stringProperty(_ key: String, _ object: io_object_t) -> String? {
         guard let unmanaged = IORegistryEntryCreateCFProperty(object, key as CFString, kCFAllocatorDefault, 0) else {
             return nil
         }
         return unmanaged.takeRetainedValue() as? String
     }
 
-    private func intProperty(_ key: String, _ object: io_object_t) -> Int? {
+    private static func intProperty(_ key: String, _ object: io_object_t) -> Int? {
         guard let unmanaged = IORegistryEntryCreateCFProperty(object, key as CFString, kCFAllocatorDefault, 0) else {
             return nil
         }

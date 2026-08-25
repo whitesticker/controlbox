@@ -63,7 +63,7 @@ final class DualSenseSession: DeviceFamilySession {
         }
     }
 
-    func poll(hapticEnabled: Bool) {
+    func poll(hapticEnabled: Bool, wantMotion: Bool) {
         guard let controller else {
             if snapshot.connected {
                 snapshot = DualSenseSnapshot()
@@ -124,17 +124,22 @@ final class DualSenseSession: DeviceFamilySession {
         }
 
         if let motion = controller.motion {
-            next.gravity = Vec3(x: motion.gravity.x, y: motion.gravity.y, z: motion.gravity.z)
-            next.userAcceleration = Vec3(
-                x: motion.userAcceleration.x,
-                y: motion.userAcceleration.y,
-                z: motion.userAcceleration.z
-            )
-            next.rotationRate = Vec3(
-                x: motion.rotationRate.x,
-                y: motion.rotationRate.y,
-                z: motion.rotationRate.z
-            )
+            if motion.sensorsActive != wantMotion {
+                motion.sensorsActive = wantMotion
+            }
+            if wantMotion {
+                next.gravity = Vec3(x: motion.gravity.x, y: motion.gravity.y, z: motion.gravity.z)
+                next.userAcceleration = Vec3(
+                    x: motion.userAcceleration.x,
+                    y: motion.userAcceleration.y,
+                    z: motion.userAcceleration.z
+                )
+                next.rotationRate = Vec3(
+                    x: motion.rotationRate.x,
+                    y: motion.rotationRate.y,
+                    z: motion.rotationRate.z
+                )
+            }
         }
 
         next.events = updatedEvents(from: next)
@@ -149,7 +154,7 @@ final class DualSenseSession: DeviceFamilySession {
         if let current = controller, current == incoming { return }
         controller = incoming
         incoming.handlerQueue = .main
-        incoming.motion?.sensorsActive = true
+        incoming.motion?.sensorsActive = false
         previousButtons = [:]
         haptics.attach(incoming)
     }

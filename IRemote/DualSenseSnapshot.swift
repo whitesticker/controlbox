@@ -92,4 +92,16 @@ struct DualSenseSnapshot: Equatable, Sendable {
         if previous.r2 <= 0.2 && r2 > 0.2 { return true }
         return false
     }
+
+    func matchesIgnoringMotion(_ other: DualSenseSnapshot) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.gravity = .zero
+        lhs.userAcceleration = .zero
+        lhs.rotationRate = .zero
+        rhs.gravity = .zero
+        rhs.userAcceleration = .zero
+        rhs.rotationRate = .zero
+        return lhs == rhs
+    }
 }

@@ -301,19 +301,29 @@ final class LogitechMXMasterReader {
     }
 
     func applySensorDPI(_ dpi: Int) {
-        desiredDPI = MappingProfile.nearestDPI(dpi, in: dpiValues)
+        let next = MappingProfile.nearestDPI(dpi, in: dpiValues)
+        if next == desiredDPI, lastSentDPI == next, lastAppliedOSDPI == next { return }
+        desiredDPI = next
         sendSensorSettingsIfNeeded()
         applyOSPointerSettingsIfNeeded()
     }
 
     func applyPointerSpeed(_ speed: Double) {
-        desiredPointerSpeed = min(max(speed, 0), 1)
+        let next = min(max(speed, 0), 1)
+        if next == desiredPointerSpeed,
+           lastAppliedOSPointerSpeed == next,
+           lastSentPointerScale >= 0 || pointerScaleIndex == nil {
+            return
+        }
+        desiredPointerSpeed = next
         sendSensorSettingsIfNeeded()
         applyOSPointerSettingsIfNeeded()
     }
 
     func applyHapticGestureSpeed(_ speed: Double) {
-        desiredHapticGestureSpeed = min(max(speed, 0), 1)
+        let next = min(max(speed, 0), 1)
+        guard next != desiredHapticGestureSpeed else { return }
+        desiredHapticGestureSpeed = next
     }
 
     func applySmoothScrolling(_ enabled: Bool) {
@@ -327,6 +337,7 @@ final class LogitechMXMasterReader {
     private func sendSensorSettingsIfNeeded() {
         guard ready else { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
+        var changed = false
         if let dpiIndex, dpi != lastSentDPI {
             request(featureIndex: dpiIndex, function: 3, params: [
                 0,
@@ -334,6 +345,7 @@ final class LogitechMXMasterReader {
                 UInt8(dpi & 0xFF)
             ]) { _ in }
             lastSentDPI = dpi
+            changed = true
         }
         if let pointerScaleIndex {
             let scaling = MappingProfile.pointerScale8_8(slider: desiredPointerSpeed, dpi: dpi)
@@ -343,10 +355,13 @@ final class LogitechMXMasterReader {
                     UInt8(scaling & 0xFF)
                 ]) { _ in }
                 lastSentPointerScale = scaling
+                changed = true
             }
         }
         applyOSPointerSettingsIfNeeded()
-        publishMotionSettings()
+        if changed {
+            publishMotionSettings()
+        }
     }
 
     private func applyOSPointerSettingsIfNeeded() {

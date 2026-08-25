@@ -121,6 +121,7 @@ enum DeviceIdentity {
 
     static func same(_ lhs: String, _ rhs: String) -> Bool {
         guard isConcrete(lhs), isConcrete(rhs) else { return false }
+        if lhs.caseInsensitiveCompare(rhs) == .orderedSame { return true }
         return format(lhs).caseInsensitiveCompare(format(rhs)) == .orderedSame
     }
 

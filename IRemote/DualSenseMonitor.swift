@@ -126,6 +126,9 @@ final class DualSenseMonitor {
     private var lastAudioProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
     private var lastDeviceProbe = Date.distantPast
+    private var lastMotionPublish = Date.distantPast
+    private var lastScrollTapSignature = ""
+    private var lastWindowGrabSignature = ""
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
     private let dualSense = DualSenseSession()
@@ -202,7 +205,7 @@ final class DualSenseMonitor {
                 self?.capture()
             }
         }
-        timer.tolerance = 0
+        timer.tolerance = 1.0 / 600.0
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
     }
@@ -691,14 +694,20 @@ final class DualSenseMonitor {
             refreshDevices()
             lastDeviceProbe = Date()
         }
-        if Date().timeIntervalSince(lastTrustProbe) > 0.6 {
+        if Date().timeIntervalSince(lastTrustProbe) > 2 {
             refreshPermissions()
         }
 
-        dualSense.poll(hapticEnabled: liveDualSenseRecord()?.hapticFeedbackEnabled == true)
-        snapshot = dualSense.snapshot
-        if let record = liveDualSenseRecord(), snapshot.connected {
-            ingestControl(ControlFrameBuilder.make(from: snapshot), record: record)
+        let dualSenseRecord = liveDualSenseRecord()
+        let wantMotion = selectedKind == .dualSense || selectedKind == .dualSenseEdge
+        dualSense.poll(
+            hapticEnabled: dualSenseRecord?.hapticFeedbackEnabled == true,
+            wantMotion: wantMotion
+        )
+        let ds = dualSense.snapshot
+        publishDualSense(ds, wantMotion: wantMotion)
+        if let record = dualSenseRecord, ds.connected {
+            ingestControl(ControlFrameBuilder.make(from: ds), record: record)
         }
         captureMXMasters()
         if appleTVShouldCapture {
@@ -706,9 +715,12 @@ final class DualSenseMonitor {
                 $0.deviceKind == .appleTVRemote && $0.isConnected
             }) ?? connectedDevices.first(where: { $0.deviceKind == .appleTVRemote })
             appleTV.poll(catalogDevice: device, selected: selectedKind == .appleTVRemote)
-            appleTVSnapshot = appleTV.snapshot
-            if let record = liveAppleTVRecord(), appleTVSnapshot.connected {
-                ingestControl(ControlFrameBuilder.make(from: appleTVSnapshot), record: record)
+            let nextAppleTV = appleTV.snapshot
+            if appleTVSnapshot != nextAppleTV {
+                appleTVSnapshot = nextAppleTV
+            }
+            if let record = liveAppleTVRecord(), nextAppleTV.connected {
+                ingestControl(ControlFrameBuilder.make(from: nextAppleTV), record: record)
             }
         } else if appleTVSnapshot.connected {
             appleTV.clearIfIdle()
@@ -726,9 +738,24 @@ final class DualSenseMonitor {
             _ = reader.consumePendingGesture()
             reader.consumePendingScroll()
         }
-        mxMasterSnapshot = displayMXSnapshot()
+        let nextMX = displayMXSnapshot()
+        if mxMasterSnapshot != nextMX {
+            mxMasterSnapshot = nextMX
+        }
         applyMouseScrollTap()
         applyWindowGrab()
+    }
+
+    private func publishDualSense(_ next: DualSenseSnapshot, wantMotion: Bool) {
+        if snapshot.matchesIgnoringMotion(next) {
+            if wantMotion, Date().timeIntervalSince(lastMotionPublish) >= 0.1 {
+                snapshot = next
+                lastMotionPublish = Date()
+            }
+            return
+        }
+        snapshot = next
+        lastMotionPublish = Date()
     }
 
     private func reader(for kind: DeviceKind) -> LogitechMXMasterReader? {
@@ -772,15 +799,23 @@ final class DualSenseMonitor {
 
     private func applyMouseScrollTap() {
         guard let record = sharedMXScrollRecord, accessibilityTrusted else {
-            mouseScrollTap.setActive(false)
+            if lastScrollTapSignature != "off" {
+                mouseScrollTap.setActive(false)
+                lastScrollTapSignature = "off"
+            }
             return
         }
         let natural = record.selectedProfile.resolvedNaturalScrolling
         let smooth = record.selectedProfile.resolvedSmoothScrolling
+        let vertical = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
+        let horizontal = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
+        let signature = "\(record.id)|\(natural)|\(smooth)|\(vertical)|\(horizontal)"
+        guard signature != lastScrollTapSignature else { return }
+        lastScrollTapSignature = signature
         mouseScrollTap.wantNatural = natural
         mouseScrollTap.smoothScrolling = smooth
-        mouseScrollTap.verticalScale = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
-        mouseScrollTap.horizontalScale = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
+        mouseScrollTap.verticalScale = vertical
+        mouseScrollTap.horizontalScale = horizontal
         mouseScrollTap.setActive(true)
         for reader in mxReaders where reader.current.connected {
             reader.applySmoothScrolling(smooth)
@@ -791,10 +826,16 @@ final class DualSenseMonitor {
 
     private func applyWindowGrab() {
         guard let record = sharedMXScrollRecord, accessibilityTrusted else {
-            WindowGrab.stop()
+            if lastWindowGrabSignature != "off" {
+                WindowGrab.stop()
+                lastWindowGrabSignature = "off"
+            }
             return
         }
         let profile = record.selectedProfile
+        let signature = "\(record.id)|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
+        guard signature != lastWindowGrabSignature else { return }
+        lastWindowGrabSignature = signature
         WindowGrab.configure(
             enabled: true,
             moveEnabled: profile.resolvedWindowMoveEnabled,

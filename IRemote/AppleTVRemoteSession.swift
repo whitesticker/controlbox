@@ -15,7 +15,6 @@ final class AppleTVRemoteSession: DeviceFamilySession {
     private var previousButtons: [String: Bool] = [:]
     private var hidWasLive = false
     private var lastTouchRescan = Date.distantPast
-    private var lastBatteryProbe = Date.distantPast
 
     var hidConnected: Bool { reader.snapshot.connected }
 
@@ -66,15 +65,10 @@ final class AppleTVRemoteSession: DeviceFamilySession {
         next.connected = hidLive || catalogDevice?.isConnected == true
         next.name = catalogDevice?.name ?? next.name
         next.product = generation.productTitle
-        if Date().timeIntervalSince(lastBatteryProbe) > 2 {
-            lastBatteryProbe = Date()
-            battery.refresh()
-        }
-        if !next.batteryAvailable,
-           let percent = battery.percent(
-               serial: catalogDevice?.name ?? next.name,
-               address: catalogDevice?.address ?? ""
-           ) {
+        if let percent = battery.percent(
+            serial: catalogDevice?.name ?? next.name,
+            address: catalogDevice?.address ?? ""
+        ) {
             reader.applyBatteryPercent(percent)
             next.batteryAvailable = true
             next.batteryPercent = percent
