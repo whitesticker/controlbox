@@ -5,23 +5,29 @@ import Darwin
 import Foundation
 import QuartzCore
 
-/// Hold modifiers and move the pointer to drag or resize the window
-/// under the cursor. Windows are found via the window server so
-/// Firefox / Electron still match when Accessibility hit-testing is empty.
+/// Hold modifiers and move the pointer to drag, resize, or throw the
+/// window under the cursor. Organize is a recorded shortcut on
+/// `WindowOrganizeHotkey` that tiles windows on the pointer’s screen.
+/// Windows are found via the window server so Firefox / Electron still
+/// match when Accessibility hit-testing is empty.
 public enum WindowGrab {
     public static func configure(
         enabled: Bool,
         moveEnabled: Bool,
         resizeEnabled: Bool,
+        throwEnabled: Bool,
         moveFlags: CGEventFlags,
-        resizeFlags: CGEventFlags
+        resizeFlags: CGEventFlags,
+        throwFlags: CGEventFlags
     ) {
         Controller.shared.configure(
             enabled: enabled,
             moveEnabled: moveEnabled,
             resizeEnabled: resizeEnabled,
+            throwEnabled: throwEnabled,
             moveFlags: moveFlags,
-            resizeFlags: resizeFlags
+            resizeFlags: resizeFlags,
+            throwFlags: throwFlags
         )
     }
 
@@ -30,9 +36,15 @@ public enum WindowGrab {
             enabled: false,
             moveEnabled: false,
             resizeEnabled: false,
+            throwEnabled: false,
             moveFlags: [],
-            resizeFlags: []
+            resizeFlags: [],
+            throwFlags: []
         )
+    }
+
+    public static func organizeAtPointer() {
+        Controller.shared.organizeAtPointer()
     }
 }
 
@@ -44,17 +56,22 @@ private final class Controller: @unchecked Sendable {
     private var enabled = false
     private var moveEnabled = false
     private var resizeEnabled = false
+    private var throwEnabled = false
     private var moveFlags: CGEventFlags = .maskControl
     private var resizeFlags: CGEventFlags = [.maskControl, .maskShift]
+    private var throwFlags: CGEventFlags = [.maskControl, .maskAlternate]
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
     private var lastPoint = CGPoint.zero
     private var hasPoint = false
     private var session: Session?
+    private var throwSession: ThrowSession?
     private var pendingPoint: CGPoint?
     private var writing = false
     private var displayLink: CADisplayLink?
     private let tickTarget = DisplayTick()
+    private var lastOrganizeIDs = Set<CGWindowID>()
+    private var organizeRotation = 0
 
     private struct Session {
         var window: AXUIElement
@@ -62,6 +79,12 @@ private final class Controller: @unchecked Sendable {
         var startFrame: CGRect
         var startPoint: CGPoint
         var moving: Bool
+    }
+
+    private struct ThrowSession {
+        var window: AXUIElement
+        var zone: ThrowZone
+        var visible: CGRect
     }
 
     init() {
@@ -73,15 +96,19 @@ private final class Controller: @unchecked Sendable {
         enabled: Bool,
         moveEnabled: Bool,
         resizeEnabled: Bool,
+        throwEnabled: Bool,
         moveFlags: CGEventFlags,
-        resizeFlags: CGEventFlags
+        resizeFlags: CGEventFlags,
+        throwFlags: CGEventFlags
     ) {
         lock.lock()
-        self.enabled = enabled && (moveEnabled || resizeEnabled)
+        self.enabled = enabled && (moveEnabled || resizeEnabled || throwEnabled)
         self.moveEnabled = moveEnabled
         self.resizeEnabled = resizeEnabled
+        self.throwEnabled = throwEnabled
         self.moveFlags = moveFlags
         self.resizeFlags = resizeFlags
+        self.throwFlags = throwFlags
         let shouldRun = self.enabled
         lock.unlock()
         if shouldRun {
@@ -120,7 +147,8 @@ private final class Controller: @unchecked Sendable {
     }
 
     private func stop() {
-        endSession()
+        endGrabSession()
+        endThrow()
         if let source {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -142,21 +170,15 @@ private final class Controller: @unchecked Sendable {
         let active = enabled
         let moveOn = moveEnabled
         let resizeOn = resizeEnabled
+        let throwOn = throwEnabled
         let move = moveFlags
         let resize = resizeFlags
+        let throwNeed = throwFlags
         lock.unlock()
         guard active else { return }
-
-        let mode = Self.mode(
-            flags: event.flags,
-            moveEnabled: moveOn,
-            resizeEnabled: resizeOn,
-            moveFlags: move,
-            resizeFlags: resize
-        )
-        if mode == nil {
-            endSession()
-            hasPoint = false
+        if ShortcutCapture.isActive {
+            endGrabSession()
+            endThrow()
             return
         }
 
@@ -164,11 +186,48 @@ private final class Controller: @unchecked Sendable {
         lastPoint = point
         hasPoint = true
 
+        let mode = Self.pointerMode(
+            flags: event.flags,
+            moveEnabled: moveOn,
+            resizeEnabled: resizeOn,
+            throwEnabled: throwOn,
+            moveFlags: move,
+            resizeFlags: resize,
+            throwFlags: throwNeed
+        )
+        guard let mode else {
+            endGrabSession()
+            endThrow()
+            return
+        }
+
+        if type == .flagsChanged {
+            if let session, session.moving != (mode == .move) {
+                endGrabSession()
+            }
+            if throwSession != nil, mode != .throw {
+                endThrow()
+            }
+            if session != nil, mode == .throw {
+                endGrabSession()
+            }
+            return
+        }
+
+        switch mode {
+        case .move, .resize:
+            endThrow()
+            handleGrab(mode: mode, point: point)
+        case .throw:
+            endGrabSession()
+            handleThrow(at: point)
+        }
+    }
+
+    private func handleGrab(mode: PointerMode, point: CGPoint) {
         if let session, session.moving != (mode == .move) {
             retarget(session, moving: mode == .move, point: point)
         }
-        if type == .flagsChanged { return }
-
         if session == nil {
             guard let hit = hit(at: point) else { return }
             session = Session(
@@ -188,6 +247,101 @@ private final class Controller: @unchecked Sendable {
             startDisplayLink()
         }
         pendingPoint = point
+    }
+
+    private func handleThrow(at point: CGPoint) {
+        let visible = WindowLayout.visibleFrame(containingQuartz: point)
+        if var current = throwSession {
+            let zone = WindowLayout.zone(at: point, in: visible, previous: current.zone)
+            WindowThrowOverlay.show(quartzVisible: visible, zone: zone)
+            if zone != current.zone || visible != current.visible {
+                applyFrame(WindowLayout.frame(for: zone, in: visible), to: current.window)
+                current.zone = zone
+                current.visible = visible
+                throwSession = current
+            }
+            return
+        }
+        guard let hit = hit(at: point), !isFullscreen(hit.window) else { return }
+        let zone = WindowLayout.zone(at: point, in: visible, previous: nil)
+        throwSession = ThrowSession(window: hit.window, zone: zone, visible: visible)
+        AXUIElementSetMessagingTimeout(hit.window, 0.04)
+        WindowThrowOverlay.show(quartzVisible: visible, zone: zone)
+        applyFrame(WindowLayout.frame(for: zone, in: visible), to: hit.window)
+    }
+
+    func organizeAtPointer() {
+        let point = CGEvent(source: nil)?.location ?? lastPoint
+        organizeWindows(at: point)
+    }
+
+    private func organizeWindows(at point: CGPoint) {
+        let visible = WindowLayout.visibleFrame(containingQuartz: point)
+        let windows = listedWindows(in: visible)
+        guard !windows.isEmpty else { return }
+        let ids = Set(windows.map(\.windowID).filter { $0 != 0 })
+        if !ids.isEmpty, ids == lastOrganizeIDs {
+            organizeRotation = (organizeRotation + 1) % windows.count
+        } else {
+            lastOrganizeIDs = ids
+            organizeRotation = 0
+        }
+        let frames = WindowLayout.grid(count: windows.count, in: visible)
+        let rotated: [Hit]
+        if organizeRotation == 0 {
+            rotated = windows
+        } else {
+            rotated = Array(windows[organizeRotation...] + windows[..<organizeRotation])
+        }
+        for (index, hit) in rotated.enumerated() where index < frames.count {
+            applyFrame(frames[index], to: hit.window)
+        }
+    }
+
+    private func listedWindows(in visible: CGRect) -> [Hit] {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        var hits: [Hit] = []
+        var seen = Set<CGWindowID>()
+        for entry in info {
+            let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+            guard layer == 0 else { continue }
+            let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
+            guard alpha > 0.05 else { continue }
+            let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
+            if Self.ignoredOwners.contains(owner) { continue }
+            let name = entry[kCGWindowName as String] as? String ?? ""
+            if name == WindowThrowOverlay.windowTitle { continue }
+            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid > 0 else { continue }
+            guard let bounds = cgBounds(entry[kCGWindowBounds as String] as? [String: Any]) else { continue }
+            guard bounds.width >= 80, bounds.height >= 40 else { continue }
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            guard visible.insetBy(dx: -2, dy: -2).contains(center) else { continue }
+            let windowID = CGWindowID((entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0)
+            if windowID != 0, seen.contains(windowID) { continue }
+            guard let window = axWindow(pid: pid, bounds: bounds) else { continue }
+            if isMinimized(window) || isFullscreen(window) { continue }
+            if windowID != 0 { seen.insert(windowID) }
+            hits.append(Hit(window: window, windowID: windowID, bounds: bounds))
+        }
+        return hits
+    }
+
+    private func applyFrame(_ frame: CGRect, to window: AXUIElement) {
+        var size = frame.size
+        var origin = frame.origin
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        NSAnimationContext.current.allowsImplicitAnimation = false
+        _ = setSize(window, &size)
+        _ = setPoint(window, kAXPositionAttribute as CFString, &origin)
+        size = frame.size
+        origin = frame.origin
+        _ = setSize(window, &size)
+        _ = setPoint(window, kAXPositionAttribute as CFString, &origin)
+        NSAnimationContext.endGrouping()
     }
 
     private func retarget(_ current: Session, moving: Bool, point: CGPoint) {
@@ -263,7 +417,7 @@ private final class Controller: @unchecked Sendable {
         NSAnimationContext.endGrouping()
     }
 
-    private func endSession() {
+    private func endGrabSession() {
         if session != nil {
             NSCursor.arrow.set()
         }
@@ -273,22 +427,31 @@ private final class Controller: @unchecked Sendable {
         stopDisplayLink()
     }
 
-    private enum Mode { case move, resize }
+    private func endThrow() {
+        if throwSession != nil {
+            WindowThrowOverlay.hide()
+        }
+        throwSession = nil
+    }
 
-    private static let modifierBits: CGEventFlags = [
-        .maskControl, .maskShift, .maskAlternate, .maskCommand
-    ]
+    private enum PointerMode { case move, resize, `throw` }
 
-    private static func mode(
+    private static func pointerMode(
         flags: CGEventFlags,
         moveEnabled: Bool,
         resizeEnabled: Bool,
+        throwEnabled: Bool,
         moveFlags: CGEventFlags,
-        resizeFlags: CGEventFlags
-    ) -> Mode? {
-        let bits = flags.intersection(modifierBits)
-        let resizeNeed = resizeFlags.intersection(modifierBits)
-        let moveNeed = moveFlags.intersection(modifierBits)
+        resizeFlags: CGEventFlags,
+        throwFlags: CGEventFlags
+    ) -> PointerMode? {
+        let bits = ModifierChords.normalized(flags)
+        let throwNeed = ModifierChords.normalized(throwFlags)
+        let resizeNeed = ModifierChords.normalized(resizeFlags)
+        let moveNeed = ModifierChords.normalized(moveFlags)
+        if throwEnabled, !throwNeed.isEmpty, bits == throwNeed {
+            return .throw
+        }
         if resizeEnabled, !resizeNeed.isEmpty, bits == resizeNeed {
             return .resize
         }
@@ -361,6 +524,8 @@ private final class Controller: @unchecked Sendable {
             guard alpha > 0.05 else { continue }
             let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
             if Self.ignoredOwners.contains(owner) { continue }
+            let name = entry[kCGWindowName as String] as? String ?? ""
+            if name == WindowThrowOverlay.windowTitle { continue }
             guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid > 0 else { continue }
             guard let bounds = cgBounds(entry[kCGWindowBounds as String] as? [String: Any]) else { continue }
             guard bounds.width >= 80, bounds.height >= 40 else { continue }
@@ -457,6 +622,23 @@ private final class Controller: @unchecked Sendable {
             return nil
         }
         return CGRect(origin: position, size: size)
+    }
+
+    private func isFullscreen(_ element: AXUIElement) -> Bool {
+        boolAttribute(element, "AXFullScreen" as CFString)
+    }
+
+    private func isMinimized(_ element: AXUIElement) -> Bool {
+        boolAttribute(element, kAXMinimizedAttribute as CFString)
+    }
+
+    private func boolAttribute(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let number = value as? NSNumber else {
+            return false
+        }
+        return number.boolValue
     }
 
     private func copyElement(_ element: AXUIElement, _ attribute: CFString) -> AXUIElement? {

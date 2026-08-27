@@ -21,11 +21,13 @@ final class DualSenseMonitor {
     var accessibilityTrusted = false
     var inputMonitoringTrusted = false
     var backgroundAllowed = false
+    var launchAtLoginOn = false
+    var backgroundNeedsApproval = false
     var screenCaptureTrusted = false
     let controlEngine = ControlEngine()
 
     var allPermissionsGranted: Bool {
-        accessibilityTrusted && inputMonitoringTrusted && backgroundAllowed
+        accessibilityTrusted && inputMonitoringTrusted
     }
 
     var needsRelaunchForPermissions: Bool {
@@ -226,6 +228,7 @@ final class DualSenseMonitor {
         mx4Reader.stop()
         mouseScrollTap.stop()
         WindowGrab.stop()
+        WindowOrganizeHotkey.stop()
     }
 
     func selectDevice(_ device: ConnectedBluetoothDevice) {
@@ -572,8 +575,9 @@ final class DualSenseMonitor {
     }
 
     func promptForScreenCapture() {
-        _ = AppVolumeMixer.requestCaptureAccess()
-        refreshPermissions()
+        AppVolumeMixer.requestCaptureAccess { [weak self] _ in
+            self?.refreshPermissions()
+        }
     }
 
     func openScreenCaptureSettings() {
@@ -592,6 +596,19 @@ final class DualSenseMonitor {
         }
     }
 
+    func setLaunchAtLogin(_ on: Bool) {
+        if on {
+            promptForBackgroundActivity()
+            return
+        }
+        do {
+            try SMAppService.mainApp.unregister()
+        } catch {
+            openBackgroundSettings()
+        }
+        refreshPermissions()
+    }
+
     func openBackgroundSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
@@ -601,7 +618,7 @@ final class DualSenseMonitor {
         configuration.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
             DispatchQueue.main.async {
-                NSApp.terminate(nil)
+                AppQuit.quitNow()
             }
         }
     }
@@ -619,6 +636,14 @@ final class DualSenseMonitor {
         let background = SMAppService.mainApp.status == .enabled
         if backgroundAllowed != background {
             backgroundAllowed = background
+        }
+        let login = SMAppService.mainApp.status != .notRegistered
+        if launchAtLoginOn != login {
+            launchAtLoginOn = login
+        }
+        let needsApproval = SMAppService.mainApp.status == .requiresApproval
+        if backgroundNeedsApproval != needsApproval {
+            backgroundNeedsApproval = needsApproval
         }
         let screenCapture = AppVolumeMixer.hasCaptureAccess
         if screenCaptureTrusted != screenCapture {
@@ -795,7 +820,7 @@ final class DualSenseMonitor {
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = false
-        reader.injectEnabled = record.controlEnabled
+        reader.injectEnabled = record.controlEnabled && !ShortcutCapture.isActive
         reader.wheelsEnabled = accessibilityTrusted
         reader.setGestureOwners(record.selectedProfile.mxGestureOwners)
         reader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
@@ -861,21 +886,31 @@ final class DualSenseMonitor {
         guard accessibilityTrusted else {
             if lastWindowGrabSignature != "off" {
                 WindowGrab.stop()
+                WindowOrganizeHotkey.stop()
                 lastWindowGrabSignature = "off"
             }
             return
         }
         let profile = macMouseProfile
-        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
+        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowThrowEnabled)|\(profile.resolvedWindowOrganizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)|\(profile.resolvedWindowThrowFlags)|\(profile.resolvedWindowOrganizeFlags)|\(profile.resolvedWindowOrganizeKey)"
         guard signature != lastWindowGrabSignature else { return }
         lastWindowGrabSignature = signature
         WindowGrab.configure(
             enabled: true,
             moveEnabled: profile.resolvedWindowMoveEnabled,
             resizeEnabled: profile.resolvedWindowResizeEnabled,
+            throwEnabled: profile.resolvedWindowThrowEnabled,
             moveFlags: profile.resolvedWindowMoveFlags,
-            resizeFlags: profile.resolvedWindowResizeFlags
+            resizeFlags: profile.resolvedWindowResizeFlags,
+            throwFlags: profile.resolvedWindowThrowFlags
         )
+        WindowOrganizeHotkey.configure(
+            enabled: profile.resolvedWindowOrganizeEnabled,
+            flags: profile.resolvedWindowOrganizeFlags,
+            virtualKey: profile.resolvedWindowOrganizeKey
+        ) {
+            WindowGrab.organizeAtPointer()
+        }
     }
 
     func setWindowMoveEnabled(_ enabled: Bool) {
@@ -896,6 +931,50 @@ final class DualSenseMonitor {
         updateMacMouse {
             $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags
         }
+    }
+
+    func setWindowThrowEnabled(_ enabled: Bool) {
+        updateMacMouse { $0.windowThrowEnabled = enabled }
+    }
+
+    func setWindowOrganizeEnabled(_ enabled: Bool) {
+        updateMacMouse { $0.windowOrganizeEnabled = enabled }
+    }
+
+    func setWindowThrowFlags(_ flags: UInt64) {
+        updateMacMouse {
+            $0.windowThrowFlags = flags == 0 ? MappingProfile.defaultWindowThrowFlags : flags
+        }
+    }
+
+    func setWindowOrganizeFlags(_ flags: UInt64) {
+        updateMacMouse {
+            $0.windowOrganizeFlags = flags == 0 ? MappingProfile.defaultWindowOrganizeFlags : flags
+        }
+    }
+
+    func setWindowOrganizeShortcut(virtualKey: UInt16, flags: UInt64) {
+        updateMacMouse {
+            $0.windowOrganizeKey = virtualKey
+            $0.windowOrganizeFlags = ModifierChords.normalized(flags).rawValue
+        }
+    }
+
+    func macModifierOccupancy(
+        arrangementEnabled: Bool,
+        arrangementFlags: CGEventFlags
+    ) -> MacModifierOccupancy {
+        let profile = macMouseProfile
+        return MacModifierOccupancy(
+            moveEnabled: profile.resolvedWindowMoveEnabled,
+            moveFlags: profile.resolvedWindowMoveFlags,
+            resizeEnabled: profile.resolvedWindowResizeEnabled,
+            resizeFlags: profile.resolvedWindowResizeFlags,
+            throwEnabled: profile.resolvedWindowThrowEnabled,
+            throwFlags: profile.resolvedWindowThrowFlags,
+            arrangementEnabled: arrangementEnabled,
+            arrangementFlags: arrangementFlags
+        )
     }
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {

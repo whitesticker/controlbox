@@ -1,27 +1,23 @@
 import CoreGraphics
 import Foundation
 
-public enum ArrangementHotkeyAction: Equatable, Sendable {
-    case index(Int)
-    case next
-    case previous
-}
-
-public enum ArrangementHotkey {
+public enum WindowOrganizeHotkey {
     public static func configure(
         enabled: Bool,
         flags: CGEventFlags,
-        handler: ((ArrangementHotkeyAction) -> Void)?
+        virtualKey: UInt16,
+        handler: (() -> Void)?
     ) {
-        Controller.shared.configure(enabled: enabled, flags: flags, handler: handler)
+        Controller.shared.configure(
+            enabled: enabled,
+            flags: flags,
+            virtualKey: virtualKey,
+            handler: handler
+        )
     }
 
     public static func stop() {
-        configure(enabled: false, flags: [], handler: nil)
-    }
-
-    public static func isLayoutKey(_ key: UInt16) -> Bool {
-        Controller.action(for: key) != nil
+        configure(enabled: false, flags: [], virtualKey: 0, handler: nil)
     }
 }
 
@@ -31,19 +27,24 @@ private final class Controller: @unchecked Sendable {
     private let lock = NSLock()
     private var enabled = false
     private var flags: CGEventFlags = []
-    private var handler: ((ArrangementHotkeyAction) -> Void)?
+    private var virtualKey: UInt16 = 0
+    private var handler: (() -> Void)?
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
 
     func configure(
         enabled: Bool,
         flags: CGEventFlags,
-        handler: ((ArrangementHotkeyAction) -> Void)?
+        virtualKey: UInt16,
+        handler: (() -> Void)?
     ) {
         lock.lock()
         self.flags = ModifierChords.normalized(flags)
+        self.virtualKey = virtualKey
         self.handler = handler
-        self.enabled = enabled && ModifierChords.count(self.flags) >= 3 && handler != nil
+        self.enabled = enabled
+            && !self.flags.isEmpty
+            && handler != nil
         let shouldRun = self.enabled
         lock.unlock()
         if shouldRun {
@@ -102,41 +103,27 @@ private final class Controller: @unchecked Sendable {
         lock.lock()
         let enabled = self.enabled
         let need = self.flags
+        let keyNeed = self.virtualKey
         let handler = self.handler
         lock.unlock()
 
-        guard enabled, let handler else { return Unmanaged.passUnretained(event) }
+        guard enabled, let handler, !need.isEmpty else {
+            return Unmanaged.passUnretained(event)
+        }
         if ShortcutCapture.isActive {
             return Unmanaged.passUnretained(event)
         }
         let bits = ModifierChords.normalized(event.flags)
-        guard bits == need, !need.isEmpty else { return Unmanaged.passUnretained(event) }
-
+        guard bits == need else { return Unmanaged.passUnretained(event) }
         let key = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        guard let action = Self.action(for: key) else { return Unmanaged.passUnretained(event) }
+        guard key == keyNeed else { return Unmanaged.passUnretained(event) }
 
         if type == .keyDown {
             let repeats = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            if !repeats || action == .next || action == .previous {
-                handler(action)
+            if !repeats {
+                handler()
             }
         }
         return nil
     }
-
-    static func action(for key: UInt16) -> ArrangementHotkeyAction? {
-        if let number = numberKeys[key] {
-            return .index(number)
-        }
-        switch key {
-        case 123, 126: return .previous
-        case 124, 125: return .next
-        default: return nil
-        }
-    }
-
-    static let numberKeys: [UInt16: Int] = [
-        18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9, 29: 10,
-        83: 1, 84: 2, 85: 3, 86: 4, 87: 5, 88: 6, 89: 7, 91: 8, 92: 9, 82: 10
-    ]
 }

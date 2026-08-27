@@ -4,10 +4,17 @@ import SwiftUI
 
 struct DisplaysPane: View {
     @Bindable var catalog: DisplayCatalog
+    @Bindable private var settings = AppSettings.shared
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Show in menu bar", isOn: $settings.brightnessMenuBarEnabled)
+                } footer: {
+                    Text("Adds a separate menu bar icon with brightness sliders. Click it for a native menu, same as System Monitor. The Control Box icon stays as it is.")
+                }
+
                 if catalog.displays.isEmpty {
                     Section {
                         Text("No displays reported.")

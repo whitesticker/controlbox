@@ -6,16 +6,23 @@ import Observation
 @Observable
 @MainActor
 final class NightShiftCatalog {
+    static let defaultBrightnessSwing = 0.10
+
     var enabled = false
     var curve = NightShiftCurve.factory
     var isSupported = false
     var range = NightShift.CCTRange.fallback
     var currentWarmth = 0.0
+    var adjustExternalBrightness = false
+    var brightnessSwing = NightShiftCatalog.defaultBrightnessSwing
 
+    private weak var displayCatalog: DisplayCatalog?
+    private var brightnessBaselines: [String: Double] = [:]
     private var snapshot: NightShift.Snapshot?
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var lastApplied: Double?
+    private var lastBrightnessOffset: Double?
     private static let defaultsKey = "controlbox.nightShift.v1"
     private static let tickInterval: TimeInterval = 20
 
@@ -30,6 +37,19 @@ final class NightShiftCatalog {
         }
     }
 
+    func attachDisplays(_ catalog: DisplayCatalog) {
+        displayCatalog = catalog
+        catalog.onUserBrightnessChange = { [weak self] id, value in
+            self?.noteUserBrightness(id: id, value: value)
+        }
+        catalog.onDisplaysChanged = { [weak self] in
+            self?.applyExternalBrightness(force: false)
+        }
+        if enabled, adjustExternalBrightness {
+            applyExternalBrightness(force: true)
+        }
+    }
+
     func setEnabled(_ on: Bool) {
         guard on != enabled else { return }
         guard !on || isSupported else { return }
@@ -38,8 +58,43 @@ final class NightShiftCatalog {
         if on {
             beginControl(applyImmediately: true)
         } else {
+            restoreExternalBrightness()
             endControl(restore: true)
         }
+    }
+
+    func setAdjustExternalBrightness(_ on: Bool) {
+        guard on != adjustExternalBrightness else { return }
+        if on {
+            captureBaselines()
+            adjustExternalBrightness = true
+            persist()
+            if enabled {
+                applyExternalBrightness(force: true)
+            }
+        } else {
+            restoreExternalBrightness()
+            adjustExternalBrightness = false
+            brightnessBaselines = [:]
+            lastBrightnessOffset = nil
+            persist()
+        }
+    }
+
+    func setBrightnessSwing(_ value: Double) {
+        brightnessSwing = min(max(value, 0), 0.5)
+        persist()
+        if enabled, adjustExternalBrightness {
+            applyExternalBrightness(force: true)
+        }
+    }
+
+    func noteUserBrightness(id: String, value: Double) {
+        guard enabled, adjustExternalBrightness else { return }
+        guard let display = displayCatalog?.displays.first(where: { $0.id == id }),
+              !display.isBuiltIn else { return }
+        brightnessBaselines[id] = min(max(value - brightnessOffset, 0), 1)
+        persist()
     }
 
     func resetCurve() {
@@ -94,6 +149,7 @@ final class NightShiftCatalog {
         timer?.invalidate()
         timer = nil
         lastApplied = nil
+        lastBrightnessOffset = nil
         if restore, let snapshot {
             NightShift.restore(snapshot)
         }
@@ -128,6 +184,52 @@ final class NightShiftCatalog {
         }
         lastApplied = warmth
         NightShift.apply(warmth: warmth, period: period)
+        applyExternalBrightness(force: force)
+    }
+
+    private var brightnessOffset: Double {
+        (0.5 - currentWarmth) * 2 * brightnessSwing
+    }
+
+    private func captureBaselines() {
+        guard let displays = displayCatalog else { return }
+        let offset = brightnessOffset
+        for display in displays.displays where isExternalAdjustable(display) {
+            brightnessBaselines[display.id] = min(max(display.brightness - offset, 0), 1)
+        }
+    }
+
+    private func applyExternalBrightness(force: Bool) {
+        guard enabled, isSupported, adjustExternalBrightness, let displays = displayCatalog else { return }
+        let offset = brightnessOffset
+        lastBrightnessOffset = offset
+        var captured = false
+        for display in displays.displays where isExternalAdjustable(display) {
+            if brightnessBaselines[display.id] == nil {
+                brightnessBaselines[display.id] = min(max(display.brightness - offset, 0), 1)
+                captured = true
+            }
+            let base = brightnessBaselines[display.id] ?? display.brightness
+            let target = min(max(base + offset, 0), 1)
+            if force || abs(display.brightness - target) > 0.008 {
+                displays.setBrightness(target, id: display.id, origin: .nightShift)
+            }
+        }
+        if captured {
+            persist()
+        }
+    }
+
+    private func restoreExternalBrightness() {
+        guard let displays = displayCatalog else { return }
+        for (id, base) in brightnessBaselines {
+            displays.setBrightness(base, id: id, origin: .nightShift)
+        }
+        lastBrightnessOffset = nil
+    }
+
+    private func isExternalAdjustable(_ display: AttachedDisplay) -> Bool {
+        !display.isBuiltIn && display.canAdjustBrightness && !display.isDummy
     }
 
     private func observe() {
@@ -157,7 +259,14 @@ final class NightShiftCatalog {
     }
 
     private func persist() {
-        let store = Store(enabled: enabled, curve: curve, snapshot: snapshot)
+        let store = Store(
+            enabled: enabled,
+            curve: curve,
+            snapshot: snapshot,
+            adjustExternalBrightness: adjustExternalBrightness,
+            brightnessSwing: brightnessSwing,
+            brightnessBaselines: brightnessBaselines
+        )
         if let data = try? JSONEncoder().encode(store) {
             UserDefaults.standard.set(data, forKey: Self.defaultsKey)
         }
@@ -168,6 +277,9 @@ final class NightShiftCatalog {
               let store = try? JSONDecoder().decode(Store.self, from: data) else { return }
         enabled = store.enabled
         snapshot = store.snapshot
+        adjustExternalBrightness = store.adjustExternalBrightness ?? false
+        brightnessSwing = min(max(store.brightnessSwing ?? Self.defaultBrightnessSwing, 0), 0.5)
+        brightnessBaselines = store.brightnessBaselines ?? [:]
         if store.curve.matchesShape(of: .shippingV1) || store.curve.matchesShape(of: .shippingV2) {
             curve = .factory
             persist()
@@ -180,5 +292,8 @@ final class NightShiftCatalog {
         var enabled: Bool
         var curve: NightShiftCurve
         var snapshot: NightShift.Snapshot?
+        var adjustExternalBrightness: Bool?
+        var brightnessSwing: Double?
+        var brightnessBaselines: [String: Double]?
     }
 }

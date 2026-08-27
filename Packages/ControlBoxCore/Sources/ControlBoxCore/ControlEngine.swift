@@ -97,7 +97,7 @@ public final class ControlEngine: @unchecked Sendable {
         }
 
         let injectAll = !hostIsActive || postsWhenHostIsActive
-        if !injectAll {
+        if !injectAll || ShortcutCapture.isActive {
             padGesture.cancel()
             previousButtons = frame.buttons
             lastAnalog = frame.analog

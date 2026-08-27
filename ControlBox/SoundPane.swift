@@ -3,10 +3,17 @@ import SwiftUI
 
 struct SoundPane: View {
     @Bindable var catalog: SoundCatalog
+    @Bindable private var settings = AppSettings.shared
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Show in menu bar", isOn: $settings.soundMenuBarEnabled)
+                } footer: {
+                    Text("Adds a separate menu bar icon with output and per-app volume. Click it for a native menu, same as System Monitor. The Control Box icon stays as it is.")
+                }
+
                 Section {
                     if catalog.outputs.isEmpty {
                         Text("No output devices.")
@@ -33,12 +40,12 @@ struct SoundPane: View {
                                 .foregroundStyle(.secondary)
                         }
                         if !catalog.hasCaptureAccess {
-                            Text("On a MacBook, grant System Audio Recording for Control Box. Screen Recording alone mutes the app and plays nothing back.")
+                            Text("Grant System Audio Recording for Control Box. Screen Recording is not required.")
                                 .foregroundStyle(.secondary)
-                            Button("Request Screen & System Audio Recording…") {
+                            Button("Request System Audio Recording…") {
                                 catalog.requestCaptureAccess()
                             }
-                            Button("Open Screen Recording Settings") {
+                            Button("Open System Audio Recording Settings") {
                                 catalog.openCaptureSettings()
                             }
                         }

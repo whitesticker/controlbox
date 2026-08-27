@@ -47,6 +47,24 @@ struct NightShiftPane: View {
                 } footer: {
                     Text("X is the time of day. Y is how yellow Night Shift is, from cool daylight at the bottom to Night Shift’s maximum warmth at the top. Drag a dot to edit. Double-click the chart to add a point. Drag a point off the bottom to remove it.")
                 }
+
+                Section {
+                    Toggle("Also adjust external brightness", isOn: brightnessFollowBinding)
+                        .disabled(!catalog.isSupported)
+                    if catalog.adjustExternalBrightness {
+                        SettingsSlider(
+                            "Swing",
+                            value: brightnessSwingBinding,
+                            in: 0...0.5,
+                            enabled: catalog.isSupported,
+                            valueText: "±\(Int((catalog.brightnessSwing * 100).rounded()))%"
+                        )
+                    }
+                } header: {
+                    Text("External brightness")
+                } footer: {
+                    Text("When the curve is warm, external monitors dim by up to this amount from the level you set. When it is cool, they brighten by the same amount. The built-in panel is left alone. Default is ±10%.")
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Night Shift")
@@ -64,6 +82,20 @@ struct NightShiftPane: View {
         Binding(
             get: { catalog.curve },
             set: { catalog.curve = $0 }
+        )
+    }
+
+    private var brightnessFollowBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.adjustExternalBrightness },
+            set: { catalog.setAdjustExternalBrightness($0) }
+        )
+    }
+
+    private var brightnessSwingBinding: Binding<Double> {
+        Binding(
+            get: { catalog.brightnessSwing },
+            set: { catalog.setBrightnessSwing($0) }
         )
     }
 

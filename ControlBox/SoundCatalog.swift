@@ -74,8 +74,9 @@ final class SoundCatalog {
     }
 
     func requestCaptureAccess() {
-        _ = AppVolumeMixer.requestCaptureAccess()
-        refresh()
+        AppVolumeMixer.requestCaptureAccess { [weak self] _ in
+            self?.refresh()
+        }
     }
 
     func openCaptureSettings() {

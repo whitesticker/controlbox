@@ -27,8 +27,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var dualSenseTabRepeatInterval: Double?
     public var windowMoveEnabled: Bool?
     public var windowResizeEnabled: Bool?
+    public var windowThrowEnabled: Bool?
+    public var windowOrganizeEnabled: Bool?
     public var windowMoveFlags: UInt64?
     public var windowResizeFlags: UInt64?
+    public var windowThrowFlags: UInt64?
+    public var windowOrganizeFlags: UInt64?
+    public var windowOrganizeKey: UInt16?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -43,15 +48,29 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedTabRepeatInterval: Double { min(max(dualSenseTabRepeatInterval ?? 0.22, 0.10), 0.55) }
     public var resolvedWindowMoveEnabled: Bool { windowMoveEnabled ?? true }
     public var resolvedWindowResizeEnabled: Bool { windowResizeEnabled ?? true }
+    public var resolvedWindowThrowEnabled: Bool { windowThrowEnabled ?? false }
+    public var resolvedWindowOrganizeEnabled: Bool { windowOrganizeEnabled ?? false }
     public var resolvedWindowMoveFlags: CGEventFlags {
         CGEventFlags(rawValue: windowMoveFlags ?? Self.defaultWindowMoveFlags)
     }
     public var resolvedWindowResizeFlags: CGEventFlags {
         CGEventFlags(rawValue: windowResizeFlags ?? Self.defaultWindowResizeFlags)
     }
+    public var resolvedWindowThrowFlags: CGEventFlags {
+        CGEventFlags(rawValue: windowThrowFlags ?? Self.defaultWindowThrowFlags)
+    }
+    public var resolvedWindowOrganizeFlags: CGEventFlags {
+        CGEventFlags(rawValue: windowOrganizeFlags ?? Self.defaultWindowOrganizeFlags)
+    }
+    public var resolvedWindowOrganizeKey: UInt16 {
+        windowOrganizeKey ?? Self.defaultWindowOrganizeKey
+    }
 
     public static let defaultWindowMoveFlags = CGEventFlags.maskControl.rawValue
     public static let defaultWindowResizeFlags = CGEventFlags.maskControl.union(.maskShift).rawValue
+    public static let defaultWindowThrowFlags = CGEventFlags.maskControl.union(.maskAlternate).rawValue
+    public static let defaultWindowOrganizeFlags = CGEventFlags.maskControl.union(.maskCommand).rawValue
+    public static let defaultWindowOrganizeKey: UInt16 = 31
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
@@ -82,8 +101,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         dualSenseTabRepeatInterval: Double? = nil,
         windowMoveEnabled: Bool? = nil,
         windowResizeEnabled: Bool? = nil,
+        windowThrowEnabled: Bool? = nil,
+        windowOrganizeEnabled: Bool? = nil,
         windowMoveFlags: UInt64? = nil,
-        windowResizeFlags: UInt64? = nil
+        windowResizeFlags: UInt64? = nil,
+        windowThrowFlags: UInt64? = nil,
+        windowOrganizeFlags: UInt64? = nil,
+        windowOrganizeKey: UInt16? = nil
     ) {
         self.id = id
         self.name = name
@@ -110,8 +134,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.dualSenseTabRepeatInterval = dualSenseTabRepeatInterval
         self.windowMoveEnabled = windowMoveEnabled
         self.windowResizeEnabled = windowResizeEnabled
+        self.windowThrowEnabled = windowThrowEnabled
+        self.windowOrganizeEnabled = windowOrganizeEnabled
         self.windowMoveFlags = windowMoveFlags
         self.windowResizeFlags = windowResizeFlags
+        self.windowThrowFlags = windowThrowFlags
+        self.windowOrganizeFlags = windowOrganizeFlags
+        self.windowOrganizeKey = windowOrganizeKey
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -326,8 +355,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             dualSenseTabRepeatInterval: dualSenseTabRepeatInterval,
             windowMoveEnabled: windowMoveEnabled,
             windowResizeEnabled: windowResizeEnabled,
+            windowThrowEnabled: windowThrowEnabled,
+            windowOrganizeEnabled: windowOrganizeEnabled,
             windowMoveFlags: windowMoveFlags,
-            windowResizeFlags: windowResizeFlags
+            windowResizeFlags: windowResizeFlags,
+            windowThrowFlags: windowThrowFlags,
+            windowOrganizeFlags: windowOrganizeFlags,
+            windowOrganizeKey: windowOrganizeKey
         )
     }
 

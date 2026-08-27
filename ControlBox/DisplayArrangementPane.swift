@@ -8,6 +8,7 @@ struct DisplayArrangementPane: View {
     @State private var editor: ArrangementEditorSession?
     @State private var renameText: [String: String] = [:]
     @State private var shortcutMessage: String?
+    @State private var conflictName: String?
 
     var body: some View {
         NavigationStack {
@@ -42,10 +43,10 @@ struct DisplayArrangementPane: View {
                         title: "Shortcut keys",
                         flags: shortcutFlagsBinding,
                         minimumCount: 3,
-                        occupied: windowGrabOccupied,
-                        message: $shortcutMessage
+                        occupied: occupancy.occupied(except: "Display Arrangement"),
+                        message: $shortcutMessage,
+                        onConflict: { conflictName = $0 }
                     )
-                    .disabled(!catalog.shortcutEnabled)
                     if let shortcutMessage {
                         Text(shortcutMessage)
                             .foregroundStyle(.red)
@@ -53,7 +54,7 @@ struct DisplayArrangementPane: View {
                 } header: {
                     Text("Shortcut")
                 } footer: {
-                    Text("Hold at least three modifier keys, then press 1–9 to apply a layout for the displays that are connected now, or press an arrow key to move through them. Accessibility must be on.")
+                    Text("Hold at least three modifier keys, then press 1–9 to apply a layout for the displays that are connected now, or press an arrow key to move through them. Accessibility must be on. These keys cannot match Window Grab move, resize, or throw. If Organize uses the same modifiers, it cannot use 1–9 or the arrows.")
                 }
 
                 if catalog.store.presets.isEmpty && catalog.live.screens.count < 2 {
@@ -94,6 +95,7 @@ struct DisplayArrangementPane: View {
                     }
                 )
             }
+            .modifierConflictAlert($conflictName)
         }
     }
 
@@ -188,15 +190,26 @@ struct DisplayArrangementPane: View {
         return parts.joined(separator: " · ")
     }
 
+    private var occupancy: MacModifierOccupancy {
+        monitor.macModifierOccupancy(
+            arrangementEnabled: catalog.shortcutEnabled,
+            arrangementFlags: CGEventFlags(rawValue: catalog.shortcutFlags)
+        )
+    }
+
     private var shortcutEnabledBinding: Binding<Bool> {
         Binding(
             get: { catalog.shortcutEnabled },
             set: { enabled in
-                if enabled, let name = ModifierChords.collision(
+                if enabled, let name = occupancy.collision(
                     CGEventFlags(rawValue: catalog.shortcutFlags),
-                    occupied: windowGrabOccupied
+                    except: "Display Arrangement"
                 ) {
-                    shortcutMessage = "Those keys are already used by \(name)."
+                    conflictName = name
+                    return
+                }
+                if enabled, organizeUsesArrangementLayoutKeys(CGEventFlags(rawValue: catalog.shortcutFlags)) {
+                    conflictName = "Window Grab organize"
                     return
                 }
                 shortcutMessage = nil
@@ -208,20 +221,21 @@ struct DisplayArrangementPane: View {
     private var shortcutFlagsBinding: Binding<UInt64> {
         Binding(
             get: { catalog.shortcutFlags },
-            set: { catalog.shortcutFlags = $0 }
+            set: { flags in
+                if catalog.shortcutEnabled, organizeUsesArrangementLayoutKeys(CGEventFlags(rawValue: flags)) {
+                    conflictName = "Window Grab organize"
+                    return
+                }
+                catalog.shortcutFlags = flags
+            }
         )
     }
 
-    private var windowGrabOccupied: [(name: String, flags: CGEventFlags)] {
-        var items: [(name: String, flags: CGEventFlags)] = []
+    private func organizeUsesArrangementLayoutKeys(_ flags: CGEventFlags) -> Bool {
         let profile = monitor.macMouseProfile
-        if profile.resolvedWindowMoveEnabled {
-            items.append(("Window Grab move", profile.resolvedWindowMoveFlags))
-        }
-        if profile.resolvedWindowResizeEnabled {
-            items.append(("Window Grab resize", profile.resolvedWindowResizeFlags))
-        }
-        return items
+        guard profile.resolvedWindowOrganizeEnabled else { return false }
+        return ModifierChords.collides(flags, profile.resolvedWindowOrganizeFlags)
+            && ArrangementHotkey.isLayoutKey(profile.resolvedWindowOrganizeKey)
     }
 
     private func shortcutNumber(for preset: ArrangementPreset) -> Int? {

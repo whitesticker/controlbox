@@ -264,35 +264,55 @@ struct DeviceProfilePane: View {
 
     @ViewBuilder
     private func actionRow(_ title: String, button: DeviceButton, current: ControlAction) -> some View {
-        Picker(title, selection: actionBinding(for: button)) {
-            if button.isMXScrollDirection {
-                Text("Scroll").tag("scroll")
-                Divider()
-            }
-            mappingOptions
+        LabeledContent(title) {
+            actionPickerAndRecorder(button: button, current: current, includeScroll: button.isMXScrollDirection)
         }
-        if showsRecorder(for: button, current: current) {
-            LabeledContent("Shortcut") {
-                shortcutRecorder(for: button, current: current)
-            }
-        }
+        .labeledContentStyle(CenteredLabeledContentStyle())
     }
 
     @ViewBuilder
     private func mxActionRow(_ title: String, button: DeviceButton, record: DeviceRecord) -> some View {
         let current = record.selectedProfile.bindings[button] ?? .none
-        Picker(title, selection: actionBinding(for: button)) {
-            if button.canOwnGestures {
-                Text("Gestures").tag("gestures")
-                Divider()
-            }
-            mappingOptions
+        LabeledContent(title) {
+            actionPickerAndRecorder(
+                button: button,
+                current: current,
+                includeScroll: false,
+                includeGestures: button.canOwnGestures
+            )
         }
+        .labeledContentStyle(CenteredLabeledContentStyle())
         if current == .gestures {
             gestureEditor(for: button, record: record)
                 .id("gesture-editor-\(button.rawValue)")
-        } else if showsRecorder(for: button, current: current) {
-            LabeledContent("Shortcut") {
+        }
+    }
+
+    @ViewBuilder
+    private func actionPickerAndRecorder(
+        button: DeviceButton,
+        current: ControlAction,
+        includeScroll: Bool,
+        includeGestures: Bool = false
+    ) -> some View {
+        HStack(spacing: 8) {
+            Picker(selection: actionBinding(for: button)) {
+                if includeGestures {
+                    Text("Gestures").tag("gestures")
+                    Divider()
+                }
+                if includeScroll {
+                    Text("Scroll").tag("scroll")
+                    Divider()
+                }
+                mappingOptions
+            } label: {
+                EmptyView()
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+            if current != .gestures, showsRecorder(for: button, current: current) {
                 shortcutRecorder(for: button, current: current)
             }
         }
@@ -319,16 +339,11 @@ struct DeviceProfilePane: View {
                     Text(slot.title)
                 }
                 .id("\(button.rawValue)-\(slot.rawValue)")
+                if showsGestureRecorder(for: button, slot: slot, current: set.action(for: slot)) {
+                    gestureShortcutRecorder(for: button, slot: slot, current: set.action(for: slot))
+                }
             }
             .id("\(button.rawValue)-\(slot.rawValue)-row")
-            if showsGestureRecorder(for: button, slot: slot, current: set.action(for: slot)) {
-                gestureNestedRow {
-                    LabeledContent("Shortcut") {
-                        gestureShortcutRecorder(for: button, slot: slot, current: set.action(for: slot))
-                    }
-                }
-                .id("\(button.rawValue)-\(slot.rawValue)-recorder")
-            }
         }
     }
 
@@ -366,6 +381,7 @@ struct DeviceProfilePane: View {
     private func shortcutRecorder(for button: DeviceButton, current: ControlAction) -> ShortcutRecorderField {
         ShortcutRecorderField(
             shortcut: customShortcut(from: current),
+            width: 140,
             isRecording: customizingButton == button,
             onBegin: { customizingButton = button },
             onRecord: { key, flags in
@@ -405,13 +421,16 @@ struct DeviceProfilePane: View {
             Text(caption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker(caption, selection: actionBinding(for: button)) {
-                mappingOptions
-            }
-            .labelsHidden()
-            .frame(maxWidth: 168)
-            if showsRecorder(for: button, current: current) {
-                shortcutRecorder(for: button, current: current)
+            HStack(spacing: 8) {
+                Picker(caption, selection: actionBinding(for: button)) {
+                    mappingOptions
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 168)
+                if showsRecorder(for: button, current: current) {
+                    shortcutRecorder(for: button, current: current)
+                }
             }
         }
     }
@@ -734,6 +753,7 @@ struct DeviceProfilePane: View {
     private func gestureShortcutRecorder(for button: DeviceButton, slot: GestureSlot, current: ControlAction) -> ShortcutRecorderField {
         ShortcutRecorderField(
             shortcut: customShortcut(from: current),
+            width: 140,
             isRecording: customizingGestureButton == button && customizingGestureSlot == slot,
             onBegin: {
                 customizingGestureButton = button
@@ -754,5 +774,15 @@ struct DeviceProfilePane: View {
                 customizingGestureSlot = nil
             }
         )
+    }
+}
+
+private struct CenteredLabeledContentStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            configuration.label
+            Spacer(minLength: 8)
+            configuration.content
+        }
     }
 }

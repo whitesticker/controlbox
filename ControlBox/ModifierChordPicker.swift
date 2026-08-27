@@ -8,6 +8,7 @@ struct ModifierChordPicker: View {
     var minimumCount: Int = 0
     var occupied: [(name: String, flags: CGEventFlags)] = []
     @Binding var message: String?
+    var onConflict: ((String) -> Void)? = nil
 
     var body: some View {
         HStack {
@@ -34,7 +35,8 @@ struct ModifierChordPicker: View {
                 return
             }
             if let name = ModifierChords.collision(next, occupied: occupied) {
-                message = "Those keys are already used by \(name)."
+                message = nil
+                onConflict?(name)
                 return
             }
             message = nil
@@ -49,5 +51,23 @@ struct ModifierChordPicker: View {
                 .fill(on ? Color.accentColor : Color.secondary.opacity(0.16))
         )
         .foregroundStyle(on ? Color.white : Color.primary)
+    }
+}
+
+extension View {
+    func modifierConflictAlert(_ name: Binding<String?>) -> some View {
+        alert(
+            "Pick another set",
+            isPresented: Binding(
+                get: { name.wrappedValue != nil },
+                set: { if !$0 { name.wrappedValue = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { name.wrappedValue = nil }
+        } message: {
+            if let used = name.wrappedValue {
+                Text("Those keys are already used by \(used). Pick another set.")
+            }
+        }
     }
 }

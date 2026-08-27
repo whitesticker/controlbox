@@ -21,13 +21,13 @@ Control Box stays on your Mac. Nothing is uploaded.
 
 | Pane | What you get |
 |---|---|
-| **Display Brightness** | Per-panel brightness (and contrast on supported externals). Optional one slider for all displays, which keeps each panel’s relative mix. DDC/CI on Apple silicon from [MonitorControl](https://github.com/MonitorControl/MonitorControl). |
-| **Night Shift** | f.lux-style 24-hour curve for system Night Shift yellowness. Off until you turn the pane on. Drag the curve; Apple’s sunset schedule is paused while Control Box is driving it. |
+| **Display Brightness** | Per-panel brightness (and contrast on supported externals). Optional one slider for all displays, which keeps each panel’s relative mix. Optional menu bar extra with those sliders. DDC/CI on Apple silicon from [MonitorControl](https://github.com/MonitorControl/MonitorControl). |
+| **Night Shift** | f.lux-style 24-hour curve for system Night Shift yellowness. Off until you turn the pane on. Drag the curve; Apple’s sunset schedule is paused while Control Box is driving it. Optional follow dims or brightens external monitors with the curve (±10% by default). |
 | **Display Arrangement** | Save and apply layout presets (positions, main display, mirror) for the screens that are plugged in now. Keyboard shortcut plus a layout HUD. |
-| **Sound** | Output volume, then a per-app mixer. Needs Screen & System Audio Recording on a MacBook. |
+| **Sound** | Output volume, then a per-app mixer. Optional menu bar extra with the same sliders. Needs System Audio Recording for per-app volume. |
 | **System Monitor** | Optional second menu bar extra from [top](https://github.com/whitesticker/top): live network speed plus CPU, GPU, memory, disk, sensors, and battery. Off until you turn the pane on. Hide or quit that extra without quitting Control Box. |
 | **Pointer & Scroll** | Pointer speed for USB and Bluetooth mice, wheel and thumb-wheel speed, smooth scrolling, natural vs standard direction. DualSense and Siri Remote keep their own sliders on the device page. |
-| **Window Grab** | Hold a modifier chord and move to drag a window from anywhere; add Shift (by default) to resize with the top-left anchored. Trackpad, any mouse, or DualSense. Accessibility must be on. |
+| **Window Grab** | Hold a modifier chord and move to drag a window from anywhere; add Shift (by default) to resize with the top-left anchored. Optional throw snaps to a 3×3 map of the screen; optional organize (default Control-Command-O) tiles windows. Trackpad, any mouse, or DualSense. Accessibility must be on. |
 
 ## Devices
 

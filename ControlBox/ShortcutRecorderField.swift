@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ShortcutRecorderField: View {
     var shortcut: (virtualKey: UInt16, flags: UInt64)?
+    var width: CGFloat = 168
     var isRecording: Bool
     var onBegin: () -> Void
     var onRecord: (UInt16, UInt64) -> Void
@@ -19,7 +20,7 @@ struct ShortcutRecorderField: View {
             onClear: onClear,
             onCancel: onCancel
         )
-        .frame(width: 168, height: 24)
+        .frame(width: width, height: 24)
     }
 }
 
@@ -59,7 +60,8 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
         private var recording = false
         private var liveFlags = CGEventFlags(rawValue: 0)
         private var monitor: Any?
-        private let label = NSTextField(labelWithString: "")
+        private var awaitingKeyUp = false
+        private let label = CenteredShortcutLabel()
         private let recordButton = NSButton(title: "", target: nil, action: nil)
 
         override init(frame frameRect: NSRect) {
@@ -67,9 +69,6 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
             wantsLayer = true
             layer?.cornerRadius = 6
             layer?.borderWidth = 1
-            label.alignment = .center
-            label.font = .systemFont(ofSize: 13, weight: .medium)
-            label.lineBreakMode = .byTruncatingTail
             addSubview(label)
 
             recordButton.bezelStyle = .circular
@@ -88,6 +87,7 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
 
         deinit {
             stopMonitor()
+            ShortcutCapture.setActive(false)
         }
 
         override var acceptsFirstResponder: Bool { true }
@@ -101,8 +101,12 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
                 width: buttonSize,
                 height: buttonSize
             )
-            label.frame = bounds.insetBy(dx: 8, dy: 1)
-            label.frame.size.width = max(40, recordButton.frame.minX - 10)
+            label.frame = NSRect(
+                x: 8,
+                y: 0,
+                width: max(40, recordButton.frame.minX - 10),
+                height: bounds.height
+            )
         }
 
         override func mouseDown(with event: NSEvent) {
@@ -126,14 +130,19 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
                 beginRecording(notify: false)
             } else if !requestedRecording && recording {
                 recording = false
-                stopMonitor()
+                if !awaitingKeyUp {
+                    stopMonitor()
+                    ShortcutCapture.setActive(false)
+                }
             }
             refresh()
         }
 
         private func beginRecording(notify: Bool = true) {
+            awaitingKeyUp = false
             recording = true
             liveFlags = []
+            ShortcutCapture.setActive(true)
             window?.makeFirstResponder(self)
             if window == nil {
                 DispatchQueue.main.async { [weak self] in
@@ -148,8 +157,10 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
         }
 
         private func cancelRecording() {
+            awaitingKeyUp = false
             recording = false
             stopMonitor()
+            ShortcutCapture.setActive(false)
             refresh()
             onCancel?()
         }
@@ -181,8 +192,8 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
 
         private func startMonitor() {
             stopMonitor()
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-                guard let self, self.recording else { return event }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+                guard let self, self.recording || self.awaitingKeyUp else { return event }
                 return self.handle(event)
             }
         }
@@ -194,11 +205,35 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
             }
         }
 
+        private func finishHold() {
+            awaitingKeyUp = false
+            recording = false
+            stopMonitor()
+            ShortcutCapture.setActive(false)
+            refresh()
+        }
+
         private func handle(_ event: NSEvent) -> NSEvent? {
+            if event.type == .keyUp {
+                if awaitingKeyUp {
+                    finishHold()
+                    return nil
+                }
+                return recording ? nil : event
+            }
+
             let flags = Self.capturedFlags(from: event)
             if event.type == .flagsChanged {
                 liveFlags = CGEventFlags(rawValue: flags)
-                refresh()
+                if awaitingKeyUp, ModifierChords.normalized(liveFlags).isEmpty {
+                    finishHold()
+                } else {
+                    refresh()
+                }
+                return nil
+            }
+
+            if awaitingKeyUp {
                 return nil
             }
 
@@ -208,16 +243,18 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
                 return nil
             }
             if keyCode == 51 || keyCode == 117 {
+                awaitingKeyUp = false
                 recording = false
                 stopMonitor()
                 shortcut = nil
+                ShortcutCapture.setActive(false)
                 refresh()
                 onClear?()
                 return nil
             }
 
+            awaitingKeyUp = true
             recording = false
-            stopMonitor()
             shortcut = (keyCode, flags)
             refresh()
             onRecord?(keyCode, flags)
@@ -228,5 +265,37 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
             let allowed: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
             return UInt64(event.modifierFlags.intersection(allowed).rawValue)
         }
+    }
+}
+
+private final class CenteredShortcutLabel: NSView {
+    var stringValue = "" {
+        didSet { needsDisplay = true }
+    }
+    var textColor: NSColor = .labelColor {
+        didSet { needsDisplay = true }
+    }
+    var font: NSFont = .systemFont(ofSize: 13, weight: .medium)
+
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: style
+        ]
+        let text = stringValue as NSString
+        let size = text.size(withAttributes: attributes)
+        let rect = CGRect(
+            x: 0,
+            y: ((bounds.height - size.height) / 2).rounded(),
+            width: bounds.width,
+            height: max(size.height, 1)
+        )
+        text.draw(in: rect, withAttributes: attributes)
     }
 }

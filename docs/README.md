@@ -42,8 +42,11 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [arrangement-duplicate-combo.md](arrangement-duplicate-combo.md) | Display Arrangement lists the same monitors as two groups |
 | [process-tap-exclusive.md](process-tap-exclusive.md) | Per-app volume does nothing while FineTune or another tap mixer is open |
 | [macbook-app-volume-binary.md](macbook-app-volume-binary.md) | MacBook speakers: per-app slider is 100% or silence |
+| [audio-permission-stale.md](audio-permission-stale.md) | Permissions still asks after System Audio Recording is granted |
 | [mac-panes-gated-on-mx.md](mac-panes-gated-on-mx.md) | Window Grab and Pointer & Scroll stay off until an MX Master is attached |
 | [system-monitor-reorder.md](system-monitor-reorder.md) | System Monitor dashboard rows cannot be dragged in settings |
+| [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |
+| [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |
 | [modifier-chip-tint.md](modifier-chip-tint.md) | Modifier chips do not look selected on older macOS |
 | [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |

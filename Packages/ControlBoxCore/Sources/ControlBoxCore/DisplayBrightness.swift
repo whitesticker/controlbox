@@ -53,8 +53,15 @@ public enum DisplayBrightness {
         var ioPath: String
     }
 
-    public static func connectedDisplays() -> [AttachedDisplay] {
-        let screens = NSScreen.screens.compactMap(screen(_:))
+    public static func connectedDisplays(readHardware: Bool = true) -> [AttachedDisplay] {
+        connectedDisplays(screens: snapshotScreens(), readHardware: readHardware)
+    }
+
+    public static func snapshotScreens() -> [Screen] {
+        NSScreen.screens.compactMap(screen(_:))
+    }
+
+    public static func connectedDisplays(screens: [Screen], readHardware: Bool = true) -> [AttachedDisplay] {
         let ids = screens.map(\.displayID)
         let matches = Arm64DDC.serviceMatches(for: ids)
         var nextPipes: [String: Pipe] = [:]
@@ -108,8 +115,29 @@ public enum DisplayBrightness {
             }
 
             let key = identityKey(match.details, displayID: screen.displayID)
-            let brightness = Arm64DDC.read(service: service, command: vcpBrightness)
-            let contrast = Arm64DDC.read(service: service, command: vcpContrast)
+            lock.lock()
+            let existing = pipes[key]
+            lock.unlock()
+
+            let brightness: (current: UInt16, max: UInt16)?
+            let contrast: (current: UInt16, max: UInt16)?
+            if readHardware || existing == nil {
+                brightness = Arm64DDC.read(service: service, command: vcpBrightness)
+                contrast = Arm64DDC.read(service: service, command: vcpContrast)
+            } else if let existing {
+                let saved = MonitorSettings.record(for: key)
+                brightness = (
+                    current: UInt16((saved?.brightness ?? 1) * Double(max(existing.brightnessMax, 1))),
+                    max: existing.brightnessMax
+                )
+                contrast = (
+                    current: UInt16((saved?.contrast ?? 1) * Double(max(existing.contrastMax, 1))),
+                    max: existing.contrastMax
+                )
+            } else {
+                brightness = nil
+                contrast = nil
+            }
             let pipe = Pipe(
                 service: service,
                 brightnessMax: brightness?.max ?? 0,
@@ -247,10 +275,16 @@ public enum DisplayBrightness {
         return "cg-\(displayID)"
     }
 
-    private struct Screen {
-        var displayID: CGDirectDisplayID
-        var name: String
-        var isBuiltIn: Bool
+    public struct Screen: Sendable {
+        public var displayID: CGDirectDisplayID
+        public var name: String
+        public var isBuiltIn: Bool
+
+        public init(displayID: CGDirectDisplayID, name: String, isBuiltIn: Bool) {
+            self.displayID = displayID
+            self.name = name
+            self.isBuiltIn = isBuiltIn
+        }
     }
 
     private static func screen(_ ns: NSScreen) -> Screen? {

@@ -8,14 +8,11 @@ enum TopNavigation {
 
     @MainActor
     static func openSystemMonitorPane() {
-        pendingOpen = true
-        WindowActions.openMain?("main")
-        NotificationCenter.default.post(name: .controlBoxOpenSystemMonitor, object: nil)
-        NSApp.activate()
+        PaneNavigation.open(.systemMonitor)
     }
 }
 
-/// Owns the *top* menu bar extra. Control Box already has a gamecontroller
+/// Owns the *top* menu bar extra. Control Box already has a ring
 /// `MenuBarExtra`; this is a second `NSStatusItem` (live ↑/↓ network icon +
 /// dashboard menu) that only exists while System Monitor is enabled.
 @MainActor

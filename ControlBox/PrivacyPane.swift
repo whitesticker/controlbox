@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PrivacyPane: View {
     @Bindable var monitor: DualSenseMonitor
+    @Bindable private var settings = AppSettings.shared
 
     var body: some View {
         NavigationStack {
@@ -17,8 +18,8 @@ struct PrivacyPane: View {
                     }
                 } footer: {
                     Text(monitor.allPermissionsGranted
-                         ? "Control Box can listen to input, inject keyboard, pointer, and scroll events, and stay allowed in the background."
-                         : "Turn on Accessibility, Input Monitoring, and Allow in the Background. Accessibility and Input Monitoring need a relaunch after you grant them.")
+                         ? "Control Box can listen to input, inject keyboard, pointer, and scroll events."
+                         : "Turn on Accessibility and Input Monitoring. Both need a relaunch after you grant them.")
                 }
 
                 Section {
@@ -56,37 +57,41 @@ struct PrivacyPane: View {
                 }
 
                 Section {
-                    permissionRow(
-                        title: "Background",
-                        allowed: monitor.backgroundAllowed
-                    )
-                    if !monitor.backgroundAllowed {
-                        Button("Request Background Access…") {
-                            monitor.promptForBackgroundActivity()
-                        }
+                    Toggle("Launch at Login", isOn: launchAtLoginBinding)
+                    if monitor.backgroundNeedsApproval {
+                        permissionRow(
+                            title: "Background",
+                            allowed: false
+                        )
                         Button("Open Login Items & Background Settings") {
                             monitor.openBackgroundSettings()
                         }
                     }
                 } footer: {
-                    Text("Needed so Control Box can keep mapping devices after you close the window, and can start again after login. macOS lists this under System Settings → General → Login Items & Extensions → Allow in the Background.")
+                    Text("Starts Control Box when you log in to this Mac. macOS lists this under System Settings → General → Login Items & Extensions. You may also need Allow in the Background.")
+                }
+
+                Section {
+                    Toggle("Hide Dock icon", isOn: $settings.hideDockIcon)
+                } footer: {
+                    Text("Control Box stays in the menu bar. Command-Q closes the window and leaves the app running. Quit from the Control Box menu bar icon.")
                 }
 
                 Section {
                     permissionRow(
-                        title: "Screen & System Audio Recording",
+                        title: "System Audio Recording",
                         allowed: monitor.screenCaptureTrusted
                     )
                     if !monitor.screenCaptureTrusted {
-                        Button("Request Screen & System Audio Recording…") {
+                        Button("Request System Audio Recording…") {
                             monitor.promptForScreenCapture()
                         }
-                        Button("Open Screen Recording Settings") {
+                        Button("Open System Audio Recording Settings") {
                             monitor.openScreenCaptureSettings()
                         }
                     }
                 } footer: {
-                    Text("Needed only for per-app volume on Sound. On macOS 15, Control Box needs System Audio Recording — Screen Recording by itself leaves sliders silent. Input mapping does not use this.")
+                    Text("Needed only for per-app volume on Sound. Control Box does not need Screen Recording. Input mapping does not use this.")
                 }
 
                 if monitor.needsRelaunchForPermissions {
@@ -102,6 +107,13 @@ struct PrivacyPane: View {
             .formStyle(.grouped)
             .navigationTitle("Permissions")
         }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.launchAtLoginOn },
+            set: { monitor.setLaunchAtLogin($0) }
+        )
     }
 
     private func permissionRow(title: String, allowed: Bool) -> some View {

@@ -1,3 +1,4 @@
+import AppKit
 import ControlBoxCore
 import Foundation
 import Observation
@@ -9,9 +10,15 @@ final class DisplayCatalog {
     var unifiedEnabled = false
     var unifiedBrightness = 1.0
 
-    private var writeWork: [String: DispatchWorkItem] = [:]
     private var mix: [String: Double] = [:]
+    private var lastScreenSignature = ""
+    private var lastUserWrite = Date.distantPast
+    private var fetching = false
     private static let defaultsKey = "controlbox.displayBrightness.v1"
+    private static let ddcQueue = DispatchQueue(label: "controlbox.display-ddc", qos: .userInteractive)
+    private static let ddcLock = NSLock()
+    private static var pendingDDC: [String: (value: Double, id: String, field: String)] = [:]
+    private static var inflightDDC: Set<String> = []
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
@@ -26,18 +33,21 @@ final class DisplayCatalog {
 
     var canUnify: Bool { adjustableDisplays.count >= 2 }
 
-    func refresh() {
-        displays = DisplayBrightness.connectedDisplays()
-        if unifiedEnabled, canUnify {
-            if mix.isEmpty {
-                captureMix()
-            } else {
-                syncMixAfterRefresh()
+    func refresh(readHardware: Bool = true) {
+        let signature = Self.screenSignature()
+        if !readHardware, signature == lastScreenSignature, !displays.isEmpty {
+            return
+        }
+        guard !fetching else { return }
+        fetching = true
+        let screens = DisplayBrightness.snapshotScreens()
+        Task.detached(priority: .userInitiated) {
+            let list = DisplayBrightness.connectedDisplays(screens: screens, readHardware: true)
+            await MainActor.run {
+                self.fetching = false
+                self.lastScreenSignature = Self.screenSignature()
+                self.applyFetched(list)
             }
-        } else if unifiedEnabled, !canUnify {
-            unifiedEnabled = false
-            mix = [:]
-            persist()
         }
     }
 
@@ -54,15 +64,50 @@ final class DisplayCatalog {
 
     func setUnifiedBrightness(_ value: Double) {
         unifiedBrightness = min(max(value, 0), 1)
+        lastUserWrite = Date()
         applyMix()
     }
 
-    func setBrightness(_ value: Double, id: String) {
-        setValue(value, id: id, field: "brightness") { DisplayBrightness.setBrightness($0, id: $1) }
+    enum BrightnessOrigin {
+        case user
+        case nightShift
+    }
+
+    var onUserBrightnessChange: ((String, Double) -> Void)?
+    var onDisplaysChanged: (() -> Void)?
+
+    func setBrightness(_ value: Double, id: String, origin: BrightnessOrigin = .user) {
+        setValue(value, id: id, field: "brightness", origin: origin)
     }
 
     func setContrast(_ value: Double, id: String) {
-        setValue(value, id: id, field: "contrast") { DisplayBrightness.setContrast($0, id: $1) }
+        setValue(value, id: id, field: "contrast", origin: .user)
+    }
+
+    private func applyFetched(_ next: [AttachedDisplay]) {
+        var next = next
+        if Date().timeIntervalSince(lastUserWrite) < 2 {
+            let live = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, ($0.brightness, $0.contrast)) })
+            for index in next.indices {
+                if let held = live[next[index].id] {
+                    next[index].brightness = held.0
+                    next[index].contrast = held.1
+                }
+            }
+        }
+        displays = next
+        if unifiedEnabled, canUnify {
+            if mix.isEmpty {
+                captureMix()
+            } else {
+                syncMixAfterRefresh()
+            }
+        } else if unifiedEnabled, !canUnify {
+            unifiedEnabled = false
+            mix = [:]
+            persist()
+        }
+        onDisplaysChanged?()
     }
 
     private func captureMix() {
@@ -96,7 +141,12 @@ final class DisplayCatalog {
     private func applyMix() {
         for display in adjustableDisplays {
             let ratio = mix[display.id] ?? 1
-            setBrightness(min(max(unifiedBrightness * ratio, 0), 1), id: display.id)
+            setValue(
+                min(max(unifiedBrightness * ratio, 0), 1),
+                id: display.id,
+                field: "brightness",
+                origin: .user
+            )
         }
     }
 
@@ -111,8 +161,12 @@ final class DisplayCatalog {
         _ value: Double,
         id: String,
         field: String,
-        write: @escaping (Double, String) -> Void
+        origin: BrightnessOrigin
     ) {
+        lastUserWrite = Date()
+        if origin == .user, field == "brightness" {
+            onUserBrightnessChange?(id, value)
+        }
         if let index = displays.firstIndex(where: { $0.id == id }) {
             if field == "brightness" {
                 displays[index].brightness = value
@@ -120,13 +174,54 @@ final class DisplayCatalog {
                 displays[index].contrast = value
             }
         }
-        let token = "\(id):\(field)"
-        writeWork[token]?.cancel()
-        let work = DispatchWorkItem {
-            write(value, id)
+        if id.hasPrefix("cg:") {
+            if field == "brightness" {
+                DisplayBrightness.setBrightness(value, id: id)
+            } else {
+                DisplayBrightness.setContrast(value, id: id)
+            }
+            return
         }
-        writeWork[token] = work
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05, execute: work)
+        let token = "\(id):\(field)"
+        Self.ddcLock.lock()
+        Self.pendingDDC[token] = (value, id, field)
+        Self.ddcLock.unlock()
+        Self.pumpDDC(token)
+    }
+
+    private static func pumpDDC(_ token: String) {
+        ddcQueue.async {
+            ddcLock.lock()
+            guard !inflightDDC.contains(token),
+                  let pending = pendingDDC.removeValue(forKey: token) else {
+                ddcLock.unlock()
+                return
+            }
+            inflightDDC.insert(token)
+            ddcLock.unlock()
+
+            if pending.field == "brightness" {
+                DisplayBrightness.setBrightness(pending.value, id: pending.id)
+            } else {
+                DisplayBrightness.setContrast(pending.value, id: pending.id)
+            }
+
+            ddcLock.lock()
+            inflightDDC.remove(token)
+            let again = pendingDDC[token] != nil
+            ddcLock.unlock()
+            if again {
+                pumpDDC(token)
+            }
+        }
+    }
+
+    private static func screenSignature() -> String {
+        NSScreen.screens.compactMap { screen in
+            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue
+        }
+        .sorted()
+        .joined(separator: ",")
     }
 
     private struct Store: Codable {

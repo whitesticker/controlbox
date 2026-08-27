@@ -4,11 +4,11 @@ struct ContentView: View {
     @Bindable var monitor: DualSenseMonitor
     @Bindable var arrangementCatalog: ArrangementCatalog
     @Bindable var nightShiftCatalog: NightShiftCatalog
+    @Bindable var displayCatalog: DisplayCatalog
+    @Bindable var soundCatalog: SoundCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
-    @State private var displayCatalog = DisplayCatalog()
-    @State private var soundCatalog = SoundCatalog()
 
     var body: some View {
         NavigationSplitView {
@@ -92,14 +92,25 @@ struct ContentView: View {
         .foregroundStyle(Palette.primaryText(colorScheme))
         .background(Palette.background(colorScheme).ignoresSafeArea())
         .onAppear {
-            if TopNavigation.pendingOpen {
-                TopNavigation.pendingOpen = false
-                selection = .systemMonitor
-            }
+            applyPendingPane()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .controlBoxOpenPane)) { _ in
+            applyPendingPane()
         }
         .onReceive(NotificationCenter.default.publisher(for: .controlBoxOpenSystemMonitor)) { _ in
+            PaneNavigation.pending = .systemMonitor
+            applyPendingPane()
+        }
+    }
+
+    private func applyPendingPane() {
+        if TopNavigation.pendingOpen {
             TopNavigation.pendingOpen = false
             selection = .systemMonitor
+        }
+        if let pending = PaneNavigation.pending {
+            PaneNavigation.pending = nil
+            selection = pending
         }
     }
 

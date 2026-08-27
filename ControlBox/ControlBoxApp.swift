@@ -4,6 +4,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let controlBoxReopenMainWindow = Notification.Name("controlBoxReopenMainWindow")
+    static let controlBoxOpenPane = Notification.Name("controlBoxOpenPane")
     static let controlBoxOpenSystemMonitor = Notification.Name("controlBoxOpenSystemMonitor")
 }
 
@@ -17,19 +18,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = DualSenseMonitor()
     let arrangementCatalog = ArrangementCatalog()
     let nightShiftCatalog = NightShiftCatalog()
+    let displayCatalog = DisplayCatalog()
+    let soundCatalog = SoundCatalog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
-        NSApp.setActivationPolicy(.regular)
+        AppSettings.shared.applyDockPolicy()
         TopMenuBarHost.shared.start()
+        MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
+        nightShiftCatalog.attachDisplays(displayCatalog)
         DispatchQueue.main.async { [monitor] in
             monitor.start()
+        }
+        if AppSettings.shared.hideDockIcon {
+            DispatchQueue.main.async { [weak self] in
+                self?.closeSessionWindows()
+            }
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
         TopMenuBarHost.shared.stop()
+        MenuBarExtrasHost.shared.stop()
         ArrangementHotkey.stop()
         nightShiftCatalog.invalidate()
     }
@@ -47,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
         return true
     }
+
+    private func closeSessionWindows() {
+        for window in NSApp.windows where window.title == "Control Box" || window.title == "Calibration" {
+            window.close()
+        }
+    }
 }
 
 @main
@@ -58,7 +75,9 @@ struct ControlBoxApp: App {
             ContentView(
                 monitor: appDelegate.monitor,
                 arrangementCatalog: appDelegate.arrangementCatalog,
-                nightShiftCatalog: appDelegate.nightShiftCatalog
+                nightShiftCatalog: appDelegate.nightShiftCatalog,
+                displayCatalog: appDelegate.displayCatalog,
+                soundCatalog: appDelegate.soundCatalog
             )
                 .frame(minWidth: 860, minHeight: 620)
                 .preferredColorScheme(nil)
@@ -81,7 +100,7 @@ struct ControlBoxApp: App {
         .windowResizability(.contentMinSize)
 
         MenuBarExtra {
-            ControlBoxMenuBar(monitor: appDelegate.monitor)
+            ControlBoxMenuBar()
         } label: {
             MenuBarReopenHook()
         }
@@ -106,7 +125,8 @@ private struct MenuBarReopenHook: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(systemName: "gamecontroller.fill")
+        Image(nsImage: MenuBarRingIcon.image)
+            .renderingMode(.template)
             .accessibilityLabel("Control Box")
             .onAppear {
                 WindowActions.openMain = { id in
@@ -125,6 +145,12 @@ private struct ControlBoxWindowCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appTermination) {
+            Button("Close Window") {
+                NSApp.keyWindow?.close()
+            }
+            .keyboardShortcut("q", modifiers: .command)
+        }
         CommandGroup(after: .windowList) {
             Button("Control Box") {
                 openWindow(id: "main")
@@ -136,7 +162,6 @@ private struct ControlBoxWindowCommands: Commands {
 }
 
 private struct ControlBoxMenuBar: View {
-    @Bindable var monitor: DualSenseMonitor
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -145,14 +170,9 @@ private struct ControlBoxMenuBar: View {
             NSApp.activate()
         }
 
-        if let record = monitor.selectedRecord {
-            Divider()
-            Text(record.controlEnabled ? "\(record.name) · Control on" : "\(record.name) · Control off")
-        }
-
         Divider()
         Button("Quit Control Box") {
-            NSApp.terminate(nil)
+            AppQuit.quitNow()
         }
     }
 }

@@ -39,23 +39,34 @@ public enum AppVolumeMixer {
         return false
     }
 
+    /// Per-app volume needs System Audio Recording (`kTCCServiceAudioCapture`).
+    /// Screen Recording is a different grant; on macOS 26 it also covers taps,
+    /// but an audio-only grant does not set `CGPreflightScreenCaptureAccess()`.
     public static var hasCaptureAccess: Bool {
-        switch AudioCaptureTCC.preflight() {
-        case .authorized: return true
-        case .denied: return false
-        case .unknown: return CGPreflightScreenCaptureAccess()
+        if AudioCaptureTCC.preflight() == .authorized { return true }
+        if CGPreflightScreenCaptureAccess() { return true }
+        tapAccessLock.lock()
+        let tapped = observedTapAuthorized
+        tapAccessLock.unlock()
+        return tapped
+    }
+
+    public static func requestCaptureAccess(completion: ((Bool) -> Void)? = nil) {
+        AudioCaptureTCC.request { granted in
+            completion?(granted || hasCaptureAccess)
         }
     }
 
-    @discardableResult
-    public static func requestCaptureAccess() -> Bool {
-        AudioCaptureTCC.request()
-        return CGRequestScreenCaptureAccess()
-    }
-
     public static func openCaptureSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
+        let prefixes = [
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?",
+            "x-apple.systempreferences:com.apple.preference.security?"
+        ]
+        for prefix in prefixes {
+            if let url = URL(string: prefix + "Privacy_ScreenCapture"),
+               NSWorkspace.shared.open(url) {
+                return
+            }
         }
     }
 
@@ -100,6 +111,16 @@ public enum AppVolumeMixer {
         )
         return known.compactMap { running.contains($0.bundle) ? $0.name : nil }
     }
+}
+
+/// A process tap that actually started is stronger evidence than TCC preflight.
+private let tapAccessLock = NSLock()
+private var observedTapAuthorized = false
+
+private func recordTapAccessSuccess() {
+    tapAccessLock.lock()
+    observedTapAuthorized = true
+    tapAccessLock.unlock()
 }
 
 @available(macOS 14.2, *)
@@ -275,6 +296,7 @@ private final class Engine {
             sessions[id] = session
             lastError = nil
             lock.unlock()
+            recordTapAccessSuccess()
             logger.info("Tapped \(group.name, privacy: .public) objects=\(group.objectIDs.count)")
         } catch {
             lastError = error.localizedDescription
@@ -460,15 +482,26 @@ private enum AudioCaptureTCC {
         case unknown
     }
 
-    private static let service = "kTCCServiceAudioCapture" as CFString
-    private static let handle = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW)
+    private static let handle =
+        dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW)
+        ?? dlopen("/System/Library/PrivateFrameworks/TCC.framework/TCC", RTLD_NOW)
+
+    private static let service: CFString = {
+        if let handle, let symbol = dlsym(handle, "kTCCServiceAudioCapture") {
+            return symbol.assumingMemoryBound(to: CFString.self).pointee
+        }
+        return "kTCCServiceAudioCapture" as CFString
+    }()
 
     static func preflight() -> Status {
         guard let handle,
               let symbol = dlsym(handle, "TCCAccessPreflight") else {
             return .unknown
         }
-        let preflight = unsafeBitCast(symbol, to: (@convention(c) (CFString, CFDictionary?) -> Int).self)
+        let preflight = unsafeBitCast(
+            symbol,
+            to: (@convention(c) (CFString, CFDictionary?) -> Int32).self
+        )
         switch preflight(service, nil) {
         case 0: return .authorized
         case 1: return .denied
@@ -476,16 +509,19 @@ private enum AudioCaptureTCC {
         }
     }
 
-    static func request() {
+    static func request(_ completion: ((Bool) -> Void)? = nil) {
         guard let handle,
               let symbol = dlsym(handle, "TCCAccessRequest") else {
+            DispatchQueue.main.async { completion?(false) }
             return
         }
         let request = unsafeBitCast(
             symbol,
             to: (@convention(c) (CFString, CFDictionary?, @escaping (Bool) -> Void) -> Void).self
         )
-        request(service, nil) { _ in }
+        request(service, nil) { granted in
+            DispatchQueue.main.async { completion?(granted) }
+        }
     }
 }
 
@@ -675,7 +711,9 @@ private final class TapSession {
         guard !objectIDs.isEmpty else {
             throw MixerError("That app has no audio process to tap.")
         }
-        AudioCaptureTCC.request()
+        if AudioCaptureTCC.preflight() != .authorized {
+            AudioCaptureTCC.request()
+        }
 
         let tap = CATapDescription(stereoMixdownOfProcesses: objectIDs)
         tap.uuid = UUID()
