@@ -1,6 +1,6 @@
-# VibeRemote agent notes
+# Control Box agent notes
 
-VibeRemote is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master) to pointer, keys, and system gestures.
+Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master) to pointer, keys, and system gestures.
 
 ## Current status (2026-08-22)
 

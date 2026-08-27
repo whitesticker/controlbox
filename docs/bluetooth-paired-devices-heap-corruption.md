@@ -2,7 +2,7 @@
 
 ## Symptom
 
-VibeRemote dies shortly after launch or while a popup is open. Crash reports show:
+Control Box dies shortly after launch or while a popup is open. Crash reports show:
 
 - `BUG IN CLIENT OF LIBMALLOC: memory corruption of free block`
 - `EXC_BREAKPOINT` in `libsystem_malloc.dylib`

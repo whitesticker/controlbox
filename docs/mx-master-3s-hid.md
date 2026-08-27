@@ -24,7 +24,7 @@ Solaar and logiops list the **same** Reprog V4 CIDs on both mice. Quiet clicks a
 
 ## Gestures
 
-3S has no haptic pad and no CID `0x01A0`. The thumb **gesture button** is CID `0x00C3`. Hold it and move; a tap is Click. VibeRemote still binds that control as `.mxHaptic` so the shared gesture engine / ControlEngine stay unchanged. UI copy says Gesture, not Haptic.
+3S has no haptic pad and no CID `0x01A0`. The thumb **gesture button** is CID `0x00C3`. Hold it and move; a tap is Click. Control Box still binds that control as `.mxHaptic` so the shared gesture engine / ControlEngine stay unchanged. UI copy says Gesture, not Haptic.
 
 Divert flags are the same hold-only pair as MX4 (`0x33`). No persist, no force-raw-XY, no Force Sensing `0x19C0`.
 

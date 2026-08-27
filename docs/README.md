@@ -1,4 +1,4 @@
-# VibeRemote problem log
+# Control Box problem log
 
 One issue type per file. These are failures we already hit while working on DualSense, Apple TV remote, and MX Master support.
 
@@ -38,5 +38,5 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |
 | [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md) | Displays lists an extra monitor; a named slider does not drive that panel |
 | [process-tap-exclusive.md](process-tap-exclusive.md) | Per-app volume does nothing while FineTune or another tap mixer is open |
-| [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle VibeRemote pegs a CPU core when the Apple TV remote is attached |
+| [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |

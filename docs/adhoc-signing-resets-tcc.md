@@ -2,7 +2,7 @@
 
 ## Symptom
 
-Every new build required removing and re-adding VibeRemote in:
+Every new build required removing and re-adding Control Box in:
 
 - System Settings → Privacy & Security → Accessibility
 - System Settings → Privacy & Security → Input Monitoring
@@ -13,9 +13,11 @@ The Xcode project used `CODE_SIGN_IDENTITY = "-"` (ad-hoc). The designated requi
 
 ## What we changed
 
-Debug and Release sign with Apple Development, team `XXA24FWXDW`. The designated requirement is bundle id `com.iremote.app` plus that certificate, so grants survive rebuilds.
+Debug and Release sign with Apple Development, team `XXA24FWXDW`. The designated requirement is bundle id `com.whitesticker.controlbox` plus that certificate, so grants survive rebuilds.
 
-After the first switch from ad-hoc to Development, leftover ad-hoc VibeRemote rows in those lists must be removed once.
+The app used to be `com.iremote.app`. That bundle id change is a new app to TCC: grant Accessibility, Input Monitoring, and Background again, then remove leftover rows from the old identity.
+
+After the first switch from ad-hoc to Development, leftover ad-hoc Control Box rows in those lists must be removed once.
 
 ## Do not
 

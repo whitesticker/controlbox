@@ -1,10 +1,10 @@
 # Apple TV battery walk pegs a CPU core
 
-Hit 2026-08-25. VibeRemote sat near 90% CPU on the main thread with an Apple TV remote attached (or selected).
+Hit 2026-08-25. Control Box sat near 90% CPU on the main thread with an Apple TV remote attached (or selected).
 
 ## Symptom
 
-Activity Monitor shows VibeRemote using most of a core while idle. A `sample` of the process is almost entirely:
+Activity Monitor shows Control Box using most of a core while idle. A `sample` of the process is almost entirely:
 
 `DualSenseMonitor.capture` → `AppleTVRemoteSession.poll` → `AppleTVBatteryReader.percent` → `IOIteratorNext` / `IORegistryEntryCreateCFProperty`.
 
@@ -20,4 +20,4 @@ BLE Battery Service `0x180F` is the intended source, but it often never fills. T
 
 Do not put IORegistry iteration on the 120 Hz poll.
 
-Code: `IRemote/AppleTVBatteryReader.swift`, `IRemote/AppleTVRemoteSession.swift`.
+Code: `ControlBox/AppleTVBatteryReader.swift`, `ControlBox/AppleTVRemoteSession.swift`.

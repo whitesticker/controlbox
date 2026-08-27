@@ -2,7 +2,7 @@
 
 Working model as of 2026-08-22. Active test device is **MX Master 4 over Bluetooth LE** (product `0xB042`). Leave MX Master 3 / 3S disconnected.
 
-Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). This file is how VibeRemote maps that hardware to cursor speed and window gestures.
+Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). This file is how Control Box maps that hardware to cursor speed and window gestures.
 
 ## What works
 
@@ -79,7 +79,7 @@ Without the DPI term, 2000 DPI felt like twice the swipe of 1000 DPI. At 1000 DP
 
 ## Hold-to-swipe module
 
-`HoldGesture` in IRemoteControl is the only place that decides tap vs swipe, axis, Spaces, Mission Control, App Exposé, media skip, and volume.
+`HoldGesture` in ControlBoxCore is the only place that decides tap vs swipe, axis, Spaces, Mission Control, App Exposé, media skip, and volume.
 
 The MX reader only captures pad down + raw XY and a pinned cursor. It does not know about media vs window navigation.
 
@@ -151,17 +151,17 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 
 | File | Role |
 |---|---|
-| `IRemote/LogitechMXMasterReader.swift` | HID++, report `0x02` haptic XY, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
-| `IRemote/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
-| `IRemote/ProfilesPane.swift` | DPI, Pointer speed, Haptic gesture speed. Gestures picker only on Haptic. |
-| `IRemote/DualSenseMonitor.swift` | Pushes sliders + DPI into the reader. Sanitizes saved profiles on load. |
-| `IRemote/ControlFrameBuilder.swift` | `gestureOwner` / `gestureActive` / `gestureX` / `gestureY` from the MX snapshot |
-| `Packages/IRemoteControl/.../MappingProfile.swift` | `pointerSpeedFactor`, `gestureSpeedFactor`, haptic-only `mxGestureOwners` |
-| `Packages/IRemoteControl/.../HoldGesture.swift` | 100ms arm, axis lock, live Spaces/MC, discrete App Exposé / media skip, volume |
-| `Packages/IRemoteControl/.../ControlEngine.swift` | Starts `HoldGesture` only for haptic + Gestures |
-| `Packages/IRemoteControl/.../DockSwipe.swift` | Absolute dock-swipe events |
-| `Packages/IRemoteControl/.../SystemNavigation.swift` | Core Dock / symbolic hotkeys for MC and App Exposé |
-| `Packages/IRemoteControl/.../GestureSet.swift` | Presets and click / up / down / left / right slots |
+| `ControlBox/LogitechMXMasterReader.swift` | HID++, report `0x02` haptic XY, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
+| `ControlBox/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
+| `ControlBox/ProfilesPane.swift` | DPI, Pointer speed, Haptic gesture speed. Gestures picker only on Haptic. |
+| `ControlBox/DualSenseMonitor.swift` | Pushes sliders + DPI into the reader. Sanitizes saved profiles on load. |
+| `ControlBox/ControlFrameBuilder.swift` | `gestureOwner` / `gestureActive` / `gestureX` / `gestureY` from the MX snapshot |
+| `Packages/ControlBoxCore/.../MappingProfile.swift` | `pointerSpeedFactor`, `gestureSpeedFactor`, haptic-only `mxGestureOwners` |
+| `Packages/ControlBoxCore/.../HoldGesture.swift` | 100ms arm, axis lock, live Spaces/MC, discrete App Exposé / media skip, volume |
+| `Packages/ControlBoxCore/.../ControlEngine.swift` | Starts `HoldGesture` only for haptic + Gestures |
+| `Packages/ControlBoxCore/.../DockSwipe.swift` | Absolute dock-swipe events |
+| `Packages/ControlBoxCore/.../SystemNavigation.swift` | Core Dock / symbolic hotkeys for MC and App Exposé |
+| `Packages/ControlBoxCore/.../GestureSet.swift` | Presets and click / up / down / left / right slots |
 
 ## Related
 

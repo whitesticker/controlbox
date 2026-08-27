@@ -31,7 +31,7 @@ CGEvent `otherMouse` button number **6** is the same pad (0 = left).
 
 ## Why the app missed it
 
-VibeRemote only opened Logitech collections whose **primary** usage page was `0xFF00`, and treated product `0xC548` as “not an MX Master 4.” On BLE there is no such collection. Diverting `0x01A0` on the Bolt receiver talked to the wrong device.
+Control Box only opened Logitech collections whose **primary** usage page was `0xFF00`, and treated product `0xC548` as “not an MX Master 4.” On BLE there is no such collection. Diverting `0x01A0` on the Bolt receiver talked to the wrong device.
 
 Opening the standard mouse collection **only to watch buttons** can still steal the pointer. Reading report `0x02` / `0x11` without seize did not, in this capture. Earlier pointer-death was persist / force-raw-XY divert, not this report layout.
 

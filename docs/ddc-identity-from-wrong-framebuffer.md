@@ -20,7 +20,7 @@ Match used vendor + product (+ serial when present): unique models failed to mat
 
 ## Fix
 
-DDC matching and Apple-silicon I2C now follow **MonitorControl** (`Arm64DDC.swift`, MIT). Credit is on the Displays page. License text is `Packages/IRemoteControl/NOTICE-MonitorControl`.
+DDC matching and Apple-silicon I2C now follow **MonitorControl** (`Arm64DDC.swift`, MIT). Credit is on the Displays page. License text is `Packages/ControlBoxCore/NOTICE-MonitorControl`.
 
 What we took from them:
 
@@ -35,4 +35,4 @@ Do not walk past `dcpext` and recursively search `DisplayAttributes`. Do not tre
 
 Iterator order on this Mac interleaves framebuffer then that port’s proxy. That is why MonitorControl’s last-framebuffer rule works here. An ioreg dump that looks like sibling subtrees is not the same as `IORegistryEntryCreateIterator` order.
 
-Code: `Packages/IRemoteControl/Sources/IRemoteControl/Arm64DDC.swift`, `DisplayBrightness.swift`.
+Code: `Packages/ControlBoxCore/Sources/ControlBoxCore/Arm64DDC.swift`, `DisplayBrightness.swift`.

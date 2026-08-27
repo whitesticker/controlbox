@@ -1,6 +1,6 @@
 # 120 Hz poll does extra work while idle
 
-Hit 2026-08-25 after the Apple TV registry walk was cached. Idle VibeRemote still sat at 10–20% CPU (Debug).
+Hit 2026-08-25 after the Apple TV registry walk was cached. Idle Control Box still sat at 10–20% CPU (Debug).
 
 ## Symptom
 

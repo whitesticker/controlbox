@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="VibeRemote" width="960">
+  <img src="docs/screenshots/hero.png" alt="Control Box" width="960">
 </p>
 
 <p align="center">
-  <strong>VibeRemote</strong> maps unusual input devices to pointer, keys, and system gestures on your Mac.<br>
+  <strong>Control Box</strong> maps unusual input devices to pointer, keys, and system gestures on your Mac.<br>
   DualSense, Siri Remote, and MX Master — at the same time, if you want.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/app-icon.png" alt="VibeRemote icon" width="96">
+  <img src="docs/screenshots/app-icon.png" alt="Control Box icon" width="96">
 </p>
 
 Use a **PS5 DualSense** from the couch, an **Apple TV Siri Remote** as a trackpad, or an **MX Master 3 / 3S / 4** with hold-to-swipe gestures. Each device has its own mappings and its own **Control this Mac** switch.
 
-VibeRemote stays on your Mac. Nothing is uploaded.
+Control Box stays on your Mac. Nothing is uploaded.
 
 ## Supported now
 
@@ -31,26 +31,26 @@ macOS 14+ and **Accessibility** are required. **Input Monitoring** is required f
 ## Install
 
 ```bash
-brew install --cask whitesticker/viberemote/viberemote
+brew install --cask whitesticker/controlbox/controlbox
 ```
 
-Open **VibeRemote**, then enable it in **System Settings → Privacy & Security → Accessibility** (and Input Monitoring if you use an MX Master). Relaunch if macOS asks.
+Open **Control Box**, then enable it in **System Settings → Privacy & Security → Accessibility** (and Input Monitoring if you use an MX Master). Relaunch if macOS asks. If you previously granted those to the old app identity, grant them again for Control Box.
 
 The first launch of an ad-hoc Homebrew build may need **Right-click → Open**.
 
 ## Build from source
 
 ```bash
-xcodebuild -project IRemote.xcodeproj -scheme IRemote -configuration Release \
+xcodebuild -project ControlBox.xcodeproj -scheme ControlBox -configuration Release \
   -derivedDataPath .derived build
-open .derived/Build/Products/Release/VibeRemote.app
+open .derived/Build/Products/Release/ControlBox.app
 ```
 
 Debug builds are signed with the Apple Development identity so Accessibility and Input Monitoring persist across rebuilds.
 
 ## Privacy
 
-VibeRemote does not send input data to a server. Bluetooth is used only to list devices (it never calls `IOBluetoothDevice.pairedDevices()`). Accessibility is used only to post the keyboard, pointer, and scroll events you mapped.
+Control Box does not send input data to a server. Bluetooth is used only to list devices (it never calls `IOBluetoothDevice.pairedDevices()`). Accessibility is used only to post the keyboard, pointer, and scroll events you mapped.
 
 ## Roadmap
 
