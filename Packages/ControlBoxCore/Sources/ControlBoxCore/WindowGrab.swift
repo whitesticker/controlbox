@@ -3,7 +3,6 @@ import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation
-import QuartzCore
 
 /// Hold modifiers and move the pointer to drag, resize, or throw the
 /// window under the cursor. Organize is a recorded shortcut on
@@ -63,13 +62,14 @@ private final class Controller: @unchecked Sendable {
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
     private var lastPoint = CGPoint.zero
+    private var lastFlags: CGEventFlags = []
+    private var lastType: CGEventType = .mouseMoved
     private var hasPoint = false
     private var session: Session?
     private var throwSession: ThrowSession?
     private var pendingPoint: CGPoint?
     private var writing = false
-    private var displayLink: CADisplayLink?
-    private let tickTarget = DisplayTick()
+    private var tickTimer: Timer?
     private var lastOrganizeIDs = Set<CGWindowID>()
     private var organizeRotation = 0
 
@@ -88,8 +88,7 @@ private final class Controller: @unchecked Sendable {
     }
 
     init() {
-        AXUIElementSetMessagingTimeout(systemWide, 0.05)
-        tickTarget.onTick = { [weak self] in self?.flush() }
+        AXUIElementSetMessagingTimeout(systemWide, 0.2)
     }
 
     func configure(
@@ -144,11 +143,13 @@ private final class Controller: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
         port = tap
         source = loopSource
+        startTick()
     }
 
     private func stop() {
         endGrabSession()
         endThrow()
+        stopTick()
         if let source {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -166,62 +167,13 @@ private final class Controller: @unchecked Sendable {
             CGEvent.tapEnable(tap: port, enable: true)
             return
         }
-        lock.lock()
-        let active = enabled
-        let moveOn = moveEnabled
-        let resizeOn = resizeEnabled
-        let throwOn = throwEnabled
-        let move = moveFlags
-        let resize = resizeFlags
-        let throwNeed = throwFlags
-        lock.unlock()
-        guard active else { return }
-        if ShortcutCapture.isActive {
-            endGrabSession()
-            endThrow()
-            return
-        }
-
-        let point = event.location
-        lastPoint = point
+        // Stash only. Accessibility from inside a session tap beachballs
+        // the app (and can stall all input) when another window is the target.
+        lastPoint = event.location
+        lastFlags = event.flags
+        lastType = type
         hasPoint = true
-
-        let mode = Self.pointerMode(
-            flags: event.flags,
-            moveEnabled: moveOn,
-            resizeEnabled: resizeOn,
-            throwEnabled: throwOn,
-            moveFlags: move,
-            resizeFlags: resize,
-            throwFlags: throwNeed
-        )
-        guard let mode else {
-            endGrabSession()
-            endThrow()
-            return
-        }
-
-        if type == .flagsChanged {
-            if let session, session.moving != (mode == .move) {
-                endGrabSession()
-            }
-            if throwSession != nil, mode != .throw {
-                endThrow()
-            }
-            if session != nil, mode == .throw {
-                endGrabSession()
-            }
-            return
-        }
-
-        switch mode {
-        case .move, .resize:
-            endThrow()
-            handleGrab(mode: mode, point: point)
-        case .throw:
-            endGrabSession()
-            handleThrow(at: point)
-        }
+        pendingPoint = event.location
     }
 
     private func handleGrab(mode: PointerMode, point: CGPoint) {
@@ -237,14 +189,13 @@ private final class Controller: @unchecked Sendable {
                 startPoint: point,
                 moving: mode == .move
             )
-            AXUIElementSetMessagingTimeout(hit.window, 0.04)
+            AXUIElementSetMessagingTimeout(hit.window, 0.2)
             NSCursor.setHiddenUntilMouseMoves(false)
             if mode == .move {
                 NSCursor.closedHand.set()
             } else {
                 NSCursor.crosshair.set()
             }
-            startDisplayLink()
         }
         pendingPoint = point
     }
@@ -265,7 +216,7 @@ private final class Controller: @unchecked Sendable {
         guard let hit = hit(at: point), !isFullscreen(hit.window) else { return }
         let zone = WindowLayout.zone(at: point, in: visible, previous: nil)
         throwSession = ThrowSession(window: hit.window, zone: zone, visible: visible)
-        AXUIElementSetMessagingTimeout(hit.window, 0.04)
+        AXUIElementSetMessagingTimeout(hit.window, 0.2)
         WindowThrowOverlay.show(quartzVisible: visible, zone: zone)
         applyFrame(WindowLayout.frame(for: zone, in: visible), to: hit.window)
     }
@@ -360,35 +311,84 @@ private final class Controller: @unchecked Sendable {
         }
     }
 
-    private var fallbackTimer: Timer?
+    private func startTick() {
+        if tickTimer != nil { return }
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+        timer.tolerance = 0.002
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
+    }
 
-    private func startDisplayLink() {
-        if displayLink != nil || fallbackTimer != nil { return }
-        if let link = NSScreen.main?.displayLink(target: tickTarget, selector: #selector(DisplayTick.tick)) {
-            link.add(to: .main, forMode: .common)
-            displayLink = link
+    private func stopTick() {
+        tickTimer?.invalidate()
+        tickTimer = nil
+    }
+
+    private func tick() {
+        guard hasPoint, !writing else { return }
+        writing = true
+        processPointer()
+        if let point = pendingPoint, session != nil {
+            write(at: point)
+        }
+        writing = false
+    }
+
+    private func processPointer() {
+        lock.lock()
+        let active = enabled
+        let moveOn = moveEnabled
+        let resizeOn = resizeEnabled
+        let throwOn = throwEnabled
+        let move = moveFlags
+        let resize = resizeFlags
+        let throwNeed = throwFlags
+        lock.unlock()
+        guard active else { return }
+        if ShortcutCapture.isActive {
+            endGrabSession()
+            endThrow()
             return
         }
-        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
-            self?.flush()
-        }
-        if let fallbackTimer {
-            RunLoop.main.add(fallbackTimer, forMode: .common)
-        }
-    }
 
-    private func stopDisplayLink() {
-        displayLink?.invalidate()
-        displayLink = nil
-        fallbackTimer?.invalidate()
-        fallbackTimer = nil
-    }
+        let mode = Self.pointerMode(
+            flags: lastFlags,
+            moveEnabled: moveOn,
+            resizeEnabled: resizeOn,
+            throwEnabled: throwOn,
+            moveFlags: move,
+            resizeFlags: resize,
+            throwFlags: throwNeed
+        )
+        guard let mode else {
+            endGrabSession()
+            endThrow()
+            return
+        }
 
-    private func flush() {
-        guard let point = pendingPoint, session != nil, !writing else { return }
-        writing = true
-        write(at: point)
-        writing = false
+        if lastType == .flagsChanged {
+            if let session, session.moving != (mode == .move) {
+                endGrabSession()
+            }
+            if throwSession != nil, mode != .throw {
+                endThrow()
+            }
+            if session != nil, mode == .throw {
+                endGrabSession()
+            }
+            return
+        }
+
+        switch mode {
+        case .move, .resize:
+            endThrow()
+            handleGrab(mode: mode, point: lastPoint)
+        case .throw:
+            endGrabSession()
+            handleThrow(at: lastPoint)
+        }
     }
 
     private func write(at point: CGPoint) {
@@ -400,10 +400,16 @@ private final class Controller: @unchecked Sendable {
                 x: session.startFrame.origin.x + dx,
                 y: session.startFrame.origin.y + dy
             )
-            if !WindowServer.move(session.windowID, to: origin) {
-                var axOrigin = origin
-                _ = setPoint(session.window, kAXPositionAttribute as CFString, &axOrigin)
+            var pid: pid_t = 0
+            AXUIElementGetPid(session.window, &pid)
+            // SLSMoveWindow uses this process's window-server connection, so it
+            // only actually moves Control Box. A 0 return on another app's
+            // window is a no-op and used to skip the Accessibility fallback.
+            if pid == getpid(), WindowServer.move(session.windowID, to: origin) {
+                return
             }
+            var axOrigin = origin
+            _ = setPoint(session.window, kAXPositionAttribute as CFString, &axOrigin)
             return
         }
         var size = CGSize(
@@ -423,8 +429,6 @@ private final class Controller: @unchecked Sendable {
         }
         session = nil
         pendingPoint = nil
-        writing = false
-        stopDisplayLink()
     }
 
     private func endThrow() {
@@ -552,7 +556,7 @@ private final class Controller: @unchecked Sendable {
 
     private func axWindow(pid: pid_t, bounds: CGRect) -> AXUIElement? {
         let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 0.05)
+        AXUIElementSetMessagingTimeout(app, 0.2)
         var windows = copyArray(app, kAXWindowsAttribute as CFString) ?? []
         if let focused = copyElement(app, kAXFocusedWindowAttribute as CFString) {
             if !windows.contains(where: { CFEqual($0, focused) }) {
@@ -705,14 +709,6 @@ private final class Controller: @unchecked Sendable {
         "loginwindow",
         "Screenshot"
     ]
-}
-
-private final class DisplayTick: NSObject {
-    var onTick: () -> Void = {}
-
-    @objc func tick() {
-        onTick()
-    }
 }
 
 private enum WindowServer {
