@@ -2,7 +2,7 @@
 
 Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master) to pointer, keys, and system gestures.
 
-## Current status (2026-08-26)
+## Current status (2026-08-27)
 
 - Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, and MX Master 4 can stay attached at once. Each device has its own **Control this Mac** toggle.
 - Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
@@ -15,6 +15,7 @@ Control Box is a local Mac app that maps unusual input devices (DualSense, Apple
 - DualSense L2/R2 mapped to Previous/Next tab use analog travel (mid = one tab, full hold = repeat). L1/R1 stay digital. Other devices unchanged.
 - Factory defaults match the live desk: DualSense L1/R1 desktops, L2/R2 tabs, D-pad Mission Control / Desktop / app switch, Square click, 1-finger media, left stick pointer / right stick scroll; Apple TV Back = Return; MX pointer 21%, natural scroll off, Mode shift = Right Option; MX4 haptic 61% and 4000 DPI.
 - **Display Arrangement** is its own Mac pane (not brightness). Presets are keyed by the connected external combo plus whether the built-in panel is in the layout. Same physical panels (serial / UUID) collapse to one group even if an older key format is stored. Apply is exact-match only; the editor is a sandbox. Keyboard shortcut is a 3+ modifier chord plus number/arrows, HUD shows the layout snapshot, and that chord cannot match Window Grab move/resize. The shortcut catalog lives on the app delegate so the tap survives window close. See DisplayArrangement.swift.
+- **System Monitor** (`top`, vendored in `ControlBox/Top`) is its own Mac pane. Off until the pane toggle is on. When on, it adds a **second** menu bar extra (live ↑/↓ network icon + dashboard `NSMenu`), not the Control Box gamecontroller extra. Hide/quit of that extra does not quit Control Box. WidgetKit from upstream is not in this app.
 - MX **Window grab**: hold Control and move to drag a window from anywhere; hold Control+Shift and move to resize with the top-left anchored. MX with Control this Mac only.
 - **MX Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked. DualSense finger rows are allowed.
 - With **Allow while Control Box is focused** off, a frontmost Control Box window skips **all** injection (gestures, thumb HID++ scroll, window grab, buttons). System-navigation is not a bypass. See `docs/focused-host-still-injects.md`.

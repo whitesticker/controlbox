@@ -10,7 +10,7 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys, onboarding, menu bar icon).
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys, onboarding, Control Box menu icon). System Monitor (top) is shipped as a Mac pane.
 
 HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list.
 

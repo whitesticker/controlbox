@@ -15,6 +15,8 @@ Use a **PS5 DualSense** from the couch, an **Apple TV Siri Remote** as a trackpa
 
 Save and switch **Display Arrangement** presets (positions, main display, mirror) from the Mac sidebar, including a keyboard shortcut and a layout HUD.
 
+Optional **System Monitor** (from [top](https://github.com/whitesticker/top)): a second menu bar icon with live network speed and CPU, GPU, memory, disk, sensors, and battery. Off until you enable it on that pane.
+
 Control Box stays on your Mac. Nothing is uploaded.
 
 ## Supported now

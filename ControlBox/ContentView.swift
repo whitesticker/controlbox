@@ -16,6 +16,7 @@ struct ContentView: View {
                     macRow(.displays)
                     macRow(.displayArrangement)
                     macRow(.sound)
+                    macRow(.systemMonitor)
                     macRow(.pointerScroll)
                     macRow(.windowGrab)
                 }
@@ -71,6 +72,8 @@ struct ContentView: View {
                 DisplayArrangementPane(catalog: arrangementCatalog, monitor: monitor)
             case .sound:
                 SoundPane(catalog: soundCatalog)
+            case .systemMonitor:
+                TopPane()
             case .pointerScroll:
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
@@ -84,6 +87,16 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .foregroundStyle(Palette.primaryText(colorScheme))
         .background(Palette.background(colorScheme).ignoresSafeArea())
+        .onAppear {
+            if TopNavigation.pendingOpen {
+                TopNavigation.pendingOpen = false
+                selection = .systemMonitor
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .controlBoxOpenSystemMonitor)) { _ in
+            TopNavigation.pendingOpen = false
+            selection = .systemMonitor
+        }
     }
 
     private func macRow(_ item: SidebarItem) -> some View {

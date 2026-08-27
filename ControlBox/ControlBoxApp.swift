@@ -4,6 +4,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let controlBoxReopenMainWindow = Notification.Name("controlBoxReopenMainWindow")
+    static let controlBoxOpenSystemMonitor = Notification.Name("controlBoxOpenSystemMonitor")
 }
 
 @MainActor
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
         NSApp.setActivationPolicy(.regular)
+        TopMenuBarHost.shared.start()
         DispatchQueue.main.async { [monitor] in
             monitor.start()
         }
@@ -26,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
+        TopMenuBarHost.shared.stop()
         ArrangementHotkey.stop()
     }
 
