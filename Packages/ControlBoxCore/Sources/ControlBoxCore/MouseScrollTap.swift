@@ -10,6 +10,10 @@ public final class MouseScrollTap: @unchecked Sendable {
     public var verticalScale = 1.0
     public var horizontalScale = 1.0
     public var smoothScrolling = true
+    public var passVerticalPositive = true
+    public var passVerticalNegative = true
+    public var passHorizontalPositive = true
+    public var passHorizontalNegative = true
 
     private var activePort: CFMachPort?
     private var activeSource: CFRunLoopSource?
@@ -135,29 +139,67 @@ public final class MouseScrollTap: @unchecked Sendable {
 
         let invertedFromDevice = NSEvent(cgEvent: event)?.isDirectionInvertedFromDevice ?? false
         let reverse = wantNatural != invertedFromDevice
+        let dy = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
+        let dx = event.getDoubleValueField(.scrollWheelEventDeltaAxis2)
+        let passV = (dy > 0 && passVerticalPositive) || (dy < 0 && passVerticalNegative) || dy == 0
+        let passH = (dx > 0 && passHorizontalPositive) || (dx < 0 && passHorizontalNegative) || dx == 0
+        if !passV {
+            zero(axis: .vertical, on: event)
+        }
+        if !passH {
+            zero(axis: .horizontal, on: event)
+        }
         let vmul = (reverse ? -1.0 : 1.0) * max(verticalScale, 0.05)
         let hmul = (reverse ? -1.0 : 1.0) * max(horizontalScale, 0.05)
-        if abs(vmul - 1) < 0.001, abs(hmul - 1) < 0.001 {
+        if abs(vmul - 1) < 0.001, abs(hmul - 1) < 0.001, passV, passH {
             return Unmanaged.passUnretained(event)
         }
 
-        apply(
-            vmul,
-            to: event,
-            continuous: continuous,
-            line: .scrollWheelEventDeltaAxis1,
-            point: .scrollWheelEventPointDeltaAxis1,
-            fixed: .scrollWheelEventFixedPtDeltaAxis1
-        )
-        apply(
-            hmul,
-            to: event,
-            continuous: continuous,
-            line: .scrollWheelEventDeltaAxis2,
-            point: .scrollWheelEventPointDeltaAxis2,
-            fixed: .scrollWheelEventFixedPtDeltaAxis2
-        )
+        if passV {
+            apply(
+                vmul,
+                to: event,
+                continuous: continuous,
+                line: .scrollWheelEventDeltaAxis1,
+                point: .scrollWheelEventPointDeltaAxis1,
+                fixed: .scrollWheelEventFixedPtDeltaAxis1
+            )
+        }
+        if passH {
+            apply(
+                hmul,
+                to: event,
+                continuous: continuous,
+                line: .scrollWheelEventDeltaAxis2,
+                point: .scrollWheelEventPointDeltaAxis2,
+                fixed: .scrollWheelEventFixedPtDeltaAxis2
+            )
+        }
         return Unmanaged.passUnretained(event)
+    }
+
+    private enum ScrollAxis {
+        case vertical
+        case horizontal
+    }
+
+    private func zero(axis: ScrollAxis, on event: CGEvent) {
+        let line: CGEventField
+        let point: CGEventField
+        let fixed: CGEventField
+        switch axis {
+        case .vertical:
+            line = .scrollWheelEventDeltaAxis1
+            point = .scrollWheelEventPointDeltaAxis1
+            fixed = .scrollWheelEventFixedPtDeltaAxis1
+        case .horizontal:
+            line = .scrollWheelEventDeltaAxis2
+            point = .scrollWheelEventPointDeltaAxis2
+            fixed = .scrollWheelEventFixedPtDeltaAxis2
+        }
+        event.setIntegerValueField(line, value: 0)
+        event.setIntegerValueField(point, value: 0)
+        event.setDoubleValueField(fixed, value: 0)
     }
 
     /// Scroll Reverser: set line delta first, then point/fixed. Setting the line

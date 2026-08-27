@@ -1,16 +1,15 @@
 cask "controlbox" do
-  version "0.1.10"
-  sha256 "59b3a7ebd3a65f70d195f2eee653cfc32d422a222af6da757c3f1530d2046bc4"
+  version "0.1.11"
+  sha256 "0bb4ac48aebcc0b155ae4b478cd0a6ed93d3da3300041666c24c31207cf603d6"
 
-  url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/VibeRemote-#{version}.zip"
+  url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/ControlBox-#{version}.zip"
   name "Control Box"
   desc "Control your Mac with a DualSense, Siri Remote, or MX Master"
   homepage "https://github.com/whitesticker/controlbox"
 
   depends_on macos: :sonoma
 
-  # 0.1.10 zip still contains VibeRemote.app; later zips should ship ControlBox.app.
-  app "VibeRemote.app", target: "ControlBox.app"
+  app "ControlBox.app"
 
   zap trash: [
     "~/Library/Preferences/com.whitesticker.controlbox.plist",
@@ -19,6 +18,6 @@ cask "controlbox" do
 
   caveats <<~EOS
     Enable Control Box in System Settings → Privacy & Security → Accessibility.
-    This build is ad-hoc signed; first launch may require Right-click → Open.
+    First launch may require Right-click → Open.
   EOS
 end

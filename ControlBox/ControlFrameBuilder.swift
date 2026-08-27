@@ -66,7 +66,7 @@ enum ControlFrameBuilder {
     }
 
     static func make(from snapshot: MXMasterSnapshot) -> ControlFrame {
-        var buttons: [DeviceButton: Bool] = [
+        let buttons: [DeviceButton: Bool] = [
             .mxBack: snapshot.back,
             .mxForward: snapshot.forward,
             .mxSmartShift: snapshot.smartShift,
@@ -74,7 +74,12 @@ enum ControlFrameBuilder {
             .mxHaptic: snapshot.haptic,
             .mxLeft: snapshot.left,
             .mxRight: snapshot.right,
-            .mxMiddle: snapshot.middle
+            .mxMiddle: snapshot.middle,
+            .mxWheelUp: snapshot.wheelUp,
+            .mxWheelDown: snapshot.wheelDown,
+            .mxThumbLeft: snapshot.thumbLeft,
+            .mxThumbRight: snapshot.thumbRight,
+            .mxSide: snapshot.side
         ]
         return ControlFrame(
             buttons: buttons,

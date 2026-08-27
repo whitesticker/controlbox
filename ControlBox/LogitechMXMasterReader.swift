@@ -24,6 +24,7 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var smartShift = false
     var modeShift = false
     var haptic = false
+    var side = false
     var gestureDown = false
     var gestureHeld = false
     var wheelUp = false
@@ -83,8 +84,6 @@ final class LogitechMXMasterReader {
 
     private var hidppManager: IOHIDManager?
     private var mouseManager: IOHIDManager?
-    private var clickTap: CFMachPort?
-    private var clickSource: CFRunLoopSource?
     private var hidppDevice: IOHIDDevice?
     private var queuedHIDPP: [IOHIDDevice] = []
     private let lock = NSLock()
@@ -101,6 +100,7 @@ final class LogitechMXMasterReader {
     private var holdSources: [DeviceButton: Set<String>] = [:]
     private var activeGestureCID: UInt16?
     private var lastHapticBit = false
+    private var lastNativeButtons: UInt16 = 0
     private var ignoreNextRawXY = false
     private var pressed = Set<UInt16>()
     private var running = false
@@ -190,11 +190,13 @@ final class LogitechMXMasterReader {
         hapticReleaseWork = nil
         hapticDownAt = nil
         lastHapticBit = false
+        lastNativeButtons = 0
         holdSources.removeAll()
         hidppEpoch += 1
         unfreezeCursor()
         unlockCursor()
         restoreNativeReporting()
+        stopClickProbe()
         if let hidppDevice {
             IOHIDDeviceUnscheduleFromRunLoop(hidppDevice, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         }
@@ -206,14 +208,6 @@ final class LogitechMXMasterReader {
             IOHIDManagerUnscheduleFromRunLoop(mouseManager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
             IOHIDManagerClose(mouseManager, IOOptionBits(kIOHIDOptionsTypeNone))
         }
-        if let clickSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), clickSource, .commonModes)
-        }
-        if let clickTap {
-            CFMachPortInvalidate(clickTap)
-        }
-        clickSource = nil
-        clickTap = nil
         hidppManager = nil
         mouseManager = nil
         hidppDevice = nil
@@ -507,43 +501,14 @@ final class LogitechMXMasterReader {
     }
 
     private func startClickProbe() {
-        guard clickTap == nil else { return }
-        let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-            | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
-            | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
-            | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
-            | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
-            | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
-            | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
-            | CGEventMask(1 << CGEventType.mouseMoved.rawValue)
-            | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
-            | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue)
-            | CGEventMask(1 << CGEventType.otherMouseDragged.rawValue)
-        let pointer = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: { _, type, event, context in
-                guard let context else { return Unmanaged.passUnretained(event) }
-                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
-                reader.handleClickEvent(type: type, event: event)
-                if reader.shouldSwallowPointerEvent(type, event: event) {
-                    return nil
-                }
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: pointer
-        ) else { return }
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        clickTap = tap
-        clickSource = source
+        MXClickProbe.add(self)
     }
 
-    private func shouldSwallowPointerEvent(_ type: CGEventType, event: CGEvent) -> Bool {
+    private func stopClickProbe() {
+        MXClickProbe.remove(self)
+    }
+
+    fileprivate func shouldSwallowPointerEvent(_ type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
             return activeGestureCID != nil || cursorFrozen
@@ -561,7 +526,7 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func handleClickEvent(type: CGEventType, event: CGEvent) {
+    fileprivate func handleClickEvent(type: CGEventType, event: CGEvent) {
         let now = Date()
         var logs: [(String, Bool)] = []
         lock.lock()
@@ -594,6 +559,11 @@ final class LogitechMXMasterReader {
                 if snapshot.haptic != down {
                     snapshot.haptic = down
                     logs.append((model.gestureControlTitle, down))
+                }
+            } else if button == 7, model.acceptedKinds.contains(.logitechMXMaster4) {
+                if snapshot.side != down {
+                    snapshot.side = down
+                    logs.append(("Side", down))
                 }
             }
         case .scrollWheel:
@@ -1574,6 +1544,8 @@ final class LogitechMXMasterReader {
 
     private func handleNativeMouseReport(_ report: UnsafePointer<UInt8>, length: Int) {
         guard length >= 2 else { return }
+        let buttonBits = nativeButtonBits(report, length: length)
+        applyNativeButtons(buttonBits)
         if let bit = model.nativeHapticButtonBit {
             let hapticDown = report[1] & bit != 0
             if hapticDown != lastHapticBit {
@@ -1588,6 +1560,18 @@ final class LogitechMXMasterReader {
             }
         }
         let xyOffset = 1 + model.nativeMouseButtonBytes
+        if length > xyOffset + 3 {
+            let wheel = Int8(bitPattern: report[xyOffset + 3])
+            if wheel != 0 {
+                applyNativeScroll(vertical: Int(wheel), horizontal: 0)
+            }
+        }
+        if length > xyOffset + 4 {
+            let pan = Int8(bitPattern: report[xyOffset + 4])
+            if pan != 0 {
+                applyNativeScroll(vertical: 0, horizontal: Int(pan))
+            }
+        }
         guard activeGestureCID != nil, length >= xyOffset + 3 else { return }
         let dx = Self.signExtend12(Int(report[xyOffset]) | (Int(report[xyOffset + 1] & 0x0F) << 8))
         let dy = Self.signExtend12((Int(report[xyOffset + 1]) >> 4) | (Int(report[xyOffset + 2]) << 4))
@@ -1601,6 +1585,68 @@ final class LogitechMXMasterReader {
         snapshot.gestureDown = true
         snapshot.gestureHeld = true
         lock.unlock()
+    }
+
+    private func nativeButtonBits(_ report: UnsafePointer<UInt8>, length: Int) -> UInt16 {
+        var bits = UInt16(report[1])
+        if model.nativeMouseButtonBytes > 1, length > 2 {
+            bits |= UInt16(report[2]) << 8
+        }
+        return bits
+    }
+
+    private func applyNativeButtons(_ bits: UInt16) {
+        let previous = lastNativeButtons
+        guard bits != previous else { return }
+        lastNativeButtons = bits
+        lock.lock()
+        snapshot.left = bits & 0x01 != 0
+        snapshot.right = bits & 0x02 != 0
+        snapshot.middle = bits & 0x04 != 0
+        lock.unlock()
+        if (bits ^ previous) & 0x01 != 0 {
+            logEvent("Left", pressed: bits & 0x01 != 0)
+        }
+        if (bits ^ previous) & 0x02 != 0 {
+            logEvent("Right", pressed: bits & 0x02 != 0)
+        }
+        if (bits ^ previous) & 0x04 != 0 {
+            logEvent("Middle", pressed: bits & 0x04 != 0)
+        }
+    }
+
+    private func applyNativeScroll(vertical: Int, horizontal: Int) {
+        let now = Date()
+        lock.lock()
+        if vertical > 0 {
+            snapshot.wheelDown = true
+            snapshot.wheelUp = false
+            wheelPulseUntil = now.addingTimeInterval(0.18)
+        } else if vertical < 0 {
+            snapshot.wheelUp = true
+            snapshot.wheelDown = false
+            wheelPulseUntil = now.addingTimeInterval(0.18)
+        }
+        if horizontal > 0 {
+            snapshot.thumbRight = true
+            snapshot.thumbLeft = false
+            thumbPulseUntil = now.addingTimeInterval(0.18)
+        } else         if horizontal < 0 {
+            snapshot.thumbLeft = true
+            snapshot.thumbRight = false
+            thumbPulseUntil = now.addingTimeInterval(0.18)
+        }
+        lock.unlock()
+        if vertical > 0 {
+            logEvent("Wheel down", pressed: true)
+        } else if vertical < 0 {
+            logEvent("Wheel up", pressed: true)
+        }
+        if horizontal > 0 {
+            logEvent("Thumb wheel right", pressed: true)
+        } else if horizontal < 0 {
+            logEvent("Thumb wheel left", pressed: true)
+        }
     }
 
     private func handleDivertedButtons(_ payload: Data) {
@@ -1634,14 +1680,20 @@ final class LogitechMXMasterReader {
     }
 
     private func applyPressed(_ next: Set<UInt16>) {
-        let extras = extraCIDs.keys.sorted().map { cid in
-            MXMasterControl(id: cid, title: extraCIDs[cid] ?? String(format: "CID %04X", cid), down: next.contains(cid))
+        let extras = extraCIDs.keys.sorted().compactMap { cid -> MXMasterControl? in
+            if button(for: cid) != nil { return nil }
+            return MXMasterControl(
+                id: cid,
+                title: extraCIDs[cid] ?? String(format: "CID %04X", cid),
+                down: next.contains(cid)
+            )
         }
         lock.lock()
         snapshot.back = next.contains(0x0053)
         snapshot.forward = next.contains(0x0056) || next.contains(0x0054)
         snapshot.smartShift = next.contains(0x00C4)
         snapshot.modeShift = next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)
+        snapshot.side = model.acceptedKinds.contains(.logitechMXMaster4) && next.contains(0x00C3)
         let hidppHaptic = next.contains(model.gestureCID)
         let holding = activeGestureCID != nil
         snapshot.haptic = hidppHaptic || lastHapticBit
@@ -1656,6 +1708,7 @@ final class LogitechMXMasterReader {
             ("Forward", next.contains(0x0056) || next.contains(0x0054)),
             ("Mode shift", next.contains(0x00C4)),
             ("DPI", next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)),
+            ("Side", model.acceptedKinds.contains(.logitechMXMaster4) && next.contains(0x00C3)),
             (model.gestureControlTitle, next.contains(model.gestureCID)),
             ("Gesture", next.contains(where: { gestureCIDs.contains($0) }))
         ]
@@ -1814,6 +1867,10 @@ final class LogitechMXMasterReader {
                 snapshot.haptic = integer != 0 || lastHapticBit
                 snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown || activeGestureCID != nil
             }
+        case (0x09, 8):
+            if model.acceptedKinds.contains(.logitechMXMaster4) {
+                snapshot.side = integer != 0
+            }
         case (0x01, 0x30):
             if activeGestureCID != nil, snapshot.liveGestureOwner == .mxHaptic, integer != 0 {
                 usingRawXY = true
@@ -1859,6 +1916,7 @@ final class LogitechMXMasterReader {
             ("Thumb wheel left", snapshot.thumbLeft && now < thumbPulseUntil),
             ("Thumb wheel right", snapshot.thumbRight && now < thumbPulseUntil),
             ("Mode shift", snapshot.smartShift),
+            ("Side", snapshot.side),
             (model.gestureControlTitle, snapshot.haptic)
         ]
         lock.unlock()
@@ -1942,12 +2000,17 @@ final class LogitechMXMasterReader {
         case 4: return .mxForward
         case 5, 6:
             return model.nativeHapticButtonBit != nil ? .mxHaptic : nil
+        case 7:
+            return model.acceptedKinds.contains(.logitechMXMaster4) ? .mxSide : nil
         default: return nil
         }
     }
 
     private func button(for cid: UInt16) -> DeviceButton? {
         if cid == model.gestureCID { return .mxHaptic }
+        if cid == 0x00C3, model.acceptedKinds.contains(.logitechMXMaster4) {
+            return .mxSide
+        }
         switch cid {
         case 0x0050: return .mxLeft
         case 0x0051: return .mxRight
@@ -1981,7 +2044,13 @@ final class LogitechMXMasterReader {
     }
 
     private func reportingFlags(for control: ControlInfo) -> UInt8 {
-        if control.rawXY || control.cid == model.gestureCID || Self.knownGestureCIDs.contains(control.cid) {
+        if control.cid == model.gestureCID {
+            return Self.gestureReportingFlags
+        }
+        if control.cid == 0x00C3, model.acceptedKinds.contains(.logitechMXMaster4) {
+            return Self.buttonReportingFlags
+        }
+        if control.rawXY || Self.knownGestureCIDs.contains(control.cid) {
             return Self.gestureReportingFlags
         }
         return Self.buttonReportingFlags
@@ -2005,6 +2074,7 @@ final class LogitechMXMasterReader {
         case .mxForward: return [0x0054, 0x0056]
         case .mxSmartShift: return [0x00C4]
         case .mxModeShift: return [0x00D0, 0x00ED, 0x00FD]
+        case .mxSide: return [0x00C3]
         case .mxHaptic: return [model.gestureCID]
         default: return []
         }
@@ -2013,4 +2083,89 @@ final class LogitechMXMasterReader {
     private static let knownGestureCIDs: Set<UInt16> = [0x00C3, 0x00D6, 0x00D7]
     private static let nativeClickCIDs: Set<UInt16> = [0x0050, 0x0051, 0x0052]
     private static let wheelCIDs: Set<UInt16> = [0x00D4, 0x00D7]
+}
+
+/// One session tap for every MX reader. A second `CGEvent.tapCreate` often
+/// fails, so MX4 used to miss left/right/wheel while 3S still lit up.
+private enum MXClickProbe {
+    private static let lock = NSLock()
+    private static var readers: [ObjectIdentifier: LogitechMXMasterReader] = [:]
+    private static var tap: CFMachPort?
+    private static var source: CFRunLoopSource?
+
+    static let callback: CGEventTapCallBack = { _, type, event, _ in
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            MXClickProbe.lock.lock()
+            if let tap = MXClickProbe.tap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            MXClickProbe.lock.unlock()
+            return Unmanaged.passUnretained(event)
+        }
+        MXClickProbe.lock.lock()
+        let readers = Array(MXClickProbe.readers.values)
+        MXClickProbe.lock.unlock()
+        var swallow = false
+        for reader in readers {
+            reader.handleClickEvent(type: type, event: event)
+            if reader.shouldSwallowPointerEvent(type, event: event) {
+                swallow = true
+            }
+        }
+        if swallow { return nil }
+        return Unmanaged.passUnretained(event)
+    }
+
+    static func add(_ reader: LogitechMXMasterReader) {
+        lock.lock()
+        readers[ObjectIdentifier(reader)] = reader
+        let needsTap = tap == nil
+        lock.unlock()
+        guard needsTap else { return }
+        let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
+            | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+            | CGEventMask(1 << CGEventType.mouseMoved.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDragged.rawValue)
+        guard let created = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: callback,
+            userInfo: nil
+        ) else { return }
+        let loopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, created, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), loopSource, .commonModes)
+        CGEvent.tapEnable(tap: created, enable: true)
+        lock.lock()
+        tap = created
+        source = loopSource
+        lock.unlock()
+    }
+
+    static func remove(_ reader: LogitechMXMasterReader) {
+        lock.lock()
+        readers.removeValue(forKey: ObjectIdentifier(reader))
+        let empty = readers.isEmpty
+        let doomedTap = empty ? tap : nil
+        let doomedSource = empty ? source : nil
+        if empty {
+            tap = nil
+            source = nil
+        }
+        lock.unlock()
+        if let doomedSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), doomedSource, .commonModes)
+        }
+        if let doomedTap {
+            CFMachPortInvalidate(doomedTap)
+        }
+    }
 }

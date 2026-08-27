@@ -1,6 +1,6 @@
 # MX Master 4: pointer, DPI, and haptic swipes
 
-Working model as of 2026-08-22. Active test device is **MX Master 4 over Bluetooth LE** (product `0xB042`). Leave MX Master 3 / 3S disconnected.
+Working model as of 2026-08-26. Active test device is **MX Master 4 over Bluetooth LE** (product `0xB042`). 3S and 4 can stay attached (isolated readers).
 
 Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). This file is how Control Box maps that hardware to cursor speed and window gestures.
 
@@ -9,8 +9,7 @@ Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). Th
 | Input | Behavior |
 |---|---|
 | Laser pointer | Cursor. **Pointer speed** slider + DPI compensation. |
-| Wheel / thumb wheel | Scroll. Smooth scrolling toggle. Separate wheel / thumb sliders. |
-| Extra clicks (Back, Forward, Smart Shift, Mode / DPI, middle, left, right) | Ordinary button bindings. Default: Back / Forward = browser. |
+| Wheel / thumb wheel | Native scroll unless that direction is remapped (`mxWheelUp/Down`, `mxThumbLeft/Right`). `.scroll` or a missing binding keeps native. Smooth scrolling + separate wheel / thumb speed sliders. |
 | Haptic pad tap | The Gestures **Click** action (window preset: Mission Control). |
 | Haptic pad hold 100ms + move | Hold-to-swipe. Left/right and up are live DockSwipe. Down is discrete App Exposé. |
 
@@ -35,7 +34,9 @@ Settings copy lives under Profiles → Pointer & scroll.
 - Haptic → Gestures, preset **Window navigation**
 - Back → browser back
 - Forward → browser forward
-- Summary: “Haptic pad is Gestures. Back and Forward are browser buttons.”
+- Side → Mission Control
+- Wheel / thumb directions → Scroll (native)
+- Summary: “Haptic pad is Gestures. Back and Forward are browser buttons. Side is Mission Control.”
 
 Haptic presets:
 
@@ -137,7 +138,8 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 
 - Do not apply pointer speed or OS tracking pixels to haptic X/Y.
 - Do not omit the DPI term from haptic scaling. 50% “1× HID” without `1000 / dpi` is only true at 1000 DPI.
-- Do not open or seize the standard mouse collection (`0x01` / `0x02`) just to watch buttons.
+- Do not open or seize the standard mouse collection (`0x01` / `0x02`) just to watch buttons. Parse left / right / wheel from report `0x02` on the HID++ device; share one `CGEvent` tap across readers ([mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md)).
+- Do not divert MX4 Side `0x00C3` with gesture flags `0x33`. That CID is a click on MX4 (`0x03`). On 3S the same CID is the gesture button.
 - Do not send Reprog persist or force-raw-XY. Clear divert with `0x22`.
 - Do not call `IOBluetoothDevice.pairedDevices()`.
 - Do not treat Bolt receiver `C548` as this mouse.
@@ -151,7 +153,7 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 
 | File | Role |
 |---|---|
-| `ControlBox/LogitechMXMasterReader.swift` | HID++, report `0x02` haptic XY, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
+| `ControlBox/LogitechMXMasterReader.swift` | HID++, report `0x02` buttons + wheel + haptic XY, shared click probe, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
 | `ControlBox/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
 | `ControlBox/ProfilesPane.swift` | DPI, Pointer speed, Haptic gesture speed. Gestures picker only on Haptic. |
 | `ControlBox/DualSenseMonitor.swift` | Pushes sliders + DPI into the reader. Sanitizes saved profiles on load. |
@@ -170,3 +172,5 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 - [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md)
 - [hidpp-divert-steals-pointer.md](hidpp-divert-steals-pointer.md)
 - [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md)
+- [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md)
+- [focused-host-still-injects.md](focused-host-still-injects.md)

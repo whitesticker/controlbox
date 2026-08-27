@@ -9,10 +9,10 @@ struct PointerScrollPane: View {
             Form {
                 if monitor.hasMXMaster {
                     Section {
-                        speedSlider("Pointer speed", value: pointerSpeedBinding)
+                        SettingsSlider("Pointer speed", value: pointerSpeedBinding)
                         Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
-                        speedSlider("Wheel speed", value: wheelSpeedBinding)
-                        speedSlider("Thumb wheel speed", value: thumbSpeedBinding)
+                        SettingsSlider("Wheel speed", value: wheelSpeedBinding)
+                        SettingsSlider("Thumb wheel speed", value: thumbSpeedBinding)
                         Picker("Scroll direction", selection: scrollDirectionBinding) {
                             Text("Natural").tag("natural")
                             Text("Standard").tag("standard")
@@ -66,18 +66,5 @@ struct PointerScrollPane: View {
             get: { monitor.macMouseProfile.resolvedNaturalScrolling ? "natural" : "standard" },
             set: { monitor.setMacNaturalScrolling($0 == "natural") }
         )
-    }
-
-    private func speedSlider(_ title: String, value: Binding<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(Int((value.wrappedValue * 100).rounded()))%")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: value, in: 0...1)
-        }
     }
 }

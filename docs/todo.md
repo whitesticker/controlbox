@@ -23,6 +23,10 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 - [x] MX Master 3 / 3S reader (same CID table; BLE `0xB034` measured). Separate module from MX4.
+- [x] MX4 Side button CID `0x00C3` (not the 3S gesture; divert `0x03`). See [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md).
+- [x] MX4 left / right / wheel in Calibration (report `0x02` + one shared click tap). See [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md).
+- [x] Focused Control Box does not inject (including system-nav gestures). See [focused-host-still-injects.md](focused-host-still-injects.md).
+- [x] Wheel / thumb remappable per direction; `.scroll` keeps native.
 
 ## Do not regress
 
@@ -40,4 +44,4 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, live gesture HUD, MX4 extra button, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md). Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.

@@ -25,10 +25,12 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
     case switchApplicationBack
     case screenCapture
     case closeWindow
+    case scroll
 
     public var title: String {
         switch self {
         case .none: return "None"
+        case .scroll: return "Scroll"
         case .key(let virtualKey, let flags):
             return ShortcutFormatter.describe(virtualKey: virtualKey, flags: flags)
         case .mediaPlayPause: return "Play/Pause"
@@ -252,6 +254,7 @@ public extension ControlAction {
 
     var catalogID: String {
         if self == .gestures { return "gestures" }
+        if self == .scroll { return "scroll" }
         if let id = Self.catalog.first(where: { $0.action == self })?.id {
             return id
         }
@@ -263,6 +266,7 @@ public extension ControlAction {
 
     public static func fromCatalogID(_ id: String) -> ControlAction {
         if id == "gestures" { return .gestures }
+        if id == "scroll" { return .scroll }
         switch id {
         case "option": return .leftOptionKey
         case "command": return .leftCommandKey

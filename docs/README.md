@@ -21,7 +21,9 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [bluetooth-paired-devices-heap-corruption.md](bluetooth-paired-devices-heap-corruption.md) | App crashes on launch or while listing devices |
 | [hid-open-seize-dual-mouse.md](hid-open-seize-dual-mouse.md) | Crash or dead input with two Logitech mice |
 | [hidpp-divert-steals-pointer.md](hidpp-divert-steals-pointer.md) | Pointer dies until the mouse is power-cycled |
-| [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) | Haptic / back / forward do not light up |
+| [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) | Haptic / back / forward / Side do not light up |
+| [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md) | MX4 left / right / wheel stay idle in Calibration |
+| [focused-host-still-injects.md](focused-host-still-injects.md) | Gestures still run the Mac while Control Box is focused |
 | [adhoc-signing-resets-tcc.md](adhoc-signing-resets-tcc.md) | Accessibility / Input Monitoring must be re-added every build |
 | [mx-master-3s-wrong-usage-page.md](mx-master-3s-wrong-usage-page.md) | 3S never attaches while Master 4 does |
 | [mx-master-3s-hid.md](mx-master-3s-hid.md) | BLE 3S HID++ lives on the mouse device, not a second collection |

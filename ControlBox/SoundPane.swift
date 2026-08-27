@@ -17,17 +17,7 @@ struct SoundPane: View {
                                 Text(output.name).tag(output.id)
                             }
                         }
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Volume")
-                                Spacer()
-                                Text("\(Int((catalog.volume * 100).rounded()))%")
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            Slider(value: volumeBinding, in: 0...1)
-                        }
-                        Toggle("Mute", isOn: muteBinding)
+                        SettingsSlider("Volume", value: volumeBinding)
                     }
                 } header: {
                     Text("Output")
@@ -57,26 +47,11 @@ struct SoundPane: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(catalog.apps) { app in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text(app.name)
-                                        if app.isPlaying {
-                                            Text("Playing")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        } else {
-                                            Text("Saved")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Text("\(Int((app.volume * 100).rounded()))%")
-                                            .foregroundStyle(.secondary)
-                                            .monospacedDigit()
-                                    }
-                                    Slider(value: appVolumeBinding(app), in: 0...1)
-                                    Toggle("Mute", isOn: appMuteBinding(app))
-                                }
+                                SettingsSlider(
+                                    app.name,
+                                    description: appStatus(app),
+                                    value: appVolumeBinding(app)
+                                )
                             }
                         }
                         if let mixError = catalog.mixError {
@@ -87,7 +62,7 @@ struct SoundPane: View {
                 } header: {
                     Text("Apps")
                 } footer: {
-                    Text("The first slider or mute keeps that app here. The saved level applies again the next time it plays.")
+                    Text("The first slider keeps that app here. The saved level applies again the next time it plays.")
                 }
             }
             .formStyle(.grouped)
@@ -97,6 +72,11 @@ struct SoundPane: View {
                 catalog.refresh()
             }
         }
+    }
+
+    private func appStatus(_ app: AttachedAudioApp) -> String {
+        if app.isMuted { return "Muted" }
+        return app.isPlaying ? "Playing" : "Saved"
     }
 
     private var outputBinding: Binding<String> {
@@ -113,24 +93,10 @@ struct SoundPane: View {
         )
     }
 
-    private var muteBinding: Binding<Bool> {
-        Binding(
-            get: { catalog.isMuted },
-            set: { catalog.setMuted($0) }
-        )
-    }
-
     private func appVolumeBinding(_ app: AttachedAudioApp) -> Binding<Double> {
         Binding(
             get: { catalog.apps.first { $0.id == app.id }?.volume ?? app.volume },
             set: { catalog.setAppVolume($0, id: app.id) }
-        )
-    }
-
-    private func appMuteBinding(_ app: AttachedAudioApp) -> Binding<Bool> {
-        Binding(
-            get: { catalog.apps.first { $0.id == app.id }?.isMuted ?? app.isMuted },
-            set: { catalog.setAppMuted($0, id: app.id) }
         )
     }
 }

@@ -60,14 +60,14 @@ public enum DisplayBrightness {
         var nextPipes: [String: Pipe] = [:]
 
         let result: [AttachedDisplay] = screens.map { screen in
-            if screen.isBuiltIn, let brightness = coreDisplayBrightness(screen.displayID) {
+            if isAppleBrightnessPanel(screen.displayID) {
                 return AttachedDisplay(
                     id: "cg:\(screen.displayID)",
                     name: screen.name,
-                    detail: "Built-in",
-                    brightness: brightness,
+                    detail: screen.isBuiltIn ? "Built-in" : "Apple display",
+                    brightness: applePanelBrightness(screen.displayID) ?? 1,
                     canAdjustBrightness: true,
-                    isBuiltIn: true
+                    isBuiltIn: screen.isBuiltIn
                 )
             }
 
@@ -169,7 +169,7 @@ public enum DisplayBrightness {
     ) {
         let clamped = min(max(value, 0), 1)
         if vcp == vcpBrightness, id.hasPrefix("cg:"), let displayID = UInt32(String(id.dropFirst(3))) {
-            setCoreDisplayBrightness(displayID, clamped)
+            setApplePanelBrightness(displayID, clamped)
             return
         }
         guard id.hasPrefix("mon:") else { return }
@@ -265,15 +265,61 @@ public enum DisplayBrightness {
         )
     }
 
-    private static func coreDisplayBrightness(_ displayID: CGDirectDisplayID) -> Double? {
-        guard let get = CoreDisplayLink.get else { return nil }
-        let value = get(displayID)
-        guard value.isFinite, value >= 0, value <= 1 else { return nil }
-        return value
+    private static func isAppleBrightnessPanel(_ displayID: CGDirectDisplayID) -> Bool {
+        CGDisplayIsBuiltin(displayID) != 0 || DisplayServicesLink.canChange(displayID)
     }
 
-    private static func setCoreDisplayBrightness(_ displayID: CGDirectDisplayID, _ value: Double) {
+    private static func applePanelBrightness(_ displayID: CGDirectDisplayID) -> Double? {
+        if let value = displayServicesBrightness(displayID) { return value }
+        return coreDisplayBrightness(displayID)
+    }
+
+    private static func setApplePanelBrightness(_ displayID: CGDirectDisplayID, _ value: Double) {
+        if DisplayServicesLink.set?(displayID, Float(value)) == 0 { return }
         CoreDisplayLink.set?(displayID, value)
+    }
+
+    private static func displayServicesBrightness(_ displayID: CGDirectDisplayID) -> Double? {
+        guard let get = DisplayServicesLink.get else { return nil }
+        var value: Float = 0
+        guard get(displayID, &value) == 0 else { return nil }
+        return normalizedBrightness(Double(value))
+    }
+
+    private static func coreDisplayBrightness(_ displayID: CGDirectDisplayID) -> Double? {
+        guard let get = CoreDisplayLink.get else { return nil }
+        return normalizedBrightness(get(displayID))
+    }
+
+    private static func normalizedBrightness(_ value: Double) -> Double? {
+        guard value.isFinite, value >= 0 else { return nil }
+        if value <= 1 { return value }
+        if value <= 100 { return value / 100 }
+        return nil
+    }
+}
+
+private enum DisplayServicesLink {
+    typealias Get = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+    typealias Set = @convention(c) (CGDirectDisplayID, Float) -> Int32
+    typealias CanChange = @convention(c) (CGDirectDisplayID) -> Int32
+
+    static let get: Get? = load("DisplayServicesGetBrightness")
+    static let set: Set? = load("DisplayServicesSetBrightness")
+    private static let canChangeSymbol: CanChange? = load("DisplayServicesCanChangeBrightness")
+
+    static func canChange(_ displayID: CGDirectDisplayID) -> Bool {
+        (canChangeSymbol?(displayID) ?? 0) != 0
+    }
+
+    private static func load<T>(_ name: String) -> T? {
+        guard let handle = dlopen(
+            "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices",
+            RTLD_LAZY
+        ), let symbol = dlsym(handle, name) else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: T.self)
     }
 }
 

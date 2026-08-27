@@ -11,7 +11,7 @@ enum MXMaster4Support {
     static let forceSensingFeature: UInt16 = 0x19C0
     static let forceThreshold: UInt16 = 0x15A3
     static let extraButtonCIDs: Set<UInt16> = [
-        0x0053, 0x0054, 0x0056, 0x00C4, 0x00D0, 0x00ED, 0x00FD
+        0x0053, 0x0054, 0x0056, 0x00C3, 0x00C4, 0x00D0, 0x00ED, 0x00FD
     ]
 
     static let model = MXMasterHIDModel(

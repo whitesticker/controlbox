@@ -54,8 +54,14 @@ final class SoundCatalog {
     func setAppVolume(_ value: Double, id: String) {
         if let index = apps.firstIndex(where: { $0.id == id }) {
             apps[index].volume = value
+            if value > 0.0001 {
+                apps[index].isMuted = false
+            }
         }
         AppVolumeMixer.setVolume(value, id: id)
+        if value > 0.0001 {
+            AppVolumeMixer.setMuted(false, id: id)
+        }
         mixError = AppVolumeMixer.lastError()
     }
 

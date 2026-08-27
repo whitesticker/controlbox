@@ -86,20 +86,31 @@ public final class ControlEngine: @unchecked Sendable {
 
         pointerSpeed = 4 + profile.appliedPointerSpeed * 24
         scrollSpeed = isDualSense ? analogScrollGain : (0.08 + profile.appliedWheelScrollSpeed * 0.72)
-        postInjectedScroll(frame)
 
         guard enabled else {
             previousButtons = frame.buttons
             lastAnalog = frame.analog
             AppSwitcher.cancel()
             clearSelectHold()
+            padGesture.cancel()
             return
         }
 
         let injectAll = !hostIsActive || postsWhenHostIsActive
-        processGesture(frame, injectAll: injectAll)
+        if !injectAll {
+            padGesture.cancel()
+            previousButtons = frame.buttons
+            lastAnalog = frame.analog
+            AppSwitcher.cancel()
+            clearSelectHold()
+            applyVolumeRepeat(upPressed: false, downPressed: false, enabled: false)
+            return
+        }
+
+        postInjectedScroll(frame)
+        processGesture(frame, injectAll: true)
         if isDualSense {
-            processTriggerTabs(frame, injectAll: injectAll)
+            processTriggerTabs(frame, injectAll: true)
         }
 
         stickyActive = profile.stickyTargeting == true
@@ -113,8 +124,8 @@ public final class ControlEngine: @unchecked Sendable {
             && !usesTriggerTabs(button) {
             let wasPressed = previousButtons[button] ?? false
             if pressed != wasPressed {
-                let action = profile.bindings[button] ?? .none
-                if injectAll || action.isSystemNavigation {
+                let action = resolvedAction(for: button)
+                if action != .scroll {
                     perform(action, down: pressed)
                 }
             }
@@ -506,14 +517,12 @@ public final class ControlEngine: @unchecked Sendable {
             && resolved.owner.canOwnGestures
             && profile.bindings[resolved.owner] == .gestures
 
+        if !injectAll {
+            padGesture.cancel()
+            return
+        }
+
         if holding, let set = profile.gestureSet(for: resolved.owner) {
-            let allow = injectAll
-                || set.click.isSystemNavigation
-                || set.up.isSystemNavigation || set.down.isSystemNavigation
-                || set.left.isSystemNavigation || set.right.isSystemNavigation
-                || set.up.isLiveVolume || set.down.isLiveVolume
-                || set.left.isDiscreteSwipe || set.right.isDiscreteSwipe
-            guard allow else { return }
             if padGesture.owner != resolved.owner {
                 padGesture.begin(owner: resolved.owner, set: set)
             }
@@ -557,9 +566,22 @@ public final class ControlEngine: @unchecked Sendable {
         )
     }
 
+    private func resolvedAction(for button: DeviceButton) -> ControlAction {
+        if let action = profile.bindings[button] {
+            return action
+        }
+        return button.isMXScrollDirection ? .scroll : .none
+    }
+
     private func postInjectedScroll(_ frame: ControlFrame) {
-        let dy = frame.scrollY * (0.35 + profile.appliedWheelScrollSpeed * 4.2) * scrollSign
-        let dx = frame.scrollX * (0.35 + profile.appliedThumbScrollSpeed * 4.2) * scrollSign
+        var dy = frame.scrollY
+        var dx = frame.scrollX
+        if dy > 0, !profile.keepsNativeScroll(for: .mxWheelUp) { dy = 0 }
+        if dy < 0, !profile.keepsNativeScroll(for: .mxWheelDown) { dy = 0 }
+        if dx > 0, !profile.keepsNativeScroll(for: .mxThumbRight) { dx = 0 }
+        if dx < 0, !profile.keepsNativeScroll(for: .mxThumbLeft) { dx = 0 }
+        dy *= (0.35 + profile.appliedWheelScrollSpeed * 4.2) * scrollSign
+        dx *= (0.35 + profile.appliedThumbScrollSpeed * 4.2) * scrollSign
         EventPoster.scroll(deltaY: dy, deltaX: dx, continuous: true)
     }
 
@@ -583,13 +605,13 @@ public final class ControlEngine: @unchecked Sendable {
             ActionHUD.show(action)
         }
         switch action {
-        case .switchApplication, .switchApplicationBack, .none, .gestures:
+        case .switchApplication, .switchApplicationBack, .none, .gestures, .scroll:
             break
         default:
             AppSwitcher.cancel()
         }
         switch action {
-        case .none, .gestures:
+        case .none, .gestures, .scroll:
             return
         case .key(let virtualKey, let flags):
             EventPoster.key(virtualKey, flags: CGEventFlags(rawValue: flags), down: down)

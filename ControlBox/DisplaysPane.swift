@@ -15,21 +15,17 @@ struct DisplaysPane: View {
                 } else {
                     ForEach(catalog.displays) { display in
                         Section {
-                            VStack(alignment: .leading, spacing: 12) {
-                                sliderRow(
-                                    title: "Brightness",
-                                    value: display.brightness,
-                                    enabled: display.canAdjustBrightness,
-                                    binding: brightnessBinding(display)
+                            SettingsSlider(
+                                "Brightness",
+                                value: brightnessBinding(display),
+                                enabled: display.canAdjustBrightness
+                            )
+                            if !display.isBuiltIn {
+                                SettingsSlider(
+                                    "Contrast",
+                                    value: contrastBinding(display),
+                                    enabled: display.canAdjustContrast
                                 )
-                                if !display.isBuiltIn {
-                                    sliderRow(
-                                        title: "Contrast",
-                                        value: display.contrast,
-                                        enabled: display.canAdjustContrast,
-                                        binding: contrastBinding(display)
-                                    )
-                                }
                             }
                         } header: {
                             Text(display.name)
@@ -56,25 +52,6 @@ struct DisplaysPane: View {
         }
     }
 
-    private func sliderRow(
-        title: String,
-        value: Double,
-        enabled: Bool,
-        binding: Binding<Double>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(Int((value * 100).rounded()))%")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: binding, in: 0...1)
-                .disabled(!enabled)
-        }
-    }
-
     private func brightnessBinding(_ display: AttachedDisplay) -> Binding<Double> {
         Binding(
             get: { catalog.displays.first { $0.id == display.id }?.brightness ?? display.brightness },
@@ -97,7 +74,7 @@ struct DisplaysPane: View {
             return display.detail
         }
         if display.isBuiltIn {
-            return "Built-in brightness needs CoreDisplay, which this Mac did not expose."
+            return "Built-in brightness is not available on this panel."
         }
         return "\(display.detail). HDMI on some Apple silicon Macs cannot do DDC; USB-C / DisplayPort usually can."
     }

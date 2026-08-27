@@ -20,7 +20,7 @@ struct MXMasterCalibrationView: View {
                             .foregroundStyle(Palette.secondaryText(colorScheme))
                             .textSelection(.enabled)
                     }
-                    Text(snapshot.status)
+                    Text(headlineStatus)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
                 }
@@ -35,12 +35,36 @@ struct MXMasterCalibrationView: View {
             }
 
             HStack(alignment: .top, spacing: 18) {
-                MXMasterMouseView(snapshot: snapshot)
+                GeometryReader { geo in
+                    let mouseH = min(geo.size.height * 0.92, 520)
+                    let mouseW = mouseH * 0.62
+                    let padH = mouseH * 0.86
+                    let padW = padH * 0.82
+                    HStack(alignment: .center, spacing: 36) {
+                        MXMasterMouseView(snapshot: snapshot)
+                            .frame(width: mouseW, height: mouseH)
+                        GestureSwipeStage(snapshot: snapshot)
+                            .frame(width: padW, height: padH)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Palette.surface(colorScheme))
+                )
                 MXMasterSidebar(snapshot: snapshot)
                     .frame(width: 360)
             }
         }
+    }
+
+    private var headlineStatus: String {
+        if !snapshot.connected { return snapshot.status }
+        if snapshot.gestureDown || snapshot.haptic {
+            return snapshot.liveGesture?.title ?? "\(snapshot.kind.mxGestureControlTitle) held"
+        }
+        return "Connected"
     }
 }
 
@@ -49,126 +73,383 @@ private struct MXMasterMouseView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        ZStack {
+            MXMasterOutline()
+                .fill(Palette.controllerBody(colorScheme))
+                .overlay {
+                    MXMasterOutline()
+                        .stroke(Palette.hairline(colorScheme), lineWidth: 1.2)
+                }
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 18, y: 8)
+
+            buttonGlows
+            wheelColumn
+            thumbCluster
+        }
+    }
+
+    private var buttonGlows: some View {
         GeometryReader { geo in
-            let width = geo.size.width
-            let height = geo.size.height
+            let w = geo.size.width
+            let h = geo.size.height
             ZStack {
-                RoundedRectangle(cornerRadius: 90, style: .continuous)
-                    .fill(Palette.controllerBody(colorScheme))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 90, style: .continuous)
-                            .stroke(Palette.hairline(colorScheme), lineWidth: 1)
-                    )
-                    .frame(width: min(width * 0.42, 220), height: min(height * 0.78, 420))
-                    .position(x: width * 0.46, y: height * 0.50)
-
-                MXButton(title: "Left", pressed: snapshot.left)
-                    .frame(width: 84, height: 78)
-                    .position(x: width * 0.30, y: height * 0.27)
-                VStack(spacing: 6) {
-                    MXButton(title: "Wheel +", pressed: snapshot.wheelUp, compact: true)
-                    MXButton(title: "Middle", pressed: snapshot.middle, compact: true)
-                    MXButton(title: "Wheel −", pressed: snapshot.wheelDown, compact: true)
-                }
-                .position(x: width * 0.46, y: height * 0.27)
-                MXButton(title: "Right", pressed: snapshot.right)
-                    .frame(width: 84, height: 78)
-                    .position(x: width * 0.62, y: height * 0.27)
-
-                MXButton(title: "Mode shift", pressed: snapshot.smartShift, compact: true)
-                    .position(x: width * 0.62, y: height * 0.42)
-                MXButton(title: snapshot.kind.mxGestureControlTitle, pressed: snapshot.haptic)
-                    .frame(width: 88, height: 44)
-                    .position(x: width * 0.30, y: height * 0.52)
-
-                MXButton(title: "Thumb ←", pressed: snapshot.thumbLeft, compact: true)
-                    .position(x: width * 0.24, y: height * 0.58)
-                MXButton(title: "Thumb →", pressed: snapshot.thumbRight, compact: true)
-                    .position(x: width * 0.24, y: height * 0.68)
-
-                MXButton(title: "Back", pressed: snapshot.back)
-                    .frame(width: 72, height: 44)
-                    .position(x: width * 0.24, y: height * 0.80)
-                MXButton(title: "Forward", pressed: snapshot.forward)
-                    .frame(width: 72, height: 44)
-                    .position(x: width * 0.38, y: height * 0.80)
-
-                gesturePad
-                    .frame(width: 150, height: 86)
-                    .position(x: width * 0.58, y: height * 0.72)
+                glowRegion(
+                    pressed: snapshot.left,
+                    in: CGRect(x: w * 0.16, y: h * 0.045, width: w * 0.26, height: h * 0.20),
+                    radius: 22,
+                    title: "Left"
+                )
+                glowRegion(
+                    pressed: snapshot.right,
+                    in: CGRect(x: w * 0.58, y: h * 0.045, width: w * 0.26, height: h * 0.20),
+                    radius: 22,
+                    title: "Right"
+                )
             }
-            .padding(18)
+            .clipShape(MXMasterOutline())
         }
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Palette.surface(colorScheme))
-        )
     }
 
-    private var gesturePad: some View {
-        let live = snapshot.liveGesture
-        return ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill((snapshot.gestureDown || snapshot.haptic) ? Palette.accent.opacity(0.28) : Palette.fill(colorScheme))
+    private var wheelColumn: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let colW = w * 0.15
+            let chipH = h * 0.052
             VStack(spacing: 4) {
-                Text(snapshot.kind.isMXMaster3Family ? "Gesture swipe" : "Haptic swipe")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                Text(gestureCaption)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                if snapshot.gestureDown {
-                    Text(String(format: "dx %+.0f  dy %+.0f", snapshot.gestureDX, snapshot.gestureDY))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                glowChip(
+                    pressed: snapshot.wheelUp,
+                    width: colW,
+                    height: chipH,
+                    radius: 8,
+                    title: "Up"
+                )
+                glowChip(
+                    pressed: snapshot.middle,
+                    width: colW,
+                    height: chipH,
+                    radius: 8,
+                    title: "Click"
+                )
+                glowChip(
+                    pressed: snapshot.wheelDown,
+                    width: colW,
+                    height: chipH,
+                    radius: 8,
+                    title: "Down"
+                )
+                Color.clear
+                    .frame(height: 16)
+                glowChip(
+                    pressed: snapshot.smartShift,
+                    width: colW,
+                    height: chipH,
+                    radius: 8,
+                    title: "Mode"
+                )
+            }
+            .frame(width: colW)
+            .position(x: w * 0.515, y: h * 0.22)
+        }
+    }
+
+    @ViewBuilder
+    private var thumbCluster: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let family = snapshot.kind.isMXMaster3Family
+            ZStack {
+                glowRegion(
+                    pressed: snapshot.haptic,
+                    in: family
+                        ? CGRect(x: w * 0.06, y: h * 0.36, width: w * 0.20, height: h * 0.12)
+                        : CGRect(x: w * 0.05, y: h * 0.32, width: w * 0.24, height: h * 0.13),
+                    radius: family ? 18 : 14,
+                    title: snapshot.kind.mxGestureControlTitle
+                )
+                HStack(spacing: 3) {
+                    glowChip(
+                        pressed: snapshot.thumbLeft,
+                        width: w * 0.11,
+                        height: 22,
+                        radius: 8,
+                        title: "Left"
+                    )
+                    glowChip(
+                        pressed: snapshot.thumbRight,
+                        width: w * 0.11,
+                        height: 22,
+                        radius: 8,
+                        title: "Right"
+                    )
+                }
+                .frame(width: w * 0.23, height: 22)
+                .position(x: w * 0.17, y: family ? h * 0.545 : h * 0.50)
+                if !family {
+                    glowRegion(
+                        pressed: snapshot.side,
+                        in: CGRect(x: w * 0.06, y: h * 0.56, width: w * 0.18, height: h * 0.075),
+                        radius: 10,
+                        title: "Side"
+                    )
+                }
+                glowRegion(
+                    pressed: snapshot.forward,
+                    in: CGRect(
+                        x: w * 0.06,
+                        y: family ? h * 0.60 : h * 0.655,
+                        width: w * 0.18,
+                        height: h * 0.075
+                    ),
+                    radius: 10,
+                    title: "Fwd"
+                )
+                glowRegion(
+                    pressed: snapshot.back,
+                    in: CGRect(
+                        x: w * 0.06,
+                        y: family ? h * 0.71 : h * 0.75,
+                        width: w * 0.18,
+                        height: h * 0.075
+                    ),
+                    radius: 10,
+                    title: "Back"
+                )
+            }
+        }
+    }
+
+    private func glowChip(
+        pressed: Bool,
+        width: CGFloat,
+        height: CGFloat,
+        radius: CGFloat,
+        title: String
+    ) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(pressed ? Palette.accent.opacity(0.90) : Palette.fill(colorScheme).opacity(0.55))
+            .overlay {
+                Text(title)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(pressed ? .white : Palette.secondaryText(colorScheme).opacity(0.72))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(pressed ? Palette.accent : Color.clear, lineWidth: pressed ? 1 : 0)
+            }
+            .shadow(color: pressed ? Palette.accent.opacity(0.50) : .clear, radius: pressed ? 10 : 0)
+            .frame(width: width, height: height)
+            .animation(.easeOut(duration: 0.08), value: pressed)
+    }
+
+    private func glowRegion(
+        pressed: Bool,
+        in rect: CGRect,
+        radius: CGFloat,
+        title: String?
+    ) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(pressed ? Palette.accent.opacity(0.90) : Palette.fill(colorScheme).opacity(0.55))
+            .overlay {
+                if let title {
+                    Text(title)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(pressed ? .white : Palette.secondaryText(colorScheme).opacity(0.72))
                 }
             }
-            .foregroundStyle((snapshot.gestureDown || snapshot.haptic) ? Palette.accent : Palette.primaryText(colorScheme))
-
-            arrow("↑", active: live == .mxGestureUp || snapshot.lastGesture == .mxGestureUp)
-                .offset(y: -34)
-            arrow("↓", active: live == .mxGestureDown || snapshot.lastGesture == .mxGestureDown)
-                .offset(y: 34)
-            arrow("←", active: live == .mxGestureLeft || snapshot.lastGesture == .mxGestureLeft)
-                .offset(x: -64)
-            arrow("→", active: live == .mxGestureRight || snapshot.lastGesture == .mxGestureRight)
-                .offset(x: 64)
-        }
-    }
-
-    private var gestureCaption: String {
-        if snapshot.gestureDown || snapshot.haptic {
-            return snapshot.liveGesture?.title ?? "\(snapshot.kind.mxGestureControlTitle) held"
-        }
-        if let last = snapshot.lastGesture {
-            return "Last: \(last.title)"
-        }
-        return snapshot.kind.isMXMaster3Family ? "Hold gesture + move" : "Hold haptic + move"
-    }
-
-    private func arrow(_ symbol: String, active: Bool) -> some View {
-        Text(symbol)
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(active ? Palette.accent : Palette.secondaryText(colorScheme).opacity(0.45))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(
+                        pressed ? Palette.accent : Color.clear,
+                        lineWidth: pressed ? 1 : 0
+                    )
+            }
+            .shadow(color: pressed ? Palette.accent.opacity(0.50) : .clear, radius: pressed ? 10 : 0)
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .animation(.easeOut(duration: 0.08), value: pressed)
     }
 }
 
-private struct MXButton: View {
-    let title: String
-    let pressed: Bool
-    var compact = false
+/// Right-handed MX Master, nose up, thumb rest on the left.
+private struct MXMasterOutline: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        var path = Path()
+        path.move(to: CGPoint(x: w * 0.40, y: h * 0.03))
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.82, y: h * 0.10),
+            control: CGPoint(x: w * 0.70, y: h * 0.01)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.90, y: h * 0.40),
+            control: CGPoint(x: w * 0.97, y: h * 0.20)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.82, y: h * 0.86),
+            control: CGPoint(x: w * 0.94, y: h * 0.64)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.50, y: h * 0.97),
+            control: CGPoint(x: w * 0.70, y: h * 1.01)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.10, y: h * 0.74),
+            control: CGPoint(x: w * 0.14, y: h * 0.96)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.08, y: h * 0.40),
+            control: CGPoint(x: w * 0.00, y: h * 0.56)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.22, y: h * 0.10),
+            control: CGPoint(x: w * 0.10, y: h * 0.18)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: w * 0.40, y: h * 0.03),
+            control: CGPoint(x: w * 0.28, y: h * 0.02)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct GestureSwipeStage: View {
+    let snapshot: MXMasterSnapshot
     @Environment(\.colorScheme) private var colorScheme
+    @State private var trail: [CGPoint] = []
+    @State private var fade = 1.0
+
+    private var held: Bool { snapshot.gestureDown || snapshot.haptic }
 
     var body: some View {
-        Text(title)
-            .font(.system(size: compact ? 10 : 12, weight: .bold, design: .rounded))
-            .padding(.horizontal, compact ? 8 : 10)
-            .padding(.vertical, compact ? 5 : 8)
-            .background(
-                pressed ? Palette.accent : Palette.fill(colorScheme),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .foregroundStyle(pressed ? .white : Palette.primaryText(colorScheme))
-            .scaleEffect(pressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.08), value: pressed)
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(held ? Palette.accent.opacity(0.16) : Palette.fill(colorScheme))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(held ? Palette.accent.opacity(0.75) : Palette.hairline(colorScheme), lineWidth: 1.5)
+                }
+                .shadow(color: held ? Palette.accent.opacity(0.28) : .clear, radius: 16)
+
+            crosshair
+            trailCanvas
+            compass
+
+            VStack(spacing: 4) {
+                Text(snapshot.kind.isMXMaster3Family ? "GESTURE SWIPE" : "HAPTIC SWIPE")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
+                    .padding(.top, 16)
+                Spacer()
+                Text(caption)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(held ? Palette.accent : Palette.secondaryText(colorScheme))
+                    .padding(.bottom, 16)
+            }
+        }
+        .onChange(of: held) { _, isHeld in
+            if isHeld {
+                trail = [.zero]
+                fade = 1
+            } else {
+                withAnimation(.easeOut(duration: 0.7)) { fade = 0 }
+            }
+        }
+        .onChange(of: snapshot.gestureDX) { _, _ in appendTrail() }
+        .onChange(of: snapshot.gestureDY) { _, _ in appendTrail() }
+    }
+
+    private var caption: String {
+        if held {
+            return snapshot.liveGesture?.title ?? "Held · move"
+        }
+        if let last = snapshot.lastGesture {
+            return last.title
+        }
+        return "Hold and move"
+    }
+
+    private var crosshair: some View {
+        GeometryReader { geo in
+            Path { path in
+                path.move(to: CGPoint(x: geo.size.width / 2, y: 44))
+                path.addLine(to: CGPoint(x: geo.size.width / 2, y: geo.size.height - 44))
+                path.move(to: CGPoint(x: 28, y: geo.size.height / 2))
+                path.addLine(to: CGPoint(x: geo.size.width - 28, y: geo.size.height / 2))
+            }
+            .stroke(Palette.hairline(colorScheme).opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+        }
+    }
+
+    private var trailCanvas: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            Canvas { context, _ in
+                let mapped = trail.map { point(in: size, dx: $0.x, dy: $0.y) }
+                if mapped.count > 1 {
+                    var path = Path()
+                    path.addLines(mapped)
+                    context.opacity = fade
+                    context.stroke(
+                        path,
+                        with: .color(Palette.accent),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+                }
+                if let last = mapped.last {
+                    let dot = Path(ellipseIn: CGRect(x: last.x - 5, y: last.y - 5, width: 10, height: 10))
+                    context.opacity = fade
+                    context.fill(dot, with: .color(Palette.accent))
+                }
+            }
+        }
+        .opacity(fade)
+    }
+
+    private var compass: some View {
+        let live = snapshot.liveGesture
+        let last = snapshot.lastGesture
+        return VStack {
+            tick(active: live == .mxGestureUp || last == .mxGestureUp)
+            Spacer()
+            tick(active: live == .mxGestureDown || last == .mxGestureDown)
+        }
+        .padding(.vertical, 36)
+        .overlay {
+            HStack {
+                tick(active: live == .mxGestureLeft || last == .mxGestureLeft)
+                Spacer()
+                tick(active: live == .mxGestureRight || last == .mxGestureRight)
+            }
+            .padding(.horizontal, 22)
+        }
+    }
+
+    private func tick(active: Bool) -> some View {
+        Capsule()
+            .fill(active ? Palette.accent : Palette.raised(colorScheme).opacity(0.7))
+            .frame(width: 22, height: 6)
+            .shadow(color: active ? Palette.accent.opacity(0.55) : .clear, radius: 6)
+    }
+
+    private func appendTrail() {
+        guard held else { return }
+        let next = CGPoint(x: snapshot.gestureDX, y: snapshot.gestureDY)
+        if trail.last != next {
+            trail.append(next)
+            if trail.count > 80 { trail.removeFirst(trail.count - 80) }
+        }
+    }
+
+    private func point(in size: CGSize, dx: CGFloat, dy: CGFloat) -> CGPoint {
+        let scale: CGFloat = 0.16
+        let x = min(max(size.width / 2 + dx * scale, 20), size.width - 20)
+        let y = min(max(size.height / 2 + dy * scale, 36), size.height - 36)
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -184,13 +465,18 @@ private struct MXMasterSidebar: View {
                     MXValueRow(label: "Right", value: down(snapshot.right))
                     MXValueRow(label: "Middle", value: down(snapshot.middle))
                 }
-                MXPanel(title: "Wheels") {
-                    MXValueRow(label: "Wheel up", value: down(snapshot.wheelUp))
-                    MXValueRow(label: "Wheel down", value: down(snapshot.wheelDown))
-                    MXValueRow(label: "Thumb left", value: down(snapshot.thumbLeft))
-                    MXValueRow(label: "Thumb right", value: down(snapshot.thumbRight))
+                MXPanel(title: "Scroll wheel") {
+                    MXValueRow(label: "Up", value: down(snapshot.wheelUp))
+                    MXValueRow(label: "Down", value: down(snapshot.wheelDown))
+                }
+                MXPanel(title: "Thumb wheel") {
+                    MXValueRow(label: "Left", value: down(snapshot.thumbLeft))
+                    MXValueRow(label: "Right", value: down(snapshot.thumbRight))
                 }
                 MXPanel(title: "Thumb") {
+                    if !snapshot.kind.isMXMaster3Family {
+                        MXValueRow(label: "Side", value: down(snapshot.side))
+                    }
                     MXValueRow(label: "Back", value: down(snapshot.back))
                     MXValueRow(label: "Forward", value: down(snapshot.forward))
                     MXValueRow(label: "Mode shift", value: down(snapshot.smartShift))
@@ -210,15 +496,18 @@ private struct MXMasterSidebar: View {
                         label: "Delta",
                         value: String(format: "%+.0f, %+.0f", snapshot.gestureDX, snapshot.gestureDY)
                     )
-                    MXValueRow(label: "HID++", value: snapshot.lastHIDEvent)
                     Text(snapshot.kind.isMXMaster3Family
                          ? "Gesture means: hold the thumb gesture button and move the mouse. A tap without moving is Click. Quit Logi Options+ first."
                          : "Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
-                    Text("macOS click events do not say which mouse produced them. Extra-button fallbacks are gated per model, so MX4 haptic (buttons 5/6) cannot start a 3S gesture.")
-                        .font(.system(size: 11, design: .rounded))
+                }
+                MXPanel(title: "HID++") {
+                    MXValueRow(label: "Last event", value: snapshot.lastHIDEvent)
+                    Text(snapshot.status)
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
+                        .textSelection(.enabled)
                 }
                 MXPanel(title: "Recent inputs") {
                     if snapshot.events.isEmpty {
@@ -302,6 +591,8 @@ private struct MXValueRow: View {
             Text(value)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Palette.primaryText(colorScheme))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 }

@@ -2,7 +2,7 @@
 
 Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master) to pointer, keys, and system gestures.
 
-## Current status (2026-08-22)
+## Current status (2026-08-26)
 
 - Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, and MX Master 4 can stay attached at once. Each device has its own **Control this Mac** toggle.
 - Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
@@ -16,6 +16,10 @@ Control Box is a local Mac app that maps unusual input devices (DualSense, Apple
 - Factory defaults match the live desk: DualSense L1/R1 desktops, L2/R2 tabs, D-pad Mission Control / Desktop / app switch, Square click, 1-finger media, left stick pointer / right stick scroll; Apple TV Back = Return; MX pointer 21%, natural scroll off, Mode shift = Right Option; MX4 haptic 61% and 4000 DPI.
 - MX **Window grab**: hold Control and move to drag a window from anywhere; hold Control+Shift and move to resize with the top-left anchored. MX with Control this Mac only.
 - **MX Gestures is the 3S gesture button / MX4 haptic pad only.** Click-as-gesture on Back / Forward / etc. is still parked. DualSense finger rows are allowed.
+- With **Allow while Control Box is focused** off, a frontmost Control Box window skips **all** injection (gestures, thumb HID++ scroll, window grab, buttons). System-navigation is not a bypass. See `docs/focused-host-still-injects.md`.
+- MX wheel and thumb roller are **per-direction** bindings (`mxWheelUp/Down`, `mxThumbLeft/Right`). Missing or `.scroll` keeps native scroll for that direction; any other action replaces it (`MouseScrollTap` drop flags).
+- MX Calibration is a silhouette mouse plus a separate gesture pad. Wheel column is **Up, Click, Down**, then a gap, then **Mode**. Thumb is Forward above Back. MX4-only **Side** sits between the thumb roller and Forward.
+- MX4 left / right / wheel on Calibration come from report `0x02` on the HID++ device plus **one** shared `CGEvent` tap. Do not open the mouse collection; do not give each reader its own tap. See `docs/mx4-clicks-missing-in-calibration.md`.
 - Do not attach Bolt receiver `C548`. Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
 
 ## Device rule
@@ -26,7 +30,7 @@ Treat these as **different devices**, not one “MX Master”:
 |---|---|---|
 | MX Master 3 | Unifying `0x4082`, BLE `0xB023`. Same HID module as 3S. | Gesture CID `0x00C3`. No 3 on this Mac; inferred from Solaar/logiops. |
 | MX Master 3S | BLE `0xB034`, Bolt `0xB043`. Nested `0xFF43` / report `0x11`. | Same CIDs as Master 3. Thumb gesture `0x00C3`. |
-| MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse. | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. |
+| MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse. | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. Extra thumb **Side** button is CID `0x00C3` (in front of Back / Forward). |
 
 3S + 4 at once is allowed through **two isolated readers**, not one manager that opens every Logitech collection. Keep 3/3S and 4 as separate HID modules. Shared code should stay at “send a HID++ report” / “list HID devices” / hold-to-swipe.
 

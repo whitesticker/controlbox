@@ -809,13 +809,21 @@ final class DualSenseMonitor {
         let smooth = record.selectedProfile.resolvedSmoothScrolling
         let vertical = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
         let horizontal = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
-        let signature = "\(record.id)|\(natural)|\(smooth)|\(vertical)|\(horizontal)"
+        let passUp = record.selectedProfile.keepsNativeScroll(for: .mxWheelUp)
+        let passDown = record.selectedProfile.keepsNativeScroll(for: .mxWheelDown)
+        let passLeft = record.selectedProfile.keepsNativeScroll(for: .mxThumbLeft)
+        let passRight = record.selectedProfile.keepsNativeScroll(for: .mxThumbRight)
+        let signature = "\(record.id)|\(natural)|\(smooth)|\(vertical)|\(horizontal)|\(passUp)|\(passDown)|\(passLeft)|\(passRight)"
         guard signature != lastScrollTapSignature else { return }
         lastScrollTapSignature = signature
         mouseScrollTap.wantNatural = natural
         mouseScrollTap.smoothScrolling = smooth
         mouseScrollTap.verticalScale = vertical
         mouseScrollTap.horizontalScale = horizontal
+        mouseScrollTap.passVerticalPositive = passUp
+        mouseScrollTap.passVerticalNegative = passDown
+        mouseScrollTap.passHorizontalPositive = passRight
+        mouseScrollTap.passHorizontalNegative = passLeft
         mouseScrollTap.setActive(true)
         for reader in mxReaders where reader.current.connected {
             reader.applySmoothScrolling(smooth)
@@ -833,9 +841,14 @@ final class DualSenseMonitor {
             return
         }
         let profile = record.selectedProfile
-        let signature = "\(record.id)|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
+        let inject = !NSApp.isActive || record.controlWhileFocused
+        let signature = "\(record.id)|\(inject)|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
         guard signature != lastWindowGrabSignature else { return }
         lastWindowGrabSignature = signature
+        guard inject else {
+            WindowGrab.stop()
+            return
+        }
         WindowGrab.configure(
             enabled: true,
             moveEnabled: profile.resolvedWindowMoveEnabled,
@@ -1043,6 +1056,9 @@ final class DualSenseMonitor {
                 if next.isMXMaster {
                     for index in next.profiles.indices {
                         next.profiles[index].restrictGesturesToHapticPad()
+                        if !next.kind.isMXMaster3Family {
+                            next.profiles[index].ensureMX4SideButton()
+                        }
                     }
                 }
                 if next.kind == .dualSense || next.kind == .dualSenseEdge {

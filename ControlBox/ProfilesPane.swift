@@ -76,7 +76,7 @@ struct DeviceProfilePane: View {
                     if record.isMXMaster {
                         Section {
                             dpiSlider
-                            speedSlider(
+                            SettingsSlider(
                                 record.kind.isMXMaster3Family ? "Gesture speed" : "Haptic gesture speed",
                                 value: hapticGestureSpeedBinding
                             )
@@ -87,23 +87,17 @@ struct DeviceProfilePane: View {
                         }
                     } else {
                         Section {
-                            speedSlider("Pointer speed", value: pointerSpeedBinding)
+                            SettingsSlider("Pointer speed", value: pointerSpeedBinding)
                             if dualSenseShowsGestureSpeed(record) {
-                                speedSlider("Gesture speed", value: hapticGestureSpeedBinding)
+                                SettingsSlider("Gesture speed", value: hapticGestureSpeedBinding)
                             }
-                            speedSlider("Scroll speed", value: wheelSpeedBinding)
+                            SettingsSlider("Scroll speed", value: wheelSpeedBinding)
                             if !record.isAppleTVRemote {
                                 Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
                                     .disabled(!hasAnalogScrollSource(record))
                                 if (monitor.selectedProfile.scrollAcceleration == true),
                                    hasAnalogScrollSource(record) {
-                                    Slider(value: scrollAccelerationAmountBinding, in: 0...1) {
-                                        Text("Amount")
-                                    } minimumValueLabel: {
-                                        Text("Low")
-                                    } maximumValueLabel: {
-                                        Text("High")
-                                    }
+                                    SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
                                 }
                             }
                             Picker("Scroll direction", selection: scrollDirectionBinding) {
@@ -128,23 +122,21 @@ struct DeviceProfilePane: View {
                                 } else if button.canOwnGestures {
                                     mxActionRow(label(for: button, kind: record.kind), button: button, record: record)
                                 } else {
-                                    actionRow(label(for: button, kind: record.kind), button: button, current: record.selectedProfile.bindings[button] ?? .none)
+                                    let mapped = record.selectedProfile.bindings[button]
+                                        ?? (button.isMXScrollDirection ? .scroll : .none)
+                                    actionRow(label(for: button, kind: record.kind), button: button, current: mapped)
                                 }
                             }
                             if group.id == "shoulders",
                                !record.isMXMaster,
                                !record.isAppleTVRemote,
                                dualSenseUsesTriggerTabs(record) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text("Tab repeat")
-                                        Spacer()
-                                        Text("\(Int((monitor.selectedProfile.resolvedTabRepeatInterval * 1000).rounded())) ms")
-                                            .foregroundStyle(.secondary)
-                                            .monospacedDigit()
-                                    }
-                                    Slider(value: tabRepeatBinding, in: 0.10...0.55)
-                                }
+                                SettingsSlider(
+                                    "Tab repeat",
+                                    value: tabRepeatBinding,
+                                    in: 0.10...0.55,
+                                    valueText: "\(Int((monitor.selectedProfile.resolvedTabRepeatInterval * 1000).rounded())) ms"
+                                )
                             }
                         } header: {
                             Text(group.title)
@@ -153,6 +145,10 @@ struct DeviceProfilePane: View {
                                 Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
                             } else if group.id == "buttons" {
                                 Text(mxButtonsFooter(for: record))
+                            } else if group.id == "wheel" {
+                                Text("Scroll up and Scroll down are the main wheel, one direction each. Scroll keeps native scrolling; pick another action to fire it instead of scrolling that way.")
+                            } else if group.id == "thumb-wheel" {
+                                Text("Scroll left and Scroll right are the thumb wheel. Scroll keeps native scrolling; pick another action to fire it instead of scrolling that way.")
                             } else if group.id == "sticks" {
                                 Text("L3 and R3 are clicks of the analog sticks, not extra shoulder buttons.")
                             } else if group.id == "shoulders", !record.isMXMaster, !record.isAppleTVRemote {
@@ -217,13 +213,7 @@ struct DeviceProfilePane: View {
                     .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
                    monitor.selectedProfile.mode(for: .appleTVClickpad) != .off {
-                    Slider(value: accelerationAmountBinding, in: 0...1) {
-                        Text("Amount")
-                    } minimumValueLabel: {
-                        Text("Low")
-                    } maximumValueLabel: {
-                        Text("High")
-                    }
+                    SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
                 Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                     .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
@@ -239,13 +229,7 @@ struct DeviceProfilePane: View {
                     .disabled(!dualSenseHasPointerSource(record))
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
                    dualSenseHasPointerSource(record) {
-                    Slider(value: accelerationAmountBinding, in: 0...1) {
-                        Text("Amount")
-                    } minimumValueLabel: {
-                        Text("Low")
-                    } maximumValueLabel: {
-                        Text("High")
-                    }
+                    SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
                 Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                 Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
@@ -281,6 +265,10 @@ struct DeviceProfilePane: View {
     @ViewBuilder
     private func actionRow(_ title: String, button: DeviceButton, current: ControlAction) -> some View {
         Picker(title, selection: actionBinding(for: button)) {
+            if button.isMXScrollDirection {
+                Text("Scroll").tag("scroll")
+                Divider()
+            }
             mappingOptions
         }
         if showsRecorder(for: button, current: current) {
@@ -594,16 +582,13 @@ struct DeviceProfilePane: View {
     private var dpiSlider: some View {
         let levels = dpiLevels
         let current = MappingProfile.nearestDPI(monitor.selectedProfile.resolvedSensorDPI, in: levels)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("DPI")
-                Spacer()
-                Text("\(current)")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: dpiIndexBinding, in: 0...Double(max(levels.count - 1, 1)), step: 1)
-        }
+        SettingsSlider(
+            "DPI",
+            value: dpiIndexBinding,
+            in: 0...Double(max(levels.count - 1, 1)),
+            step: 1,
+            valueText: "\(current)"
+        )
     }
 
     private var wheelSpeedBinding: Binding<Double> {
@@ -618,20 +603,6 @@ struct DeviceProfilePane: View {
             get: { monitor.selectedProfile.resolvedNaturalScrolling ? "natural" : "standard" },
             set: { monitor.setNaturalScrolling($0 == "natural") }
         )
-    }
-
-    @ViewBuilder
-    private func speedSlider(_ title: String, value: Binding<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(Int((value.wrappedValue * 100).rounded()))%")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: value, in: 0...1)
-        }
     }
 
     private func deviceIdentifier(for record: DeviceRecord, device: SidebarDevice) -> String? {
@@ -652,7 +623,7 @@ struct DeviceProfilePane: View {
     private func mxButtonsFooter(for record: DeviceRecord) -> String {
         let gesture = record.kind.isMXMaster3Family
             ? "Gesture is the only Gestures button. Hold the thumb button and move for the four directions. A tap without moving is Click."
-            : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click."
+            : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click. Side is the extra thumb button in front of Back / Forward; it defaults to Mission Control (Switch Desktop)."
         return gesture
             + " macOS click events do not say which physical mouse generated them, so extra-button fallbacks are gated per model: MX4 haptic (buttons 5/6) will not start a 3S gesture."
     }
@@ -666,7 +637,18 @@ struct DeviceProfilePane: View {
     }
 
     private func buttonGroups(for record: DeviceRecord) -> [DeviceButtonGroup] {
-        if record.isMXMaster { return DeviceButton.mxMasterGroups }
+        if record.isMXMaster {
+            if record.kind.isMXMaster3Family {
+                return DeviceButton.mxMasterGroups.map { group in
+                    DeviceButtonGroup(
+                        id: group.id,
+                        title: group.title,
+                        buttons: group.buttons.filter { $0 != .mxSide }
+                    )
+                }
+            }
+            return DeviceButton.mxMasterGroups
+        }
         if record.isAppleTVRemote { return DeviceButton.appleTVGroups }
         return DeviceButton.dualSenseGroups
     }
@@ -681,6 +663,7 @@ struct DeviceProfilePane: View {
         case .volumeUp: return "Volume +"
         case .volumeDown: return "Volume −"
         case .mxHaptic: return kind.mxGestureControlTitle
+        case .mxSide: return "Side"
         default: return button.title
         }
     }
@@ -691,7 +674,10 @@ struct DeviceProfilePane: View {
                 if customizingButton == button {
                     return ControlActionOption.customID
                 }
-                return (monitor.selectedProfile.bindings[button] ?? .none).catalogID
+                if let action = monitor.selectedProfile.bindings[button] {
+                    return action.catalogID
+                }
+                return button.isMXScrollDirection ? "scroll" : ControlAction.none.catalogID
             },
             set: { id in
                 if id == ControlActionOption.customID {

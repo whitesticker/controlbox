@@ -11,7 +11,7 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
     case volumeUp, volumeDown
     case clickSelect, clickSelectLong, clickUp, clickDown, clickLeft, clickRight
     case mxGesture, mxGestureUp, mxGestureDown, mxGestureLeft, mxGestureRight
-    case mxBack, mxForward, mxSmartShift, mxModeShift, mxHaptic
+    case mxBack, mxForward, mxSmartShift, mxModeShift, mxHaptic, mxSide
     case mxLeft, mxRight, mxMiddle
     case mxWheelUp, mxWheelDown, mxThumbLeft, mxThumbRight
 
@@ -61,13 +61,14 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         case .mxSmartShift: return "Mode shift"
         case .mxModeShift: return "DPI"
         case .mxHaptic: return "Haptic"
+        case .mxSide: return "Side"
         case .mxLeft: return "Left click"
         case .mxRight: return "Right click"
         case .mxMiddle: return "Middle click"
-        case .mxWheelUp: return "Wheel up"
-        case .mxWheelDown: return "Wheel down"
-        case .mxThumbLeft: return "Thumb wheel left"
-        case .mxThumbRight: return "Thumb wheel right"
+        case .mxWheelUp: return "Scroll up"
+        case .mxWheelDown: return "Scroll down"
+        case .mxThumbLeft: return "Scroll left"
+        case .mxThumbRight: return "Scroll right"
         }
     }
 
@@ -108,9 +109,28 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         DeviceButtonGroup(
             id: "buttons",
             title: "Buttons",
-            buttons: [.mxHaptic, .mxBack, .mxForward, .mxSmartShift, .mxModeShift, .mxMiddle, .mxLeft, .mxRight]
+            buttons: [.mxHaptic, .mxSide, .mxBack, .mxForward, .mxSmartShift, .mxModeShift, .mxMiddle, .mxLeft, .mxRight]
+        ),
+        DeviceButtonGroup(
+            id: "wheel",
+            title: "Scroll wheel",
+            buttons: [.mxWheelUp, .mxWheelDown]
+        ),
+        DeviceButtonGroup(
+            id: "thumb-wheel",
+            title: "Thumb wheel",
+            buttons: [.mxThumbLeft, .mxThumbRight]
         )
     ]
+
+    public var isMXScrollDirection: Bool {
+        switch self {
+        case .mxWheelUp, .mxWheelDown, .mxThumbLeft, .mxThumbRight:
+            return true
+        default:
+            return false
+        }
+    }
 
     public static let dualSenseGroups: [DeviceButtonGroup] = [
         DeviceButtonGroup(

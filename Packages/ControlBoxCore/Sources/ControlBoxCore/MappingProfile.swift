@@ -258,6 +258,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     /// Saved DualSense profiles that never bound the finger rows get the
     /// new 1-finger / 2-finger Gestures defaults. Pointer/scroll touchpad
     /// profiles are left alone.
+    /// MX4 extra thumb button (CID `0x00C3`) is missing on older saved profiles.
+    public mutating func ensureMX4SideButton() {
+        if bindings[.mxSide] != nil { return }
+        bindings[.mxSide] = .missionControl
+    }
+
     public mutating func ensureDualSenseTouchGestures() {
         if bindings[.touchpadOneFinger] != nil || bindings[.touchpadTwoFinger] != nil {
             return
@@ -277,6 +283,14 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         case .mxForward: return .browserForward
         default: return .none
         }
+    }
+
+    /// Missing or `.scroll` keeps the native / speed-tap path. Anything else
+    /// replaces that direction’s scrolling with the mapped action.
+    public func keepsNativeScroll(for button: DeviceButton) -> Bool {
+        guard button.isMXScrollDirection else { return false }
+        let action = bindings[button]
+        return action == nil || action == .scroll
     }
 
     public mutating func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
@@ -325,7 +339,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if isMXMaster {
             return MappingProfile(
                 name: name,
-                summary: "Haptic pad is Gestures. Back and Forward are browser buttons.",
+                summary: "Haptic pad is Gestures. Side is Switch Desktop. Back and Forward are browser buttons.",
                 bindings: mxMasterBindings,
                 pointerSpeed: 0.21,
                 hapticGestureSpeed: 0.5,
@@ -375,6 +389,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
 private let mxMasterBindings: [DeviceButton: ControlAction] = [
     .mxHaptic: .gestures,
+    .mxSide: .missionControl,
     .mxBack: .browserBack,
     .mxForward: .browserForward,
     .mxSmartShift: .rightOptionKey
