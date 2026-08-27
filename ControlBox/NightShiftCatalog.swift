@@ -19,6 +19,7 @@ final class NightShiftCatalog {
     private weak var displayCatalog: DisplayCatalog?
     private var brightnessBaselines: [String: Double] = [:]
     private var snapshot: NightShift.Snapshot?
+    private var appearanceSnapshot: MacAppearance.Snapshot?
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var lastApplied: Double?
@@ -131,18 +132,31 @@ final class NightShiftCatalog {
         timer = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
+        NightShift.setStatusHandler(nil)
     }
 
     private func beginControl(applyImmediately: Bool) {
         if snapshot == nil {
             snapshot = NightShift.snapshot()
-            persist()
+        }
+        if appearanceSnapshot == nil {
+            appearanceSnapshot = MacAppearance.snapshot()
+        }
+        persist()
+        if let appearanceSnapshot {
+            MacAppearance.pin(appearanceSnapshot)
         }
         NightShift.takeOverSchedule()
+        NightShift.setStatusHandler { [weak self] in
+            Task { @MainActor in
+                self?.handleSystemNightShiftChanged()
+            }
+        }
         startTimer()
         if applyImmediately {
             apply(period: 1.6, force: true)
         }
+        pinAppearance()
     }
 
     private func endControl(restore: Bool) {
@@ -150,10 +164,15 @@ final class NightShiftCatalog {
         timer = nil
         lastApplied = nil
         lastBrightnessOffset = nil
+        NightShift.setStatusHandler(nil)
         if restore, let snapshot {
             NightShift.restore(snapshot)
         }
+        if restore, let appearanceSnapshot {
+            MacAppearance.restore(appearanceSnapshot)
+        }
         snapshot = nil
+        appearanceSnapshot = nil
         persist()
     }
 
@@ -179,12 +198,23 @@ final class NightShiftCatalog {
         currentWarmth = curve.warmth(at: Date())
         guard enabled, isSupported else { return }
         let warmth = currentWarmth
-        if !force, let lastApplied, abs(lastApplied - warmth) < 0.008 {
-            return
-        }
+        let warmthMoved = force || lastApplied == nil || abs(lastApplied! - warmth) >= 0.008
         lastApplied = warmth
-        NightShift.apply(warmth: warmth, period: period)
-        applyExternalBrightness(force: force)
+        NightShift.apply(warmth: warmth, period: warmthMoved ? period : 0)
+        if warmthMoved {
+            applyExternalBrightness(force: force)
+        }
+    }
+
+    private func handleSystemNightShiftChanged() {
+        guard enabled, isSupported else { return }
+        apply(period: 0, force: true)
+        pinAppearance()
+    }
+
+    private func pinAppearance() {
+        guard let appearanceSnapshot else { return }
+        MacAppearance.pin(appearanceSnapshot)
     }
 
     private var brightnessOffset: Double {
@@ -256,6 +286,7 @@ final class NightShiftCatalog {
         guard enabled, isSupported else { return }
         NightShift.takeOverSchedule()
         apply(period: 1.2, force: true)
+        pinAppearance()
     }
 
     private func persist() {
@@ -263,6 +294,7 @@ final class NightShiftCatalog {
             enabled: enabled,
             curve: curve,
             snapshot: snapshot,
+            appearanceSnapshot: appearanceSnapshot,
             adjustExternalBrightness: adjustExternalBrightness,
             brightnessSwing: brightnessSwing,
             brightnessBaselines: brightnessBaselines
@@ -277,6 +309,7 @@ final class NightShiftCatalog {
               let store = try? JSONDecoder().decode(Store.self, from: data) else { return }
         enabled = store.enabled
         snapshot = store.snapshot
+        appearanceSnapshot = store.appearanceSnapshot
         adjustExternalBrightness = store.adjustExternalBrightness ?? false
         brightnessSwing = min(max(store.brightnessSwing ?? Self.defaultBrightnessSwing, 0), 0.5)
         brightnessBaselines = store.brightnessBaselines ?? [:]
@@ -292,6 +325,7 @@ final class NightShiftCatalog {
         var enabled: Bool
         var curve: NightShiftCurve
         var snapshot: NightShift.Snapshot?
+        var appearanceSnapshot: MacAppearance.Snapshot?
         var adjustExternalBrightness: Bool?
         var brightnessSwing: Double?
         var brightnessBaselines: [String: Double]?

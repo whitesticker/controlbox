@@ -111,8 +111,8 @@ struct NightShiftPane: View {
             return "Night Shift is not available on this Mac."
         }
         if catalog.enabled {
-            return "Control Box is driving system Night Shift from the curve. Apple’s sunset-to-sunrise schedule is paused until you turn this off, which puts Night Shift back the way it was."
+            return "Control Box owns system Night Shift. Turning it off or on in System Settings or Control Center is undone immediately; only this toggle releases it."
         }
-        return "Off until you turn it on. Then Control Box sets system Night Shift yellowness from the curve as the day goes on."
+        return "Off until you turn it on. Then Control Box owns system Night Shift from the curve, including against System Settings."
     }
 }

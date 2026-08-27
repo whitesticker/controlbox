@@ -94,6 +94,12 @@ public enum NightShift {
         Client.shared.takeOverSchedule()
     }
 
+    /// Called when System Settings / Control Center changes Night Shift.
+    /// The handler is invoked on the main queue.
+    public static func setStatusHandler(_ handler: (@Sendable () -> Void)?) {
+        Client.shared.setStatusHandler(handler)
+    }
+
     /// `warmth` is 0…1 (cool → Night Shift maximum). Near-zero turns Night Shift off
     /// so the panel is full daylight. `period` is the CoreBrightness fade in seconds.
     public static func apply(warmth: Double, period: TimeInterval) {
@@ -111,6 +117,8 @@ private final class Client: @unchecked Sendable {
     )
     private var object: NSObject?
     private var supported = false
+    private var statusHandler: (@Sendable () -> Void)?
+    private var retainedStatusBlock: Any?
 
     var isSupported: Bool {
         lock.lock()
@@ -173,18 +181,45 @@ private final class Client: @unchecked Sendable {
         takeOverScheduleLocked()
     }
 
+    func setStatusHandler(_ handler: (@Sendable () -> Void)?) {
+        lock.lock()
+        defer { lock.unlock() }
+        statusHandler = handler
+        guard let object else { return }
+        let sel = NSSelectorFromString("setStatusNotificationBlock:")
+        if handler != nil, object.responds(to: sel), let method = object.method(for: sel) {
+            let block: @convention(block) () -> Void = { [weak self] in
+                DispatchQueue.main.async {
+                    self?.statusHandler?()
+                }
+            }
+            retainedStatusBlock = block
+            typealias Fn = @convention(c) (NSObject, Selector, Any) -> Void
+            unsafeBitCast(method, to: Fn.self)(object, sel, block)
+            callVoid(object, "enableNotifications")
+        } else {
+            retainedStatusBlock = nil
+            if object.responds(to: sel), let method = object.method(for: sel) {
+                typealias Fn = @convention(c) (NSObject, Selector, Any?) -> Void
+                unsafeBitCast(method, to: Fn.self)(object, sel, nil)
+            }
+            callVoid(object, "disableNotifications")
+        }
+    }
+
     func apply(warmth: Double, period: TimeInterval) {
         lock.lock()
         defer { lock.unlock() }
         guard let object else { return }
         let clamped = Float(min(max(warmth, 0), 1))
+        if isHolding(object, warmth: clamped) {
+            return
+        }
         if clamped < 0.012 {
             setEnabled(object, false)
             return
         }
-        if status(object).mode != NightShift.Mode.customSchedule.rawValue {
-            takeOverScheduleLocked()
-        }
+        takeOverScheduleLocked()
         setActive(object, true)
         setEnabled(object, true)
         setStrength(object, clamped, period: period)
@@ -201,6 +236,28 @@ private final class Client: @unchecked Sendable {
             _ = setMode(object, NightShift.Mode.off.rawValue)
         }
         setActive(object, true)
+    }
+
+    private func isHolding(_ object: NSObject, warmth: Float) -> Bool {
+        let current = status(object)
+        if warmth < 0.012 {
+            return !current.enabled
+        }
+        let strengthMatch = abs((strength(object) ?? -1) - warmth) < 0.03
+        return current.enabled
+            && current.mode == NightShift.Mode.customSchedule.rawValue
+            && current.fromHour == 0
+            && current.fromMinute == 0
+            && current.toHour == 23
+            && current.toMinute == 59
+            && strengthMatch
+    }
+
+    private func callVoid(_ object: NSObject, _ name: String) {
+        let sel = NSSelectorFromString(name)
+        guard object.responds(to: sel), let method = object.method(for: sel) else { return }
+        typealias Fn = @convention(c) (NSObject, Selector) -> Void
+        unsafeBitCast(method, to: Fn.self)(object, sel)
     }
 
     private func cctRangeLocked() -> NightShift.CCTRange? {
