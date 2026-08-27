@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarItem: Hashable, Identifiable {
     case displays
+    case nightShift
     case displayArrangement
     case sound
     case systemMonitor
@@ -13,6 +14,7 @@ enum SidebarItem: Hashable, Identifiable {
     var id: String {
         switch self {
         case .displays: return "mac.displays"
+        case .nightShift: return "mac.nightShift"
         case .displayArrangement: return "mac.displayArrangement"
         case .sound: return "mac.sound"
         case .systemMonitor: return "mac.systemMonitor"
@@ -25,7 +27,8 @@ enum SidebarItem: Hashable, Identifiable {
 
     var title: String {
         switch self {
-        case .displays: return "Displays"
+        case .displays: return "Display Brightness"
+        case .nightShift: return "Night Shift"
         case .displayArrangement: return "Display Arrangement"
         case .sound: return "Sound"
         case .systemMonitor: return "System Monitor"
@@ -38,7 +41,8 @@ enum SidebarItem: Hashable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .displays: return "display"
+        case .displays: return "sun.max.fill"
+        case .nightShift: return "sun.horizon.fill"
         case .displayArrangement: return "display.2"
         case .sound: return "speaker.wave.2.fill"
         case .systemMonitor: return "chart.xyaxis.line"
@@ -52,6 +56,7 @@ enum SidebarItem: Hashable, Identifiable {
     var tint: Color {
         switch self {
         case .displays: return Color(red: 0.20, green: 0.48, blue: 0.96)
+        case .nightShift: return Color(red: 0.96, green: 0.48, blue: 0.18)
         case .displayArrangement: return Color(red: 0.12, green: 0.40, blue: 0.78)
         case .sound: return Color(red: 0.35, green: 0.34, blue: 0.84)
         case .systemMonitor: return Color(red: 0.15, green: 0.58, blue: 0.72)

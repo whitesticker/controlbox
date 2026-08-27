@@ -16,6 +16,7 @@ enum WindowActions {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = DualSenseMonitor()
     let arrangementCatalog = ArrangementCatalog()
+    let nightShiftCatalog = NightShiftCatalog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.stop()
         TopMenuBarHost.shared.stop()
         ArrangementHotkey.stop()
+        nightShiftCatalog.invalidate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -53,7 +55,11 @@ struct ControlBoxApp: App {
 
     var body: some Scene {
         Window("Control Box", id: "main") {
-            ContentView(monitor: appDelegate.monitor, arrangementCatalog: appDelegate.arrangementCatalog)
+            ContentView(
+                monitor: appDelegate.monitor,
+                arrangementCatalog: appDelegate.arrangementCatalog,
+                nightShiftCatalog: appDelegate.nightShiftCatalog
+            )
                 .frame(minWidth: 860, minHeight: 620)
                 .preferredColorScheme(nil)
                 .modifier(RegisterOpenWindow())

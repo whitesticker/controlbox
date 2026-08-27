@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var monitor: DualSenseMonitor
     @Bindable var arrangementCatalog: ArrangementCatalog
+    @Bindable var nightShiftCatalog: NightShiftCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
@@ -14,6 +15,7 @@ struct ContentView: View {
             List(selection: sidebarSelection) {
                 Section("Mac") {
                     macRow(.displays)
+                    macRow(.nightShift)
                     macRow(.displayArrangement)
                     macRow(.sound)
                     macRow(.systemMonitor)
@@ -68,6 +70,8 @@ struct ContentView: View {
             switch selection {
             case .displays:
                 DisplaysPane(catalog: displayCatalog)
+            case .nightShift:
+                NightShiftPane(catalog: nightShiftCatalog)
             case .displayArrangement:
                 DisplayArrangementPane(catalog: arrangementCatalog, monitor: monitor)
             case .sound:

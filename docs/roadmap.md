@@ -20,6 +20,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **Calibration layouts.** More accurate physical button placement on DualSense, Apple TV remote, and each MX body.
 - [ ] **Onboarding.** First-launch page: permissions, attach a device, Control this Mac, Calibration.
 - [x] **System Monitor (top).** Separate Mac pane; optional second menu bar extra with live network speed and the top dashboard. Control Box’s own menu extra is unchanged.
+- [x] **Night Shift curve.** Separate Mac pane; optional 24-hour yellowness curve that drives system Night Shift. Off until the pane toggle is on.
 - [ ] **Menu bar icon.** Replace `gamecontroller.fill` with a circle that matches the app icon ring.
 - [x] **Background permission.** Permissions pane can request Allow in the Background (`SMAppService`) and open Login Items. Still confirm it survives logout on a fresh Mac.
 
