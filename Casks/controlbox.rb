@@ -2,14 +2,15 @@ cask "controlbox" do
   version "0.1.10"
   sha256 "59b3a7ebd3a65f70d195f2eee653cfc32d422a222af6da757c3f1530d2046bc4"
 
-  url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/ControlBox-#{version}.zip"
+  url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/VibeRemote-#{version}.zip"
   name "Control Box"
-  desc "Control your Mac with a DualSense or Apple TV remote"
+  desc "Control your Mac with a DualSense, Siri Remote, or MX Master"
   homepage "https://github.com/whitesticker/controlbox"
 
   depends_on macos: :sonoma
 
-  app "ControlBox.app"
+  # 0.1.10 zip still contains VibeRemote.app; later zips should ship ControlBox.app.
+  app "VibeRemote.app", target: "ControlBox.app"
 
   zap trash: [
     "~/Library/Preferences/com.whitesticker.controlbox.plist",
