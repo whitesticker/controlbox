@@ -13,6 +13,8 @@
 
 Use a **PS5 DualSense** from the couch, an **Apple TV Siri Remote** as a trackpad, or an **MX Master 3 / 3S / 4** with hold-to-swipe gestures. Each device has its own mappings and its own **Control this Mac** switch.
 
+Save and switch **Display Arrangement** presets (positions, main display, mirror) from the Mac sidebar, including a keyboard shortcut and a layout HUD.
+
 Control Box stays on your Mac. Nothing is uploaded.
 
 ## Supported now

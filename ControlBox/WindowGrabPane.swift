@@ -4,6 +4,8 @@ import SwiftUI
 
 struct WindowGrabPane: View {
     @Bindable var monitor: DualSenseMonitor
+    @Bindable var arrangementCatalog: ArrangementCatalog
+    @State private var chordMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -11,11 +13,27 @@ struct WindowGrabPane: View {
                 if monitor.hasMXMaster {
                     Section {
                         Toggle("Move window", isOn: windowMoveEnabledBinding)
-                        modifierChordRow("Move keys", flags: windowMoveFlagsBinding)
+                        ModifierChordPicker(
+                            title: "Move keys",
+                            flags: windowMoveFlagsBinding,
+                            minimumCount: 1,
+                            occupied: occupiedExceptMove,
+                            message: $chordMessage
+                        )
                         Toggle("Resize window", isOn: windowResizeEnabledBinding)
-                        modifierChordRow("Resize keys", flags: windowResizeFlagsBinding)
+                        ModifierChordPicker(
+                            title: "Resize keys",
+                            flags: windowResizeFlagsBinding,
+                            minimumCount: 1,
+                            occupied: occupiedExceptResize,
+                            message: $chordMessage
+                        )
+                        if let chordMessage {
+                            Text(chordMessage)
+                                .foregroundStyle(.red)
+                        }
                     } footer: {
-                        Text("Hold the move keys and move the pointer to drag a window from anywhere. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. An MX Master with Control this Mac must be on — DualSense can move the pointer, but grab stays mouse-gated for now.")
+                        Text("Hold the move keys and move the pointer to drag a window from anywhere. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. An MX Master with Control this Mac must be on — DualSense can move the pointer, but grab stays mouse-gated for now. These keys cannot match Display Arrangement or each other.")
                     }
                 } else {
                     Section {
@@ -29,17 +47,60 @@ struct WindowGrabPane: View {
         }
     }
 
+    private var occupiedExceptMove: [(name: String, flags: CGEventFlags)] {
+        var items: [(name: String, flags: CGEventFlags)] = []
+        if monitor.macMouseProfile.resolvedWindowResizeEnabled {
+            items.append(("Window Grab resize", monitor.macMouseProfile.resolvedWindowResizeFlags))
+        }
+        items.append(contentsOf: arrangementOccupied)
+        return items
+    }
+
+    private var occupiedExceptResize: [(name: String, flags: CGEventFlags)] {
+        var items: [(name: String, flags: CGEventFlags)] = []
+        if monitor.macMouseProfile.resolvedWindowMoveEnabled {
+            items.append(("Window Grab move", monitor.macMouseProfile.resolvedWindowMoveFlags))
+        }
+        items.append(contentsOf: arrangementOccupied)
+        return items
+    }
+
+    private var arrangementOccupied: [(name: String, flags: CGEventFlags)] {
+        guard arrangementCatalog.shortcutEnabled else { return [] }
+        return [("Display Arrangement", CGEventFlags(rawValue: arrangementCatalog.shortcutFlags))]
+    }
+
     private var windowMoveEnabledBinding: Binding<Bool> {
         Binding(
             get: { monitor.macMouseProfile.resolvedWindowMoveEnabled },
-            set: { monitor.setWindowMoveEnabled($0) }
+            set: { enabled in
+                if enabled, let name = ModifierChords.collision(
+                    monitor.macMouseProfile.resolvedWindowMoveFlags,
+                    occupied: occupiedExceptMove
+                ) {
+                    chordMessage = "Those keys are already used by \(name)."
+                    return
+                }
+                chordMessage = nil
+                monitor.setWindowMoveEnabled(enabled)
+            }
         )
     }
 
     private var windowResizeEnabledBinding: Binding<Bool> {
         Binding(
             get: { monitor.macMouseProfile.resolvedWindowResizeEnabled },
-            set: { monitor.setWindowResizeEnabled($0) }
+            set: { enabled in
+                if enabled, let name = ModifierChords.collision(
+                    monitor.macMouseProfile.resolvedWindowResizeFlags,
+                    occupied: occupiedExceptResize
+                ) {
+                    chordMessage = "Those keys are already used by \(name)."
+                    return
+                }
+                chordMessage = nil
+                monitor.setWindowResizeEnabled(enabled)
+            }
         )
     }
 
@@ -55,31 +116,5 @@ struct WindowGrabPane: View {
             get: { monitor.macMouseProfile.resolvedWindowResizeFlags.rawValue },
             set: { monitor.setWindowResizeFlags($0) }
         )
-    }
-
-    private func modifierChordRow(_ title: String, flags: Binding<UInt64>) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            modifierChip("⌃", .maskControl, flags)
-            modifierChip("⇧", .maskShift, flags)
-            modifierChip("⌥", .maskAlternate, flags)
-            modifierChip("⌘", .maskCommand, flags)
-        }
-    }
-
-    private func modifierChip(_ label: String, _ bit: CGEventFlags, _ flags: Binding<UInt64>) -> some View {
-        let on = CGEventFlags(rawValue: flags.wrappedValue).contains(bit)
-        return Button(label) {
-            var next = CGEventFlags(rawValue: flags.wrappedValue)
-            if on {
-                next.remove(bit)
-            } else {
-                next.insert(bit)
-            }
-            flags.wrappedValue = next.rawValue
-        }
-        .buttonStyle(.bordered)
-        .tint(on ? Color.accentColor : Color.secondary)
     }
 }

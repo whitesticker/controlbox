@@ -14,6 +14,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 
 ## Feedback and UI
 
+- [x] **Display arrangement presets.** Separate Mac pane: snapshot the current layout, sandbox editor (System Settings–style canvas), apply only when the same external combo (and built-in present/absent) is connected. Identity is UUID/EDID, not `CGDirectDisplayID`. Position, main display, and mirror only. Keyboard shortcut is a 3+ modifier chord plus 1–9 / arrows, with a snapshot HUD; chords cannot match Window Grab.
 - [ ] **Gesture visual cue.** Stronger on-screen feedback when the 3S gesture button, MX4 haptic pad, or DualSense touchpad is held / swiping. Media skip / play / mute already use the action HUD; this is the live hold overlay.
 - [x] **Media action cue.** Previous / next track, play/pause, mute, back/forward, and tab switch show the same card as volume (symbol + title).
 - [ ] **Calibration layouts.** More accurate physical button placement on DualSense, Apple TV remote, and each MX body.

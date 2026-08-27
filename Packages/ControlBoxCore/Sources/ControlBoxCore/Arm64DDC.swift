@@ -112,6 +112,14 @@ enum Arm64DDC {
         return virtual ?? airPlay ?? false
     }
 
+    static func productName(for displayID: CGDirectDisplayID) -> String? {
+        guard let dictionary = CoreDisplayInfo.dictionary(displayID) else { return nil }
+        if let names = dictionary["DisplayProductName"] as? [String: String] {
+            return names["en_US"] ?? names.first?.value
+        }
+        return dictionary["DisplayProductName"] as? String
+    }
+
     private static func transact(
         service: OpaquePointer?,
         send: inout [UInt8],

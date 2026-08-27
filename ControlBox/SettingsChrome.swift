@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarItem: Hashable, Identifiable {
     case displays
+    case displayArrangement
     case sound
     case pointerScroll
     case windowGrab
@@ -11,6 +12,7 @@ enum SidebarItem: Hashable, Identifiable {
     var id: String {
         switch self {
         case .displays: return "mac.displays"
+        case .displayArrangement: return "mac.displayArrangement"
         case .sound: return "mac.sound"
         case .pointerScroll: return "mac.pointerScroll"
         case .windowGrab: return "mac.windowGrab"
@@ -22,6 +24,7 @@ enum SidebarItem: Hashable, Identifiable {
     var title: String {
         switch self {
         case .displays: return "Displays"
+        case .displayArrangement: return "Display Arrangement"
         case .sound: return "Sound"
         case .pointerScroll: return "Pointer & Scroll"
         case .windowGrab: return "Window Grab"
@@ -33,6 +36,7 @@ enum SidebarItem: Hashable, Identifiable {
     var symbol: String {
         switch self {
         case .displays: return "display"
+        case .displayArrangement: return "display.2"
         case .sound: return "speaker.wave.2.fill"
         case .pointerScroll: return "computermouse.fill"
         case .windowGrab: return "macwindow.on.rectangle"
@@ -44,6 +48,7 @@ enum SidebarItem: Hashable, Identifiable {
     var tint: Color {
         switch self {
         case .displays: return Color(red: 0.20, green: 0.48, blue: 0.96)
+        case .displayArrangement: return Color(red: 0.12, green: 0.40, blue: 0.78)
         case .sound: return Color(red: 0.35, green: 0.34, blue: 0.84)
         case .pointerScroll: return Color(red: 0.18, green: 0.64, blue: 0.52)
         case .windowGrab: return Color(red: 0.95, green: 0.55, blue: 0.18)

@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
     @State private var displayCatalog = DisplayCatalog()
+    @State private var arrangementCatalog = ArrangementCatalog()
     @State private var soundCatalog = SoundCatalog()
 
     var body: some View {
@@ -13,6 +14,7 @@ struct ContentView: View {
             List(selection: sidebarSelection) {
                 Section("Mac") {
                     macRow(.displays)
+                    macRow(.displayArrangement)
                     macRow(.sound)
                     macRow(.pointerScroll)
                     macRow(.windowGrab)
@@ -65,12 +67,14 @@ struct ContentView: View {
             switch selection {
             case .displays:
                 DisplaysPane(catalog: displayCatalog)
+            case .displayArrangement:
+                DisplayArrangementPane(catalog: arrangementCatalog, monitor: monitor)
             case .sound:
                 SoundPane(catalog: soundCatalog)
             case .pointerScroll:
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
-                WindowGrabPane(monitor: monitor)
+                WindowGrabPane(monitor: monitor, arrangementCatalog: arrangementCatalog)
             case .permissions:
                 PrivacyPane(monitor: monitor)
             case .device:
