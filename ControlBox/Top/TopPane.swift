@@ -5,7 +5,7 @@ struct TopPane: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 Section {
                     Toggle("Show in menu bar", isOn: $store.menuBarEnabled)
                 } footer: {
@@ -41,7 +41,7 @@ struct TopPane: View {
                     Text("Drag to reorder. Turn a row off to hide it from the menu bar dashboard.")
                 }
             }
-            .formStyle(.grouped)
+            .listStyle(.inset)
             .navigationTitle("System Monitor")
         }
     }

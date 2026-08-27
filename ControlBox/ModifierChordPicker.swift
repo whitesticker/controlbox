@@ -40,7 +40,14 @@ struct ModifierChordPicker: View {
             message = nil
             flags = next.rawValue
         }
-        .buttonStyle(.bordered)
-        .tint(on ? Color.accentColor : Color.secondary)
+        .buttonStyle(.plain)
+        .font(.body.weight(.semibold))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(on ? Color.accentColor : Color.secondary.opacity(0.16))
+        )
+        .foregroundStyle(on ? Color.white : Color.primary)
     }
 }

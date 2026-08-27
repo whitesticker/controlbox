@@ -6,15 +6,15 @@
 
 ## Cause
 
-`ControlEngine` skipped ordinary button injection when the host was active, but `processGesture` and some button `perform` paths treated system-navigation actions as always allowed. Thumb HID++ scroll (`postInjectedScroll`) and MX window grab also ran before that gate.
+`ControlEngine` skipped ordinary button injection when the host was active, but `processGesture` and some button `perform` paths treated system-navigation actions as always allowed. Thumb HID++ scroll (`postInjectedScroll`) also ran before that gate.
 
-Calibration is a Control Box window, so “don’t inject while we are focused” has to mean **all** injection, including DockSwipe and discrete system actions.
+Calibration is a Control Box window, so “don’t inject while we are focused” has to mean **device** injection, including DockSwipe and discrete system actions.
 
 ## What we changed
 
-If the host is frontmost and `postsWhenHostIsActive` is false, return before gesture, scroll, window grab, and button perform. `isSystemNavigation` is not a bypass.
+If the host is frontmost and `postsWhenHostIsActive` is false, return before gesture, scroll, and button perform. `isSystemNavigation` is not a bypass.
 
-Window grab in `DualSenseMonitor` uses the same inject flag so Control+move does not drag windows while Control Box is focused.
+Window grab is a Mac pane (any pointer). It is not tied to MX **Control this Mac** and is not skipped when Control Box is focused.
 
 ## Do not
 

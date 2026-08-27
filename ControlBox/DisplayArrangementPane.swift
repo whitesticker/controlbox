@@ -215,10 +215,10 @@ struct DisplayArrangementPane: View {
     private var windowGrabOccupied: [(name: String, flags: CGEventFlags)] {
         var items: [(name: String, flags: CGEventFlags)] = []
         let profile = monitor.macMouseProfile
-        if monitor.hasMXMaster, profile.resolvedWindowMoveEnabled {
+        if profile.resolvedWindowMoveEnabled {
             items.append(("Window Grab move", profile.resolvedWindowMoveFlags))
         }
-        if monitor.hasMXMaster, profile.resolvedWindowResizeEnabled {
+        if profile.resolvedWindowResizeEnabled {
             items.append(("Window Grab resize", profile.resolvedWindowResizeFlags))
         }
         return items

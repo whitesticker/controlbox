@@ -7,25 +7,18 @@ struct PointerScrollPane: View {
     var body: some View {
         NavigationStack {
             Form {
-                if monitor.hasMXMaster {
-                    Section {
-                        SettingsSlider("Pointer speed", value: pointerSpeedBinding)
-                        Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
-                        SettingsSlider("Wheel speed", value: wheelSpeedBinding)
-                        SettingsSlider("Thumb wheel speed", value: thumbSpeedBinding)
-                        Picker("Scroll direction", selection: scrollDirectionBinding) {
-                            Text("Natural").tag("natural")
-                            Text("Standard").tag("standard")
-                        }
-                        .pickerStyle(.radioGroup)
-                    } footer: {
-                        Text("These apply to every MX Master (and later, any mouse we intercept). One system scroll tap, so they cannot differ per mouse. Accessibility must be on for wheel speed. DualSense and Siri Remote keep their own pointer and scroll on the device page.")
+                Section {
+                    SettingsSlider("Pointer speed", value: pointerSpeedBinding)
+                    Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
+                    SettingsSlider("Wheel speed", value: wheelSpeedBinding)
+                    SettingsSlider("Thumb wheel speed", value: thumbSpeedBinding)
+                    Picker("Scroll direction", selection: scrollDirectionBinding) {
+                        Text("Natural").tag("natural")
+                        Text("Standard").tag("standard")
                     }
-                } else {
-                    Section {
-                        Text("Add an MX Master to set pointer speed, wheel speed, and scroll direction for mice.")
-                            .foregroundStyle(.secondary)
-                    }
+                    .pickerStyle(.radioGroup)
+                } footer: {
+                    Text("Pointer speed applies to USB and Bluetooth mice, including every MX Master. Wheel speed, smooth scrolling, and scroll direction use one system scroll tap once a mouse is attached, so they cannot differ per mouse. Accessibility must be on for wheel speed. DualSense and Siri Remote keep their own pointer and scroll on the device page.")
                 }
             }
             .formStyle(.grouped)

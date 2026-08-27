@@ -1,5 +1,6 @@
 import AppKit
 import AudioToolbox
+import AudioUnit
 import CoreAudio
 import CoreGraphics
 import Darwin
@@ -489,12 +490,13 @@ private enum AudioCaptureTCC {
 }
 
 private final class StereoPipe {
-    private let capacity = 8192
+    private let capacity = 16_384
     private let left: UnsafeMutablePointer<Float>
     private let right: UnsafeMutablePointer<Float>
     private var writeIndex = 0
     private var readIndex = 0
     var gainBits: UInt32 = Float(1).bitPattern
+    var format = AudioStreamBasicDescription()
 
     init() {
         left = .allocate(capacity: capacity)
@@ -512,7 +514,9 @@ private final class StereoPipe {
         guard let input else { return }
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
         guard !buffers.isEmpty else { return }
-        if buffers.count >= 2,
+        let isFloat = format.mFormatID == 0 || (format.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        let nonInterleaved = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        if isFloat, nonInterleaved, buffers.count >= 2,
            buffers[buffers.count - 2].mNumberChannels == 1,
            buffers[buffers.count - 1].mNumberChannels == 1,
            let leftData = buffers[buffers.count - 2].mData,
@@ -530,16 +534,15 @@ private final class StereoPipe {
         }
         guard let data = buffers[buffers.count - 1].mData else { return }
         let channels = max(1, Int(buffers[buffers.count - 1].mNumberChannels))
-        let frames = Int(buffers[buffers.count - 1].mDataByteSize) / (MemoryLayout<Float>.size * channels)
-        let samples = data.assumingMemoryBound(to: Float.self)
-        var index = writeIndex
-        for frame in 0..<frames {
-            left[index] = samples[frame * channels]
-            right[index] = channels > 1 ? samples[frame * channels + 1] : samples[frame * channels]
-            index += 1
-            if index == capacity { index = 0 }
+        if isFloat {
+            let frames = Int(buffers[buffers.count - 1].mDataByteSize) / (MemoryLayout<Float>.size * channels)
+            let samples = data.assumingMemoryBound(to: Float.self)
+            writeInterleavedFloat(samples, frames: frames, channels: channels)
+            return
         }
-        writeIndex = index
+        let bytesPerSample = max(1, Int(format.mBitsPerChannel == 0 ? 16 : format.mBitsPerChannel) / 8)
+        let frames = Int(buffers[buffers.count - 1].mDataByteSize) / (bytesPerSample * channels)
+        writeInterleavedInteger(data, frames: frames, channels: channels, bytesPerSample: bytesPerSample)
     }
 
     func read(to output: UnsafeMutablePointer<AudioBufferList>?, gain: Float, frameCount: UInt32? = nil) {
@@ -585,6 +588,51 @@ private final class StereoPipe {
                 }
             }
         }
+    }
+
+    private func writeInterleavedFloat(_ samples: UnsafePointer<Float>, frames: Int, channels: Int) {
+        var index = writeIndex
+        for frame in 0..<frames {
+            left[index] = samples[frame * channels]
+            right[index] = channels > 1 ? samples[frame * channels + 1] : samples[frame * channels]
+            index += 1
+            if index == capacity { index = 0 }
+        }
+        writeIndex = index
+    }
+
+    private func writeInterleavedInteger(
+        _ data: UnsafeMutableRawPointer,
+        frames: Int,
+        channels: Int,
+        bytesPerSample: Int
+    ) {
+        var index = writeIndex
+        let scale: Float = bytesPerSample >= 3 ? Float(1 << 31) : Float(Int16.max)
+        for frame in 0..<frames {
+            left[index] = integerSample(data, frame: frame, channel: 0, channels: channels, bytes: bytesPerSample, scale: scale)
+            right[index] = channels > 1
+                ? integerSample(data, frame: frame, channel: 1, channels: channels, bytes: bytesPerSample, scale: scale)
+                : left[index]
+            index += 1
+            if index == capacity { index = 0 }
+        }
+        writeIndex = index
+    }
+
+    private func integerSample(
+        _ data: UnsafeMutableRawPointer,
+        frame: Int,
+        channel: Int,
+        channels: Int,
+        bytes: Int,
+        scale: Float
+    ) -> Float {
+        let offset = (frame * channels + channel) * bytes
+        if bytes >= 4 {
+            return Float(data.load(fromByteOffset: offset, as: Int32.self)) / scale
+        }
+        return Float(data.load(fromByteOffset: offset, as: Int16.self)) / scale
     }
 
     private func writePlanar(left srcL: UnsafePointer<Float>, right srcR: UnsafePointer<Float>, frames: Int) {
@@ -634,31 +682,27 @@ private final class TapSession {
         tap.name = "Control Box \(name)"
         tap.muteBehavior = .mutedWhenTapped
         tap.isPrivate = true
+        tap.deviceUID = outputUID
         var createdTap = AudioObjectID(kAudioObjectUnknown)
         let tapStatus = AudioHardwareCreateProcessTap(tap, &createdTap)
         guard tapStatus == noErr, createdTap != kAudioObjectUnknown else {
             throw MixerError("Could not tap \(name) (status \(tapStatus)). Grant System Audio Recording if macOS asked.")
         }
         tapID = createdTap
+        if let asbd = Self.tapFormat(createdTap) {
+            pipe.format = asbd
+        }
 
+        let tapKey = Self.tapUID(createdTap) ?? tap.uuid.uuidString
         let description: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Control Box Mix \(name)",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
-            kAudioAggregateDeviceClockDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
-            kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [
-                [
-                    kAudioSubDeviceUIDKey: outputUID,
-                    kAudioSubDeviceDriftCompensationKey: false
-                ]
-            ],
             kAudioAggregateDeviceTapListKey: [
                 [
-                    kAudioSubTapUIDKey: tap.uuid.uuidString,
-                    kAudioSubTapDriftCompensationKey: false
+                    kAudioSubTapUIDKey: tapKey,
+                    kAudioSubTapDriftCompensationKey: true
                 ]
             ]
         ]
@@ -678,10 +722,7 @@ private final class TapSession {
 
         var captureID: AudioDeviceIOProcID?
         let captureStatus = AudioDeviceCreateIOProcIDWithBlock(&captureID, aggregateID, queue) { [weak self] _, input, _, output, _ in
-            guard let self else {
-                Self.silence(output)
-                return
-            }
+            guard let self else { return }
             self.pipe.write(from: input)
             Self.silence(output)
         }
@@ -690,7 +731,6 @@ private final class TapSession {
             throw MixerError("Could not start the mixer for \(name).")
         }
         captureProcID = captureID
-        Self.ignoreHardwareInputs(aggregateID: aggregateID, procID: captureID)
 
         let playStatus = AudioDeviceStart(aggregateID, captureID)
         guard playStatus == noErr else {
@@ -698,8 +738,15 @@ private final class TapSession {
             throw MixerError("Mixer start failed for \(name) (\(playStatus)).")
         }
 
+        guard let outputDevice = SystemAudio.device(uid: outputUID) else {
+            invalidate()
+            throw MixerError("Could not find the speakers to play back \(name).")
+        }
         do {
-            outputUnit = try Self.makeOutputUnit(pipe: pipe)
+            let sampleRate = pipe.format.mSampleRate > 0
+                ? pipe.format.mSampleRate
+                : SystemAudio.nominalSampleRate(outputDevice)
+            outputUnit = try Self.makeOutputUnit(pipe: pipe, deviceID: outputDevice, sampleRate: sampleRate)
         } catch {
             invalidate()
             throw error
@@ -713,40 +760,94 @@ private final class TapSession {
         return noErr
     }
 
-    private static func makeOutputUnit(pipe: StereoPipe) throws -> AudioUnit {
+    private static func makeOutputUnit(pipe: StereoPipe, deviceID: AudioDeviceID, sampleRate: Double) throws -> AudioUnit {
         var description = AudioComponentDescription(
             componentType: kAudioUnitType_Output,
-            componentSubType: kAudioUnitSubType_DefaultOutput,
+            componentSubType: kAudioUnitSubType_HALOutput,
             componentManufacturer: kAudioUnitManufacturer_Apple,
             componentFlags: 0,
             componentFlagsMask: 0
         )
         guard let component = AudioComponentFindNext(nil, &description) else {
-            throw MixerError("No default output unit.")
+            throw MixerError("No output unit.")
         }
         var unit: AudioUnit?
         guard AudioComponentInstanceNew(component, &unit) == noErr, let unit else {
             throw MixerError("Could not open the speakers.")
         }
+        func fail(_ message: String) -> MixerError {
+            AudioComponentInstanceDispose(unit)
+            return MixerError(message)
+        }
+        var enable: UInt32 = 1
+        var disable: UInt32 = 0
+        let ioSize = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_EnableIO,
+            kAudioUnitScope_Output,
+            0,
+            &enable,
+            ioSize
+        ) == noErr else {
+            throw fail("Could not enable speaker output.")
+        }
+        _ = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_EnableIO,
+            kAudioUnitScope_Input,
+            1,
+            &disable,
+            ioSize
+        )
+        var device = deviceID
+        guard AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &device,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        ) == noErr else {
+            throw fail("Could not attach the speakers.")
+        }
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: sampleRate > 0 ? sampleRate : 48_000,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        guard AudioUnitSetProperty(
+            unit,
+            kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Input,
+            0,
+            &asbd,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        ) == noErr else {
+            throw fail("Could not set speaker format.")
+        }
         var callback = AURenderCallbackStruct(
             inputProc: outputRender,
             inputProcRefCon: Unmanaged.passUnretained(pipe).toOpaque()
         )
-        let size = UInt32(MemoryLayout<AURenderCallbackStruct>.size)
         guard AudioUnitSetProperty(
             unit,
             kAudioUnitProperty_SetRenderCallback,
             kAudioUnitScope_Input,
             0,
             &callback,
-            size
+            UInt32(MemoryLayout<AURenderCallbackStruct>.size)
         ) == noErr else {
-            AudioComponentInstanceDispose(unit)
-            throw MixerError("Could not attach the speaker callback.")
+            throw fail("Could not attach the speaker callback.")
         }
         guard AudioUnitInitialize(unit) == noErr else {
-            AudioComponentInstanceDispose(unit)
-            throw MixerError("Could not initialize the speakers.")
+            throw fail("Could not initialize the speakers.")
         }
         guard AudioOutputUnitStart(unit) == noErr else {
             AudioUnitUninitialize(unit)
@@ -754,6 +855,24 @@ private final class TapSession {
             throw MixerError("Could not start speaker playback.")
         }
         return unit
+    }
+
+    private static func tapFormat(_ tapID: AudioObjectID) -> AudioStreamBasicDescription? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var asbd = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &asbd) == noErr else {
+            return nil
+        }
+        return asbd
+    }
+
+    private static func tapUID(_ tapID: AudioObjectID) -> String? {
+        cfStringProperty(tapID, kAudioTapPropertyUID)
     }
 
     deinit {
@@ -807,41 +926,6 @@ private final class TapSession {
                 memset(data, 0, Int(buffer.mDataByteSize))
             }
         }
-    }
-
-    private static func ignoreHardwareInputs(aggregateID: AudioObjectID, procID: AudioDeviceIOProcID) {
-        let inputCount = streamCount(aggregateID, scope: kAudioDevicePropertyScopeInput)
-        let outputCount = streamCount(aggregateID, scope: kAudioDevicePropertyScopeOutput)
-        guard inputCount > 0, outputCount > 0, inputCount > outputCount else { return }
-        let used = min(outputCount, inputCount)
-        let header = MemoryLayout<UnsafeMutableRawPointer>.size + MemoryLayout<UInt32>.size
-        let total = header + inputCount * MemoryLayout<UInt32>.size
-        let raw = UnsafeMutableRawPointer.allocate(byteCount: total, alignment: MemoryLayout<UnsafeMutableRawPointer>.alignment)
-        defer { raw.deallocate() }
-        raw.storeBytes(of: unsafeBitCast(procID, to: UnsafeMutableRawPointer.self), as: UnsafeMutableRawPointer.self)
-        raw.storeBytes(of: UInt32(inputCount), toByteOffset: MemoryLayout<UnsafeMutableRawPointer>.size, as: UInt32.self)
-        let flags = raw.advanced(by: header)
-        for index in 0..<inputCount {
-            let on: UInt32 = index >= inputCount - used ? 1 : 0
-            flags.advanced(by: index * MemoryLayout<UInt32>.size).storeBytes(of: on, as: UInt32.self)
-        }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyIOProcStreamUsage,
-            mScope: kAudioObjectPropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        _ = AudioObjectSetPropertyData(aggregateID, &address, 0, nil, UInt32(total), raw)
-    }
-
-    private static func streamCount(_ device: AudioObjectID, scope: AudioObjectPropertyScope) -> Int {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreams,
-            mScope: scope,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr else { return 0 }
-        return Int(size) / MemoryLayout<AudioStreamID>.size
     }
 }
 

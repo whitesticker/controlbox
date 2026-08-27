@@ -10,36 +10,29 @@ struct WindowGrabPane: View {
     var body: some View {
         NavigationStack {
             Form {
-                if monitor.hasMXMaster {
-                    Section {
-                        Toggle("Move window", isOn: windowMoveEnabledBinding)
-                        ModifierChordPicker(
-                            title: "Move keys",
-                            flags: windowMoveFlagsBinding,
-                            minimumCount: 1,
-                            occupied: occupiedExceptMove,
-                            message: $chordMessage
-                        )
-                        Toggle("Resize window", isOn: windowResizeEnabledBinding)
-                        ModifierChordPicker(
-                            title: "Resize keys",
-                            flags: windowResizeFlagsBinding,
-                            minimumCount: 1,
-                            occupied: occupiedExceptResize,
-                            message: $chordMessage
-                        )
-                        if let chordMessage {
-                            Text(chordMessage)
-                                .foregroundStyle(.red)
-                        }
-                    } footer: {
-                        Text("Hold the move keys and move the pointer to drag a window from anywhere. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. An MX Master with Control this Mac must be on — DualSense can move the pointer, but grab stays mouse-gated for now. These keys cannot match Display Arrangement or each other.")
+                Section {
+                    Toggle("Move window", isOn: windowMoveEnabledBinding)
+                    ModifierChordPicker(
+                        title: "Move keys",
+                        flags: windowMoveFlagsBinding,
+                        minimumCount: 1,
+                        occupied: occupiedExceptMove,
+                        message: $chordMessage
+                    )
+                    Toggle("Resize window", isOn: windowResizeEnabledBinding)
+                    ModifierChordPicker(
+                        title: "Resize keys",
+                        flags: windowResizeFlagsBinding,
+                        minimumCount: 1,
+                        occupied: occupiedExceptResize,
+                        message: $chordMessage
+                    )
+                    if let chordMessage {
+                        Text(chordMessage)
+                            .foregroundStyle(.red)
                     }
-                } else {
-                    Section {
-                        Text("Add an MX Master to set window move and resize chords.")
-                            .foregroundStyle(.secondary)
-                    }
+                } footer: {
+                    Text("Hold the move keys and move the pointer to drag a window from anywhere. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. Works with the trackpad, any mouse, or DualSense. Accessibility must be on. These keys cannot match Display Arrangement or each other.")
                 }
             }
             .formStyle(.grouped)

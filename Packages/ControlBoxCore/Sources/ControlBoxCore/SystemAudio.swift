@@ -98,6 +98,20 @@ public enum SystemAudio {
         deviceIDs().first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid }
     }
 
+    static func nominalSampleRate(_ device: AudioDeviceID) -> Double {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else {
+            return 48_000
+        }
+        return value > 0 ? value : 48_000
+    }
+
     private static func deviceIDs() -> [AudioDeviceID] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,

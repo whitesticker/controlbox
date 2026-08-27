@@ -63,12 +63,10 @@ final class DualSenseMonitor {
         deviceRecords.contains(where: \.isMXMaster)
     }
 
+    var macMouseSettings = MacMouseSettings.load(seedingFrom: nil)
+
     var macMouseProfile: MappingProfile {
-        if let record = selectedRecord, record.isMXMaster {
-            return record.selectedProfile
-        }
-        return deviceRecords.first(where: \.isMXMaster)?.selectedProfile
-            ?? MappingProfile.makeDefault(isAppleTVRemote: false, isMXMaster: true)
+        macMouseSettings.asProfile
     }
 
     var sidebarDevices: [SidebarDevice] {
@@ -129,6 +127,7 @@ final class DualSenseMonitor {
     private var lastMotionPublish = Date.distantPast
     private var lastScrollTapSignature = ""
     private var lastWindowGrabSignature = ""
+    private var lastAppliedSystemPointerSpeed = -1.0
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
     private let dualSense = DualSenseSession()
@@ -147,6 +146,12 @@ final class DualSenseMonitor {
         mx3Reader.start()
         mx4Reader.start()
         loadDeviceRecords()
+        macMouseSettings = MacMouseSettings.load(
+            seedingFrom: deviceRecords.first(where: \.isMXMaster)?.selectedProfile
+        )
+        if UserDefaults.standard.data(forKey: MacMouseSettings.defaultsKey) == nil {
+            macMouseSettings.persist()
+        }
         updateControlActivity()
         refreshPermissions()
         refreshAudioInputs()
@@ -220,6 +225,7 @@ final class DualSenseMonitor {
         mx3Reader.stop()
         mx4Reader.stop()
         mouseScrollTap.stop()
+        WindowGrab.stop()
     }
 
     func selectDevice(_ device: ConnectedBluetoothDevice) {
@@ -382,23 +388,33 @@ final class DualSenseMonitor {
     }
 
     func setMacPointerSpeed(_ speed: Double) {
-        updateAllMXProfiles { $0.pointerSpeed = min(max(speed, 0), 1) }
+        updateMacMouse { $0.pointerSpeed = min(max(speed, 0), 1) }
     }
 
     func setMacWheelScrollSpeed(_ speed: Double) {
-        updateAllMXProfiles { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
+        updateMacMouse { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setMacThumbScrollSpeed(_ speed: Double) {
-        updateAllMXProfiles { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+        updateMacMouse { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
     }
 
     func setMacNaturalScrolling(_ enabled: Bool) {
-        updateAllMXProfiles { $0.naturalScrolling = enabled }
+        updateMacMouse { $0.naturalScrolling = enabled }
     }
 
     func setMacSmoothScrolling(_ enabled: Bool) {
-        updateAllMXProfiles { $0.smoothScrolling = enabled }
+        updateMacMouse { $0.smoothScrolling = enabled }
+    }
+
+    private func updateMacMouse(_ mutate: (inout MacMouseSettings) -> Void) {
+        mutate(&macMouseSettings)
+        macMouseSettings.persist()
+        lastScrollTapSignature = ""
+        lastWindowGrabSignature = ""
+        lastAppliedSystemPointerSpeed = -1
+        let settings = macMouseSettings
+        updateAllMXProfiles { settings.apply(to: &$0) }
     }
 
     private func updateAllMXProfiles(_ mutate: (inout MappingProfile) -> Void) {
@@ -637,7 +653,9 @@ final class DualSenseMonitor {
             return
         }
         if !deviceRecords.contains(where: { $0.id == device.id }) {
-            deviceRecords.append(.make(from: device, remembered: true))
+            var record = DeviceRecord.make(from: device, remembered: true)
+            applyMacMouseIfNeeded(&record)
+            deviceRecords.append(record)
         } else if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
             deviceRecords[index].remembered = true
             deviceRecords[index].name = device.name
@@ -798,22 +816,29 @@ final class DualSenseMonitor {
     }
 
     private func applyMouseScrollTap() {
-        guard let record = sharedMXScrollRecord, accessibilityTrusted else {
+        let profile = macMouseProfile
+        if lastAppliedSystemPointerSpeed != profile.resolvedPointerSpeed {
+            PointerHIDSettings.applySystem(pointerSpeed: profile.resolvedPointerSpeed)
+            lastAppliedSystemPointerSpeed = profile.resolvedPointerSpeed
+        }
+        let mxConnected = mxReaders.contains { $0.current.connected }
+        guard accessibilityTrusted, mxConnected else {
             if lastScrollTapSignature != "off" {
                 mouseScrollTap.setActive(false)
                 lastScrollTapSignature = "off"
             }
             return
         }
-        let natural = record.selectedProfile.resolvedNaturalScrolling
-        let smooth = record.selectedProfile.resolvedSmoothScrolling
-        let vertical = 0.05 + record.selectedProfile.appliedWheelScrollSpeed * 0.55
-        let horizontal = 0.05 + record.selectedProfile.appliedThumbScrollSpeed * 0.55
-        let passUp = record.selectedProfile.keepsNativeScroll(for: .mxWheelUp)
-        let passDown = record.selectedProfile.keepsNativeScroll(for: .mxWheelDown)
-        let passLeft = record.selectedProfile.keepsNativeScroll(for: .mxThumbLeft)
-        let passRight = record.selectedProfile.keepsNativeScroll(for: .mxThumbRight)
-        let signature = "\(record.id)|\(natural)|\(smooth)|\(vertical)|\(horizontal)|\(passUp)|\(passDown)|\(passLeft)|\(passRight)"
+        let mx = sharedMXScrollRecord?.selectedProfile
+        let natural = profile.resolvedNaturalScrolling
+        let smooth = profile.resolvedSmoothScrolling
+        let vertical = 0.05 + profile.appliedWheelScrollSpeed * 0.55
+        let horizontal = 0.05 + profile.appliedThumbScrollSpeed * 0.55
+        let passUp = mx?.keepsNativeScroll(for: .mxWheelUp) ?? true
+        let passDown = mx?.keepsNativeScroll(for: .mxWheelDown) ?? true
+        let passLeft = mx?.keepsNativeScroll(for: .mxThumbLeft) ?? true
+        let passRight = mx?.keepsNativeScroll(for: .mxThumbRight) ?? true
+        let signature = "mac|\(natural)|\(smooth)|\(vertical)|\(horizontal)|\(passUp)|\(passDown)|\(passLeft)|\(passRight)"
         guard signature != lastScrollTapSignature else { return }
         lastScrollTapSignature = signature
         mouseScrollTap.wantNatural = natural
@@ -829,26 +854,21 @@ final class DualSenseMonitor {
             reader.applySmoothScrolling(smooth)
             reader.applyScrollDirection(natural)
         }
-        propagateSharedMouseScroll(from: record.selectedProfile)
+        propagateSharedMouseScroll(from: profile)
     }
 
     private func applyWindowGrab() {
-        guard let record = sharedMXScrollRecord, accessibilityTrusted else {
+        guard accessibilityTrusted else {
             if lastWindowGrabSignature != "off" {
                 WindowGrab.stop()
                 lastWindowGrabSignature = "off"
             }
             return
         }
-        let profile = record.selectedProfile
-        let inject = !NSApp.isActive || record.controlWhileFocused
-        let signature = "\(record.id)|\(inject)|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
+        let profile = macMouseProfile
+        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)"
         guard signature != lastWindowGrabSignature else { return }
         lastWindowGrabSignature = signature
-        guard inject else {
-            WindowGrab.stop()
-            return
-        }
         WindowGrab.configure(
             enabled: true,
             moveEnabled: profile.resolvedWindowMoveEnabled,
@@ -859,19 +879,23 @@ final class DualSenseMonitor {
     }
 
     func setWindowMoveEnabled(_ enabled: Bool) {
-        updateAllMXProfiles { $0.windowMoveEnabled = enabled }
+        updateMacMouse { $0.windowMoveEnabled = enabled }
     }
 
     func setWindowResizeEnabled(_ enabled: Bool) {
-        updateAllMXProfiles { $0.windowResizeEnabled = enabled }
+        updateMacMouse { $0.windowResizeEnabled = enabled }
     }
 
     func setWindowMoveFlags(_ flags: UInt64) {
-        updateAllMXProfiles { $0.windowMoveFlags = flags == 0 ? MappingProfile.defaultWindowMoveFlags : flags }
+        updateMacMouse {
+            $0.windowMoveFlags = flags == 0 ? MappingProfile.defaultWindowMoveFlags : flags
+        }
     }
 
     func setWindowResizeFlags(_ flags: UInt64) {
-        updateAllMXProfiles { $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags }
+        updateMacMouse {
+            $0.windowResizeFlags = flags == 0 ? MappingProfile.defaultWindowResizeFlags : flags
+        }
     }
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
@@ -902,6 +926,16 @@ final class DualSenseMonitor {
         }
         guard let device = connectedDevices.first(where: { $0.id == id && $0.isSupported }) else { return }
         deviceRecords.append(.make(from: device, remembered: remembered))
+        if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
+            applyMacMouseIfNeeded(&deviceRecords[index])
+        }
+    }
+
+    private func applyMacMouseIfNeeded(_ record: inout DeviceRecord) {
+        guard record.isMXMaster else { return }
+        for index in record.profiles.indices {
+            macMouseSettings.apply(to: &record.profiles[index])
+        }
     }
 
     private func matchingRecord(for device: ConnectedBluetoothDevice) -> DeviceRecord? {
@@ -1029,6 +1063,9 @@ final class DualSenseMonitor {
             return
         }
         deviceRecords.append(.make(from: device, remembered: true))
+        if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
+            applyMacMouseIfNeeded(&deviceRecords[index])
+        }
     }
 
     private func updateSelectedRecord(_ mutate: (inout DeviceRecord) -> Void) {

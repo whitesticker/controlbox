@@ -21,6 +21,21 @@ enum PointerHIDSettings {
         )
     }
 
+    /// Pointer speed for USB / Bluetooth mice when no MX HID++ device is in
+    /// the loop. Skips trackpads so the built-in panel stays on System Settings.
+    static func applySystem(pointerSpeed: Double) {
+        let slider = min(max(pointerSpeed, 0), 1)
+        let dpi = MappingProfile.defaultSensorDPI
+        let resolutionFixed = ioFixed(resolution(slider: slider, dpi: dpi))
+        let accelerationFixed = ioFixed(acceleration(slider: slider, dpi: dpi))
+        let client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault)
+        guard let services = IOHIDEventSystemClientCopyServices(client) as? [IOHIDServiceClient] else { return }
+        for service in services {
+            guard isMousePointerService(service) else { continue }
+            apply(to: service, resolutionFixed: resolutionFixed, accelerationFixed: accelerationFixed)
+        }
+    }
+
     /// Lower resolution is faster. 400 is the macOS default at 1× / 1000 DPI.
     /// Do not clamp to LinearMouse’s 1995 ceiling — that left high DPI too fast.
     private static func resolution(slider: Double, dpi: Int) -> Double {
@@ -45,24 +60,52 @@ enum PointerHIDSettings {
         guard let services = IOHIDEventSystemClientCopyServices(client) as? [IOHIDServiceClient] else { return }
         for service in services {
             guard matchesMX4PointerService(service, vendor: vendor, product: product) else { continue }
-            IOHIDServiceClientSetProperty(service, kIOHIDPointerResolutionKey as CFString, NSNumber(value: resolutionFixed))
-            let accelerationKey = accelerationKey(for: service)
-            IOHIDServiceClientSetProperty(service, accelerationKey as CFString, NSNumber(value: accelerationFixed))
-            if accelerationKey != kIOHIDPointerAccelerationKey {
-                IOHIDServiceClientSetProperty(
-                    service,
-                    kIOHIDPointerAccelerationKey as CFString,
-                    NSNumber(value: accelerationFixed)
-                )
-            }
-            if accelerationKey != kIOHIDMouseAccelerationTypeKey {
-                IOHIDServiceClientSetProperty(
-                    service,
-                    kIOHIDMouseAccelerationTypeKey as CFString,
-                    NSNumber(value: accelerationFixed)
-                )
-            }
+            apply(to: service, resolutionFixed: resolutionFixed, accelerationFixed: accelerationFixed)
         }
+    }
+
+    private static func apply(
+        to service: IOHIDServiceClient,
+        resolutionFixed: Int32,
+        accelerationFixed: Int32
+    ) {
+        IOHIDServiceClientSetProperty(service, kIOHIDPointerResolutionKey as CFString, NSNumber(value: resolutionFixed))
+        let accelerationKey = accelerationKey(for: service)
+        IOHIDServiceClientSetProperty(service, accelerationKey as CFString, NSNumber(value: accelerationFixed))
+        if accelerationKey != kIOHIDPointerAccelerationKey {
+            IOHIDServiceClientSetProperty(
+                service,
+                kIOHIDPointerAccelerationKey as CFString,
+                NSNumber(value: accelerationFixed)
+            )
+        }
+        if accelerationKey != kIOHIDMouseAccelerationTypeKey {
+            IOHIDServiceClientSetProperty(
+                service,
+                kIOHIDMouseAccelerationTypeKey as CFString,
+                NSNumber(value: accelerationFixed)
+            )
+        }
+    }
+
+    private static func isMousePointerService(_ service: IOHIDServiceClient) -> Bool {
+        let name = (IOHIDServiceClientCopyProperty(service, kIOHIDProductKey as CFString) as? String) ?? ""
+        if name.localizedCaseInsensitiveContains("trackpad") || name.localizedCaseInsensitiveContains("touchpad") {
+            return false
+        }
+        let accelerationType = (IOHIDServiceClientCopyProperty(
+            service,
+            kIOHIDPointerAccelerationTypeKey as CFString
+        ) as? String) ?? ""
+        if accelerationType.localizedCaseInsensitiveContains("trackpad") {
+            return false
+        }
+        let usagePage = (IOHIDServiceClientCopyProperty(service, kIOHIDPrimaryUsagePageKey as CFString) as? NSNumber)?.intValue
+        let usage = (IOHIDServiceClientCopyProperty(service, kIOHIDPrimaryUsageKey as CFString) as? NSNumber)?.intValue
+        if usagePage == 0x0D { return false }
+        if usagePage == 0x01, usage == 0x02 { return true }
+        if usagePage == 0x01, usage == 0x01 { return true }
+        return false
     }
 
     private static func matchesMX4PointerService(
