@@ -8,6 +8,54 @@ public enum NightShift {
         public var enabled: Bool
         public var mode: Int32
         public var strength: Float
+        public var fromHour: Int32
+        public var fromMinute: Int32
+        public var toHour: Int32
+        public var toMinute: Int32
+
+        public init(
+            enabled: Bool,
+            mode: Int32,
+            strength: Float,
+            fromHour: Int32 = 0,
+            fromMinute: Int32 = 0,
+            toHour: Int32 = 0,
+            toMinute: Int32 = 0
+        ) {
+            self.enabled = enabled
+            self.mode = mode
+            self.strength = strength
+            self.fromHour = fromHour
+            self.fromMinute = fromMinute
+            self.toHour = toHour
+            self.toMinute = toMinute
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try container.decode(Bool.self, forKey: .enabled)
+            mode = try container.decode(Int32.self, forKey: .mode)
+            strength = try container.decode(Float.self, forKey: .strength)
+            fromHour = try container.decodeIfPresent(Int32.self, forKey: .fromHour) ?? 0
+            fromMinute = try container.decodeIfPresent(Int32.self, forKey: .fromMinute) ?? 0
+            toHour = try container.decodeIfPresent(Int32.self, forKey: .toHour) ?? 0
+            toMinute = try container.decodeIfPresent(Int32.self, forKey: .toMinute) ?? 0
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(mode, forKey: .mode)
+            try container.encode(strength, forKey: .strength)
+            try container.encode(fromHour, forKey: .fromHour)
+            try container.encode(fromMinute, forKey: .fromMinute)
+            try container.encode(toHour, forKey: .toHour)
+            try container.encode(toMinute, forKey: .toMinute)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case enabled, mode, strength, fromHour, fromMinute, toHour, toMinute
+        }
     }
 
     public struct CCTRange: Equatable, Sendable {
@@ -17,8 +65,8 @@ public enum NightShift {
         public static let fallback = CCTRange(minKelvin: 2700, maxKelvin: 6000)
     }
 
-    /// Apple's schedule modes. `off` keeps Night Shift available but stops
-    /// sunset / custom clocks from fighting a curve we apply ourselves.
+    /// Apple's schedule modes. Tahoe rejects `off` (`setMode:1` returns false and
+    /// leaves sunset-to-sunrise in place), so take-over uses a 24-hour custom schedule.
     public enum Mode: Int32, Sendable {
         case sunSchedule = 0
         case off = 1
@@ -43,7 +91,7 @@ public enum NightShift {
 
     /// Pause Apple's Night Shift schedule so strength follows our curve.
     public static func takeOverSchedule() {
-        Client.shared.setMode(.off)
+        Client.shared.takeOverSchedule()
     }
 
     /// `warmth` is 0…1 (cool → Night Shift maximum). Near-zero turns Night Shift off
@@ -93,7 +141,11 @@ private final class Client: @unchecked Sendable {
         return NightShift.Snapshot(
             enabled: status.enabled,
             mode: status.mode,
-            strength: strength
+            strength: strength,
+            fromHour: status.fromHour,
+            fromMinute: status.fromMinute,
+            toHour: status.toHour,
+            toMinute: status.toMinute
         )
     }
 
@@ -101,6 +153,9 @@ private final class Client: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let object else { return }
+        if snapshot.toHour != 0 || snapshot.toMinute != 0 || snapshot.fromHour != 0 {
+            setSchedule(object, fromHour: snapshot.fromHour, fromMinute: snapshot.fromMinute, toHour: snapshot.toHour, toMinute: snapshot.toMinute)
+        }
         setMode(object, snapshot.mode)
         setEnabled(object, snapshot.enabled)
         setStrength(object, snapshot.strength, period: 0.8)
@@ -109,6 +164,46 @@ private final class Client: @unchecked Sendable {
     func cctRange() -> NightShift.CCTRange? {
         lock.lock()
         defer { lock.unlock() }
+        return cctRangeLocked()
+    }
+
+    func takeOverSchedule() {
+        lock.lock()
+        defer { lock.unlock() }
+        takeOverScheduleLocked()
+    }
+
+    func apply(warmth: Double, period: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let object else { return }
+        let clamped = Float(min(max(warmth, 0), 1))
+        if clamped < 0.012 {
+            setEnabled(object, false)
+            return
+        }
+        if status(object).mode != NightShift.Mode.customSchedule.rawValue {
+            takeOverScheduleLocked()
+        }
+        setActive(object, true)
+        setEnabled(object, true)
+        setStrength(object, clamped, period: period)
+        if let range = cctRangeLocked() {
+            let kelvin = Float(range.maxKelvin - Double(clamped) * (range.maxKelvin - range.minKelvin))
+            setCCT(object, kelvin, period: period)
+        }
+    }
+
+    private func takeOverScheduleLocked() {
+        guard let object else { return }
+        setSchedule(object, fromHour: 0, fromMinute: 0, toHour: 23, toMinute: 59)
+        if !setMode(object, NightShift.Mode.customSchedule.rawValue) {
+            _ = setMode(object, NightShift.Mode.off.rawValue)
+        }
+        setActive(object, true)
+    }
+
+    private func cctRangeLocked() -> NightShift.CCTRange? {
         guard let object else { return nil }
         let sel = NSSelectorFromString("getCCTRange:")
         guard object.responds(to: sel), let method = object.method(for: sel) else { return nil }
@@ -121,26 +216,6 @@ private final class Client: @unchecked Sendable {
         return NightShift.CCTRange(minKelvin: Double(range.min), maxKelvin: Double(range.max))
     }
 
-    func setMode(_ mode: NightShift.Mode) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let object else { return }
-        setMode(object, mode.rawValue)
-    }
-
-    func apply(warmth: Double, period: TimeInterval) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let object else { return }
-        let clamped = Float(min(max(warmth, 0), 1))
-        if clamped < 0.012 {
-            setEnabled(object, false)
-            return
-        }
-        setEnabled(object, true)
-        setStrength(object, clamped, period: period)
-    }
-
     private func strength(_ object: NSObject) -> Float? {
         let sel = NSSelectorFromString("getStrength:")
         guard object.responds(to: sel), let method = object.method(for: sel) else { return nil }
@@ -150,20 +225,31 @@ private final class Client: @unchecked Sendable {
         return ok ? value : nil
     }
 
-    private func status(_ object: NSObject) -> (enabled: Bool, mode: Int32) {
+    private func status(_ object: NSObject) -> (
+        enabled: Bool,
+        mode: Int32,
+        fromHour: Int32,
+        fromMinute: Int32,
+        toHour: Int32,
+        toMinute: Int32
+    ) {
+        let fallback = (false, NightShift.Mode.off.rawValue, Int32(0), Int32(0), Int32(0), Int32(0))
         let sel = NSSelectorFromString("getBlueLightStatus:")
         guard object.responds(to: sel), let method = object.method(for: sel) else {
-            return (false, NightShift.Mode.off.rawValue)
+            return fallback
         }
         var buf = [UInt8](repeating: 0, count: 64)
         typealias Fn = @convention(c) (NSObject, Selector, UnsafeMutableRawPointer) -> Bool
         let ok = buf.withUnsafeMutableBytes {
             unsafeBitCast(method, to: Fn.self)(object, sel, $0.baseAddress!)
         }
-        guard ok else { return (false, NightShift.Mode.off.rawValue) }
-        let enabled = buf[1] != 0
+        guard ok else { return fallback }
         let mode = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int32.self) }
-        return (enabled, mode)
+        let fromHour = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 8, as: Int32.self) }
+        let fromMinute = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 12, as: Int32.self) }
+        let toHour = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 16, as: Int32.self) }
+        let toMinute = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 20, as: Int32.self) }
+        return (buf[1] != 0, mode, fromHour, fromMinute, toHour, toMinute)
     }
 
     private func setEnabled(_ object: NSObject, _ enabled: Bool) {
@@ -173,24 +259,62 @@ private final class Client: @unchecked Sendable {
         _ = unsafeBitCast(method, to: Fn.self)(object, sel, enabled)
     }
 
-    private func setMode(_ object: NSObject, _ mode: Int32) {
+    @discardableResult
+    private func setMode(_ object: NSObject, _ mode: Int32) -> Bool {
         let sel = NSSelectorFromString("setMode:")
-        guard object.responds(to: sel), let method = object.method(for: sel) else { return }
+        guard object.responds(to: sel), let method = object.method(for: sel) else { return false }
         typealias Fn = @convention(c) (NSObject, Selector, Int32) -> Bool
-        _ = unsafeBitCast(method, to: Fn.self)(object, sel, mode)
+        return unsafeBitCast(method, to: Fn.self)(object, sel, mode)
+    }
+
+    private func setActive(_ object: NSObject, _ active: Bool) {
+        let sel = NSSelectorFromString("setActive:")
+        guard object.responds(to: sel), let method = object.method(for: sel) else { return }
+        typealias Fn = @convention(c) (NSObject, Selector, Bool) -> Bool
+        _ = unsafeBitCast(method, to: Fn.self)(object, sel, active)
+    }
+
+    private func setSchedule(
+        _ object: NSObject,
+        fromHour: Int32,
+        fromMinute: Int32,
+        toHour: Int32,
+        toMinute: Int32
+    ) {
+        let sel = NSSelectorFromString("setSchedule:")
+        guard object.responds(to: sel), let method = object.method(for: sel) else { return }
+        var schedule = (fromHour, fromMinute, toHour, toMinute)
+        typealias Fn = @convention(c) (NSObject, Selector, UnsafeRawPointer) -> Bool
+        _ = withUnsafePointer(to: &schedule) {
+            unsafeBitCast(method, to: Fn.self)(object, sel, $0)
+        }
     }
 
     private func setStrength(_ object: NSObject, _ strength: Float, period: TimeInterval) {
         if period > 0.04, object.responds(to: NSSelectorFromString("setStrength:withPeriod:commit:")) {
             let sel = NSSelectorFromString("setStrength:withPeriod:commit:")
-            guard let method = object.method(for: sel) else { return }
-            typealias Fn = @convention(c) (NSObject, Selector, Float, Float, Bool) -> Bool
-            _ = unsafeBitCast(method, to: Fn.self)(object, sel, strength, Float(period), true)
-            return
+            if let method = object.method(for: sel) {
+                typealias Fn = @convention(c) (NSObject, Selector, Float, Float, Bool) -> Bool
+                _ = unsafeBitCast(method, to: Fn.self)(object, sel, strength, Float(period), true)
+            }
         }
         let sel = NSSelectorFromString("setStrength:commit:")
         guard object.responds(to: sel), let method = object.method(for: sel) else { return }
         typealias Fn = @convention(c) (NSObject, Selector, Float, Bool) -> Bool
         _ = unsafeBitCast(method, to: Fn.self)(object, sel, strength, true)
+    }
+
+    private func setCCT(_ object: NSObject, _ kelvin: Float, period: TimeInterval) {
+        if period > 0.04, object.responds(to: NSSelectorFromString("setCCT:withPeriod:commit:")) {
+            let sel = NSSelectorFromString("setCCT:withPeriod:commit:")
+            if let method = object.method(for: sel) {
+                typealias Fn = @convention(c) (NSObject, Selector, Float, Float, Bool) -> Bool
+                _ = unsafeBitCast(method, to: Fn.self)(object, sel, kelvin, Float(period), true)
+            }
+        }
+        let sel = NSSelectorFromString("setCCT:commit:")
+        guard object.responds(to: sel), let method = object.method(for: sel) else { return }
+        typealias Fn = @convention(c) (NSObject, Selector, Float, Bool) -> Bool
+        _ = unsafeBitCast(method, to: Fn.self)(object, sel, kelvin, true)
     }
 }
