@@ -19,12 +19,13 @@ final class ArrangementCatalog {
         syncHotkey()
     }
 
-    deinit {
-        ArrangementHotkey.stop()
-    }
-
     func refresh() {
         live = DisplayArrangement.snapshot()
+        let before = store
+        DisplayArrangement.reconcile(&store, live: live)
+        if store != before {
+            persist()
+        }
     }
 
     var combos: [DisplayCombo] {
@@ -51,7 +52,7 @@ final class ArrangementCatalog {
 
     func applyBlockedReason(_ preset: ArrangementPreset) -> String? {
         if canApply(preset) { return nil }
-        if preset.comboID != live.comboID {
+        if DisplayArrangement.aligned(preset, to: live) == nil {
             let title = store.combos.first { $0.id == preset.comboID }?.title ?? "those displays"
             return "Connect \(title) to apply."
         }
@@ -159,7 +160,9 @@ final class ArrangementCatalog {
     }
 
     var applicablePresets: [ArrangementPreset] {
-        presets(for: live.comboID).filter { canApply($0) }
+        store.presets
+            .filter { canApply($0) }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     var shortcutEnabled: Bool {
@@ -181,7 +184,7 @@ final class ArrangementCatalog {
     }
 
     func handleHotkey(_ action: ArrangementHotkeyAction) {
-        refresh()
+        live = DisplayArrangement.snapshot()
         let list = applicablePresets
         guard !list.isEmpty else {
             ArrangementHUD.showUnavailable()
@@ -192,9 +195,18 @@ final class ArrangementCatalog {
             guard list.indices.contains(number - 1) else { return }
             apply(list[number - 1], hud: true)
         case .next:
-            apply(list[shuffleIndex(in: list, delta: 1)], hud: true)
+            applyShuffled(in: list, delta: 1)
         case .previous:
-            apply(list[shuffleIndex(in: list, delta: -1)], hud: true)
+            applyShuffled(in: list, delta: -1)
+        }
+    }
+
+    private func applyShuffled(in list: [ArrangementPreset], delta: Int) {
+        var index = shuffleIndex(in: list, delta: delta)
+        for _ in 0..<list.count {
+            apply(list[index], hud: true)
+            if !applyFailed { return }
+            index = (index + delta + list.count) % list.count
         }
     }
 
@@ -208,7 +220,9 @@ final class ArrangementCatalog {
             enabled: store.resolvedShortcutEnabled,
             flags: CGEventFlags(rawValue: store.resolvedShortcutFlags)
         ) { [weak self] action in
-            self?.handleHotkey(action)
+            DispatchQueue.main.async {
+                self?.handleHotkey(action)
+            }
         }
     }
 

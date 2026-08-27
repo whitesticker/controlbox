@@ -2,11 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var monitor: DualSenseMonitor
+    @Bindable var arrangementCatalog: ArrangementCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
     @State private var displayCatalog = DisplayCatalog()
-    @State private var arrangementCatalog = ArrangementCatalog()
     @State private var soundCatalog = SoundCatalog()
 
     var body: some View {

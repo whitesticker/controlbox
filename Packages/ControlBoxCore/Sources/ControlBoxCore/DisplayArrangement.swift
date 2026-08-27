@@ -100,11 +100,22 @@ public struct ArrangementPreset: Codable, Equatable, Identifiable, Sendable {
 public struct DisplaySnapshot: Equatable, Sendable {
     public var screens: [ArrangedScreen]
     public var displayIDs: [String: CGDirectDisplayID]
+    public var facts: [PanelFacts]
     public var combo: DisplayCombo
     public var includesBuiltIn: Bool
 
     public var comboID: String { combo.id }
     public var comboTitle: String { combo.title }
+}
+
+public struct PanelFacts: Equatable, Sendable {
+    public var key: String
+    public var name: String
+    public var isBuiltIn: Bool
+    public var vendor: UInt32
+    public var model: UInt32
+    public var serials: [String]
+    public var uuids: [String]
 }
 
 public enum DisplayApplyResult: Equatable, Sendable {
@@ -159,6 +170,7 @@ public enum DisplayArrangement {
         let matches = Arm64DDC.serviceMatches(for: ids)
         var screens: [ArrangedScreen] = []
         var displayIDs: [String: CGDirectDisplayID] = [:]
+        var facts: [PanelFacts] = []
         var seen: Set<String> = []
 
         for displayID in ids {
@@ -188,6 +200,7 @@ public enum DisplayArrangement {
             )
             screens.append(screen)
             displayIDs[identity] = displayID
+            facts.append(panelFacts(displayID: displayID, key: identity, name: name, matches: matches))
         }
 
         screens.sort { $0.identity < $1.identity }
@@ -197,20 +210,22 @@ public enum DisplayArrangement {
         return DisplaySnapshot(
             screens: screens,
             displayIDs: displayIDs,
+            facts: facts,
             combo: DisplayCombo(externals: externals),
             includesBuiltIn: screens.contains(where: \.isBuiltIn)
         )
     }
 
     public static func canApply(_ preset: ArrangementPreset, live: DisplaySnapshot) -> Bool {
-        preset.comboID == live.comboID
-            && preset.includesBuiltIn == live.includesBuiltIn
-            && Set(preset.screens.map(\.identity)) == Set(live.screens.map(\.identity))
+        guard let aligned = aligned(preset, to: live) else { return false }
+        return aligned.includesBuiltIn == live.includesBuiltIn
+            && Set(aligned.screens.map(\.identity)) == Set(live.screens.map(\.identity))
     }
 
     public static func matchesLive(_ preset: ArrangementPreset, live: DisplaySnapshot) -> Bool {
-        guard canApply(preset, live: live) else { return false }
-        let saved = DisplayLayoutMath.normalized(preset.screens)
+        guard let aligned = aligned(preset, to: live),
+              aligned.includesBuiltIn == live.includesBuiltIn else { return false }
+        let saved = DisplayLayoutMath.normalized(aligned.screens)
         let current = DisplayLayoutMath.normalized(live.screens)
         for screen in saved {
             guard let liveScreen = current.first(where: { $0.identity == screen.identity }) else {
@@ -227,13 +242,10 @@ public enum DisplayArrangement {
 
     public static func apply(_ preset: ArrangementPreset) -> DisplayApplyResult {
         let live = snapshot()
-        guard canApply(preset, live: live) else {
-            if preset.comboID != live.comboID { return .comboMismatch }
-            if preset.includesBuiltIn != live.includesBuiltIn { return .builtInMismatch }
-            return .comboMismatch
-        }
+        guard let aligned = aligned(preset, to: live) else { return .comboMismatch }
+        guard aligned.includesBuiltIn == live.includesBuiltIn else { return .builtInMismatch }
 
-        let screens = DisplayLayoutMath.normalized(preset.screens)
+        let screens = DisplayLayoutMath.normalized(aligned.screens)
         var config: CGDisplayConfigRef?
         let begin = CGBeginDisplayConfiguration(&config)
         guard begin == .success, let config else {
@@ -286,6 +298,72 @@ public enum DisplayArrangement {
         store.combos.removeAll { !used.contains($0.id) }
     }
 
+    /// Rewrite stored panel keys onto the live hardware, then collapse combos that
+    /// become the same set of monitors. Same desk saved under an old key format
+    /// (or serial vs UUID) otherwise shows up as two groups with the same names.
+    public static func reconcile(_ store: inout ArrangementStore, live: DisplaySnapshot) {
+        for index in store.presets.indices {
+            if let aligned = aligned(store.presets[index], to: live) {
+                store.presets[index] = aligned
+            }
+        }
+        var combos: [String: DisplayCombo] = [:]
+        for preset in store.presets {
+            let externals = preset.screens.filter { !$0.isBuiltIn }.map {
+                NamedDisplayIdentity(key: $0.identity, name: $0.name)
+            }
+            let combo = DisplayCombo(externals: externals)
+            combos[combo.id] = combo
+        }
+        if combos[live.comboID] != nil {
+            combos[live.comboID] = live.combo
+        }
+        store.combos = Array(combos.values).sorted { $0.id < $1.id }
+        pruneEmptyCombos(&store)
+    }
+
+    public static func aligned(_ preset: ArrangementPreset, to live: DisplaySnapshot) -> ArrangementPreset? {
+        let storedExternals = preset.screens.filter { !$0.isBuiltIn }
+        let liveExternals = live.facts.filter { !$0.isBuiltIn }
+        guard storedExternals.count == liveExternals.count else { return nil }
+
+        let map: [String: String]
+        if storedExternals.isEmpty {
+            map = [:]
+        } else {
+            let stored = storedExternals.map { (key: $0.identity, name: $0.name) }
+            guard let matched = matchIdentities(stored: stored, live: liveExternals) else { return nil }
+            map = matched
+        }
+
+        var next = preset
+        next.comboID = live.comboID
+        next.screens = preset.screens.map { screen in
+            var rewritten = screen
+            if screen.isBuiltIn {
+                rewritten.identity = "builtin"
+                if let liveName = live.screens.first(where: \.isBuiltIn)?.name {
+                    rewritten.name = liveName
+                }
+                return rewritten
+            }
+            let liveKey = map[screen.identity] ?? screen.identity
+            rewritten.identity = liveKey
+            if let liveScreen = live.screens.first(where: { $0.identity == liveKey }) {
+                rewritten.name = liveScreen.name
+            }
+            if let master = screen.mirrorMaster {
+                if master == "builtin" || preset.screens.contains(where: { $0.identity == master && $0.isBuiltIn }) {
+                    rewritten.mirrorMaster = "builtin"
+                } else {
+                    rewritten.mirrorMaster = map[master] ?? master
+                }
+            }
+            return rewritten
+        }
+        return next
+    }
+
     private static func shouldIgnore(_ displayID: CGDirectDisplayID, name: String) -> Bool {
         Arm64DDC.isDummyScreen(name: name, displayID: displayID) || Arm64DDC.isVirtual(displayID)
     }
@@ -327,7 +405,7 @@ public enum DisplayArrangement {
 
         let vendor = CGDisplayVendorNumber(displayID)
         let model = CGDisplayModelNumber(displayID)
-        let serial = panelSerial(displayID: displayID, matches: matches)
+        let serial = panelSerials(displayID: displayID, matches: matches).first
         if let serial {
             return "panel:\(vendor)-\(model)-\(serial)"
         }
@@ -337,26 +415,236 @@ public enum DisplayArrangement {
         return "panel:\(vendor)-\(model)-\(name)"
     }
 
-    private static func panelSerial(displayID: CGDirectDisplayID, matches: [Arm64DDC.Match]) -> String? {
+    private static func panelFacts(
+        displayID: CGDirectDisplayID,
+        key: String,
+        name: String,
+        matches: [Arm64DDC.Match]
+    ) -> PanelFacts {
+        if CGDisplayIsBuiltin(displayID) != 0 {
+            return PanelFacts(
+                key: key,
+                name: name,
+                isBuiltIn: true,
+                vendor: 0,
+                model: 0,
+                serials: [],
+                uuids: []
+            )
+        }
+        return PanelFacts(
+            key: key,
+            name: name,
+            isBuiltIn: false,
+            vendor: CGDisplayVendorNumber(displayID),
+            model: CGDisplayModelNumber(displayID),
+            serials: panelSerials(displayID: displayID, matches: matches),
+            uuids: panelUUIDs(displayID: displayID, matches: matches)
+        )
+    }
+
+    private static func panelSerials(displayID: CGDirectDisplayID, matches: [Arm64DDC.Match]) -> [String] {
+        var serials: [String] = []
         if let match = matches.first(where: { $0.displayID == displayID }) {
             let details = match.details
             if !details.alphanumericSerialNumber.isEmpty {
-                return details.alphanumericSerialNumber
+                serials.append(details.alphanumericSerialNumber)
             }
             if details.serialNumber != 0 {
-                return "\(details.serialNumber)"
+                serials.append("\(details.serialNumber)")
             }
         }
         let serial = CGDisplaySerialNumber(displayID)
         if serial != 0, serial != serialMissing {
-            return "\(serial)"
+            serials.append("\(serial)")
         }
-        return nil
+        var seen: Set<String> = []
+        return serials.filter { seen.insert($0.uppercased()).inserted }
+    }
+
+    private static func panelUUIDs(displayID: CGDirectDisplayID, matches: [Arm64DDC.Match]) -> [String] {
+        var uuids: [String] = []
+        if let match = matches.first(where: { $0.displayID == displayID }),
+           !match.details.edidUUID.isEmpty {
+            uuids.append(match.details.edidUUID)
+        }
+        if let uuid = uuidString(for: displayID) {
+            uuids.append(uuid)
+        }
+        var seen: Set<String> = []
+        return uuids.filter { seen.insert(normalizedUUID($0)).inserted }
     }
 
     private static func uuidString(for displayID: CGDirectDisplayID) -> String? {
         let uuid = CGDisplayCreateUUIDFromDisplayID(displayID).takeRetainedValue()
         return CFUUIDCreateString(nil, uuid) as String?
+    }
+
+    private static func matchIdentities(
+        stored: [(key: String, name: String)],
+        live: [PanelFacts]
+    ) -> [String: String]? {
+        var remaining = live
+        var map: [String: String] = [:]
+
+        func assign(_ storedKey: String, where predicate: (PanelFacts) -> Bool) {
+            guard map[storedKey] == nil else { return }
+            guard let index = remaining.firstIndex(where: predicate) else { return }
+            map[storedKey] = remaining[index].key
+            remaining.remove(at: index)
+        }
+
+        for item in stored {
+            assign(item.key) { $0.key == item.key }
+        }
+        for item in stored {
+            let tokens = tokens(from: item.key)
+            assign(item.key) { facts in
+                compatible(facts, tokens: tokens) && serialOverlap(tokens, facts)
+            }
+        }
+        for item in stored {
+            let tokens = tokens(from: item.key)
+            assign(item.key) { facts in
+                compatible(facts, tokens: tokens) && uuidOverlap(tokens, facts)
+            }
+        }
+        for item in stored {
+            let hits = remaining.filter { $0.name == item.name }
+            if hits.count == 1 {
+                assign(item.key) { $0.key == hits[0].key }
+            }
+        }
+        for item in stored {
+            let tokens = tokens(from: item.key)
+            guard let vendor = tokens.vendor, let model = tokens.model,
+                  vendor != 0, model != 0, vendor != serialMissing, model != serialMissing else { continue }
+            let hits = remaining.filter { $0.vendor == vendor && $0.model == model }
+            if hits.count == 1 {
+                assign(item.key) { $0.key == hits[0].key }
+            }
+        }
+
+        guard map.count == stored.count, remaining.isEmpty else { return nil }
+        return map
+    }
+
+    private struct StoredIdentityTokens {
+        var serials: Set<String> = []
+        var uuids: Set<String> = []
+        var vendor: UInt32?
+        var model: UInt32?
+    }
+
+    private static func tokens(from key: String) -> StoredIdentityTokens {
+        var result = StoredIdentityTokens()
+        if key == "builtin" { return result }
+
+        if key.hasPrefix("panel:") {
+            let rest = String(key.dropFirst("panel:".count))
+            if let uuidRange = rest.range(of: "-uuid:") {
+                parseVendorModel(rest[..<uuidRange.lowerBound], into: &result)
+                ingestIdentityTail(String(rest[uuidRange.upperBound...]), into: &result)
+                return result
+            }
+            let parts = rest.split(separator: "-", maxSplits: 2, omittingEmptySubsequences: false)
+            if parts.count >= 2 {
+                result.vendor = UInt32(parts[0])
+                result.model = UInt32(parts[1])
+            }
+            if parts.count >= 3 {
+                ingestIdentityTail(String(parts[2]), into: &result)
+            }
+            return result
+        }
+
+        if key.hasPrefix("edid:") {
+            ingestIdentityTail(String(key.dropFirst(5)), into: &result)
+            if let last = key.split(separator: "-").last {
+                ingestIdentityTail(String(last), into: &result)
+            }
+            return result
+        }
+
+        if key.hasPrefix("cg:") {
+            let rest = String(key.dropFirst(3))
+            parseVendorModel(rest, into: &result)
+            let parts = rest.split(separator: "-", maxSplits: 2, omittingEmptySubsequences: false)
+            if parts.count >= 3 {
+                ingestIdentityTail(String(parts[2]), into: &result)
+            }
+            return result
+        }
+
+        if key.hasPrefix("uuid:") {
+            ingestIdentityTail(String(key.dropFirst(5)), into: &result)
+            return result
+        }
+
+        if key.hasPrefix("name:") {
+            let rest = String(key.dropFirst(5))
+            parseVendorModel(rest, into: &result)
+            return result
+        }
+
+        ingestIdentityTail(key, into: &result)
+        return result
+    }
+
+    private static func parseVendorModel(_ text: some StringProtocol, into tokens: inout StoredIdentityTokens) {
+        let parts = text.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return }
+        tokens.vendor = UInt32(parts[0])
+        tokens.model = UInt32(parts[1])
+    }
+
+    private static func ingestIdentityTail(_ tail: String, into tokens: inout StoredIdentityTokens) {
+        if looksLikeUUID(tail) {
+            tokens.uuids.insert(tail)
+            return
+        }
+        if looksLikeSerial(tail) {
+            tokens.serials.insert(tail)
+        }
+    }
+
+    private static func looksLikeUUID(_ value: String) -> Bool {
+        let hex = normalizedUUID(value)
+        return hex.count == 32 && hex.allSatisfy(\.isHexDigit)
+    }
+
+    private static func looksLikeSerial(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.contains(" ") { return false }
+        return true
+    }
+
+    private static func compatible(_ facts: PanelFacts, tokens: StoredIdentityTokens) -> Bool {
+        if let vendor = tokens.vendor, vendor != 0, vendor != serialMissing,
+           facts.vendor != 0, facts.vendor != serialMissing, vendor != facts.vendor {
+            return false
+        }
+        if let model = tokens.model, model != 0, model != serialMissing,
+           facts.model != 0, facts.model != serialMissing, model != facts.model {
+            return false
+        }
+        return true
+    }
+
+    private static func serialOverlap(_ tokens: StoredIdentityTokens, _ facts: PanelFacts) -> Bool {
+        let stored = Set(tokens.serials.map { $0.uppercased() })
+        let live = Set(facts.serials.map { $0.uppercased() })
+        return !stored.isDisjoint(with: live)
+    }
+
+    private static func uuidOverlap(_ tokens: StoredIdentityTokens, _ facts: PanelFacts) -> Bool {
+        let stored = Set(tokens.uuids.map(normalizedUUID))
+        let live = Set(facts.uuids.map(normalizedUUID))
+        return !stored.isDisjoint(with: live)
+    }
+
+    private static func normalizedUUID(_ value: String) -> String {
+        value.replacingOccurrences(of: "-", with: "").uppercased()
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import ControlBoxCore
 import SwiftUI
 
 extension Notification.Name {
@@ -13,6 +14,7 @@ enum WindowActions {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = DualSenseMonitor()
+    let arrangementCatalog = ArrangementCatalog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
@@ -24,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
+        ArrangementHotkey.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -47,7 +50,7 @@ struct ControlBoxApp: App {
 
     var body: some Scene {
         Window("Control Box", id: "main") {
-            ContentView(monitor: appDelegate.monitor)
+            ContentView(monitor: appDelegate.monitor, arrangementCatalog: appDelegate.arrangementCatalog)
                 .frame(minWidth: 860, minHeight: 620)
                 .preferredColorScheme(nil)
                 .modifier(RegisterOpenWindow())

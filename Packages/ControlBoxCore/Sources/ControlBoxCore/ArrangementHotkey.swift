@@ -50,7 +50,11 @@ private final class Controller: @unchecked Sendable {
     }
 
     private func start() {
-        if port != nil { return }
+        if let port {
+            CGEvent.tapEnable(tap: port, enable: true)
+            if CGEvent.tapIsEnabled(tap: port) { return }
+            stop()
+        }
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
             | CGEventMask(1 << CGEventType.keyUp.rawValue)
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
