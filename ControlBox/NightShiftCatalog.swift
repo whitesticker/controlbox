@@ -25,6 +25,7 @@ final class NightShiftCatalog {
     private var lastApplied: Double?
     private var lastBrightnessOffset: Double?
     private var ignoreSystemUntil = Date.distantPast
+    private var lastLiveApply = Date.distantPast
     private static let defaultsKey = "controlbox.nightShift.v1"
     private static let tickInterval: TimeInterval = 20
 
@@ -108,8 +109,13 @@ final class NightShiftCatalog {
     func movePoint(id: String, minutes: Double, warmth: Double, live: Bool) {
         curve.move(id: id, minutes: minutes, warmth: warmth)
         currentWarmth = curve.warmth(at: Date())
-        apply(period: live ? 0.18 : 1.4, force: !live)
-        if !live {
+        if live {
+            let now = Date()
+            guard now.timeIntervalSince(lastLiveApply) >= 0.15 else { return }
+            lastLiveApply = now
+            apply(period: 0.18, force: true, restyle: false)
+        } else {
+            apply(period: 1.4, force: true)
             persist()
         }
     }
@@ -195,21 +201,20 @@ final class NightShiftCatalog {
         apply(period: 8, force: false)
     }
 
-    private func apply(period: TimeInterval, force: Bool) {
+    private func apply(period: TimeInterval, force: Bool, restyle: Bool = true) {
         currentWarmth = curve.warmth(at: Date())
         guard enabled, isSupported else { return }
         let warmth = currentWarmth
         let warmthMoved = force || lastApplied == nil || abs(lastApplied! - warmth) >= 0.008
         lastApplied = warmth
-        let fade = warmthMoved ? period : 0
+        guard warmthMoved else { return }
+        let fade = period
         // Strength fades post many status notifications. Handling each one
         // with another apply() busy-waits CoreBrightness XPC on the main
         // actor and beachballs the app.
         ignoreSystemUntil = Date().addingTimeInterval(max(fade, 0.5) + 0.2)
-        NightShift.apply(warmth: warmth, period: fade)
-        if warmthMoved {
-            applyExternalBrightness(force: force)
-        }
+        NightShift.apply(warmth: warmth, period: fade, restyle: restyle)
+        applyExternalBrightness(force: force)
     }
 
     private func handleSystemNightShiftChanged() {

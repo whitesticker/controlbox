@@ -130,6 +130,11 @@ public final class MouseScrollTap: @unchecked Sendable {
         }
 
         let continuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+        if let nsEvent = NSEvent(cgEvent: event),
+           nsEvent.phase != [] || nsEvent.momentumPhase != [] {
+            touching = 0
+            return Unmanaged.passUnretained(event)
+        }
         let recentTouches = touching >= 2
             && DispatchTime.now().uptimeNanoseconds &- lastTouchAt < 222_000_000
         touching = 0

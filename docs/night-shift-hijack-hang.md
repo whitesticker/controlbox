@@ -10,8 +10,8 @@ The Night Shift pane toggle stays on across launches. `beginControl` registers a
 
 ## What we changed
 
-Ignore status callbacks that fire as an echo of our own `NightShift.apply`. Real System Settings / Control Center changes still put the curve back.
+Ignore status callbacks that fire as an echo of our own `NightShift.apply` for the fade duration. Live curve drags throttle CoreBrightness writes to 150 ms and skip the schedule / `getBlueLightStatus` XPC. Real System Settings / Control Center changes still put the curve back.
 
 ## Do not
 
-Call `apply(force: true)` from the status handler without an echo guard.
+Call `apply(force: true)` from the status handler without an echo guard. Do not `getBlueLightStatus` on every drag pixel.

@@ -102,8 +102,10 @@ public enum NightShift {
 
     /// `warmth` is 0…1 (cool → Night Shift maximum). Near-zero turns Night Shift off
     /// so the panel is full daylight. `period` is the CoreBrightness fade in seconds.
-    public static func apply(warmth: Double, period: TimeInterval) {
-        Client.shared.apply(warmth: warmth, period: period)
+    /// `restyle` writes the 24-hour take-over schedule; live curve drags skip it
+    /// and skip the status XPC that beachballs the pane.
+    public static func apply(warmth: Double, period: TimeInterval, restyle: Bool = true) {
+        Client.shared.apply(warmth: warmth, period: period, restyle: restyle)
     }
 }
 
@@ -207,21 +209,23 @@ private final class Client: @unchecked Sendable {
         }
     }
 
-    func apply(warmth: Double, period: TimeInterval) {
+    func apply(warmth: Double, period: TimeInterval, restyle: Bool) {
         lock.lock()
         defer { lock.unlock() }
         guard let object else { return }
         let clamped = Float(min(max(warmth, 0), 1))
-        if isHolding(object, warmth: clamped) {
+        if restyle, isHolding(object, warmth: clamped) {
             return
         }
         if clamped < 0.012 {
             setEnabled(object, false)
             return
         }
-        takeOverScheduleLocked()
-        setActive(object, true)
-        setEnabled(object, true)
+        if restyle {
+            takeOverScheduleLocked()
+            setActive(object, true)
+            setEnabled(object, true)
+        }
         setStrength(object, clamped, period: period)
         if let range = cctRangeLocked() {
             let kelvin = Float(range.maxKelvin - Double(clamped) * (range.maxKelvin - range.minKelvin))

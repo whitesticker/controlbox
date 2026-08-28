@@ -2092,12 +2092,17 @@ private enum MXClickProbe {
     private static var readers: [ObjectIdentifier: LogitechMXMasterReader] = [:]
     private static var tap: CFMachPort?
     private static var source: CFRunLoopSource?
+    private static var scrollTap: CFMachPort?
+    private static var scrollSource: CFRunLoopSource?
 
     static let callback: CGEventTapCallBack = { _, type, event, _ in
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             MXClickProbe.lock.lock()
             if let tap = MXClickProbe.tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            if let scrollTap = MXClickProbe.scrollTap {
+                CGEvent.tapEnable(tap: scrollTap, enable: true)
             }
             MXClickProbe.lock.unlock()
             return Unmanaged.passUnretained(event)
@@ -2128,7 +2133,6 @@ private enum MXClickProbe {
             | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
             | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
-            | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
             | CGEventMask(1 << CGEventType.mouseMoved.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
             | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue)
@@ -2144,9 +2148,27 @@ private enum MXClickProbe {
         let loopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, created, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), loopSource, .commonModes)
         CGEvent.tapEnable(tap: created, enable: true)
+        let scrollMask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+        let createdScroll = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .tailAppendEventTap,
+            options: .listenOnly,
+            eventsOfInterest: scrollMask,
+            callback: callback,
+            userInfo: nil
+        )
+        var scrollLoop: CFRunLoopSource?
+        if let createdScroll {
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, createdScroll, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+            CGEvent.tapEnable(tap: createdScroll, enable: true)
+            scrollLoop = source
+        }
         lock.lock()
         tap = created
         source = loopSource
+        scrollTap = createdScroll
+        scrollSource = scrollLoop
         lock.unlock()
     }
 
@@ -2156,9 +2178,13 @@ private enum MXClickProbe {
         let empty = readers.isEmpty
         let doomedTap = empty ? tap : nil
         let doomedSource = empty ? source : nil
+        let doomedScrollTap = empty ? scrollTap : nil
+        let doomedScrollSource = empty ? scrollSource : nil
         if empty {
             tap = nil
             source = nil
+            scrollTap = nil
+            scrollSource = nil
         }
         lock.unlock()
         if let doomedSource {
@@ -2166,6 +2192,12 @@ private enum MXClickProbe {
         }
         if let doomedTap {
             CFMachPortInvalidate(doomedTap)
+        }
+        if let doomedScrollSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), doomedScrollSource, .commonModes)
+        }
+        if let doomedScrollTap {
+            CFMachPortInvalidate(doomedScrollTap)
         }
     }
 }

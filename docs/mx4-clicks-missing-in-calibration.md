@@ -14,7 +14,7 @@ MX4 already receives native report `0x02` on the HID++ device callback (same pat
 
 ## What we changed
 
-- One shared session tap (`MXClickProbe`) for every MX reader. Swallow if any reader wants swallow.
+- One shared session tap (`MXClickProbe`) for every MX reader. Swallow if any reader wants swallow. Wheel motion for Calibration is a separate listen-only tap so it does not sit on the blocking scroll path.
 - Parse report `0x02` button bits (bit0 left, bit1 right, bit2 middle) and wheel / pan after the 12-bit X/Y field. MX4 has one button byte (`nativeMouseButtonBytes = 1`), so wheel is at index 5. Pulse wheel / thumb for 0.18s so Calibration can show motion.
 
 Do not call `startMouse()`. Do not seize HID.
