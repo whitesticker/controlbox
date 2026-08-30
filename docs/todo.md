@@ -35,7 +35,7 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Two mice at once (3S + 4) — isolated HID++ readers; still needs a 3S+4 hardware pass
 - [x] Device family sessions (DualSense, Apple TV A2540); host no longer owns those readers
 - [x] Displays pane lists one row per `NSScreen` (no leftover DDC ghost). Apple-silicon DDC matching follows MonitorControl (MIT); credit is on the Displays page (see [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md)).
-- [x] Sound pane: system output + per-app volume via Apple process tap (no FineTune / Background Music code). Two tap mixers cannot own the same app; Sound warns if FineTune / SoundSource / etc. is already running (see [process-tap-exclusive.md](process-tap-exclusive.md)). MacBook speakers need a stacked aggregate and gain in the IOProc (see [macbook-app-volume-binary.md](macbook-app-volume-binary.md)).
+- [x] Sound pane: system output + per-app volume via Apple process tap (no FineTune / Background Music code). Two tap mixers cannot own the same app; Sound warns if FineTune / SoundSource / etc. is already running (see [process-tap-exclusive.md](process-tap-exclusive.md)). MacBook speakers use a tap-only aggregate plus HALOutput; do not drive speaker IO from the tap (see [macbook-app-volume-binary.md](macbook-app-volume-binary.md), [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md)).
 
 ## Later
 

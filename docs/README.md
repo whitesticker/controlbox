@@ -42,6 +42,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [arrangement-duplicate-combo.md](arrangement-duplicate-combo.md) | Display Arrangement lists the same monitors as two groups |
 | [process-tap-exclusive.md](process-tap-exclusive.md) | Per-app volume does nothing while FineTune or another tap mixer is open |
 | [macbook-app-volume-binary.md](macbook-app-volume-binary.md) | MacBook speakers: per-app slider is 100% or silence |
+| [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md) | Sequoia: moving a Sound slider freezes the whole Mac |
 | [audio-permission-stale.md](audio-permission-stale.md) | Permissions still asks after System Audio Recording is granted |
 | [mac-panes-gated-on-mx.md](mac-panes-gated-on-mx.md) | Window Grab and Pointer & Scroll stay off until an MX Master is attached |
 | [window-grab-only-own-app.md](window-grab-only-own-app.md) | Window grab moves Control Box but not Finder, Safari, or other apps |

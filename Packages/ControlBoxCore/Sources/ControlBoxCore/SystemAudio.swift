@@ -21,7 +21,7 @@ public enum SystemAudio {
                 return nil
             }
             let name = stringProperty(device, kAudioObjectPropertyName) ?? uid
-            if uid.hasPrefix("ControlBox-mix-") || name.hasPrefix("Control Box Mix") {
+            if isMixerDevice(uid: uid, name: name) {
                 return nil
             }
             return AudioOutput(id: uid, name: name, isDefault: uid == defaultUID)
@@ -29,8 +29,26 @@ public enum SystemAudio {
     }
 
     public static func defaultOutputUID() -> String? {
-        guard let device = defaultOutputDevice() else { return nil }
-        return stringProperty(device, kAudioDevicePropertyDeviceUID)
+        guard let device = defaultOutputDevice(),
+              let uid = stringProperty(device, kAudioDevicePropertyDeviceUID) else {
+            return nil
+        }
+        let name = stringProperty(device, kAudioObjectPropertyName) ?? uid
+        if !isMixerDevice(uid: uid, name: name) {
+            return uid
+        }
+        return deviceIDs().compactMap { candidate -> String? in
+            guard outputStreamCount(candidate) > 0,
+                  let candidateUID = stringProperty(candidate, kAudioDevicePropertyDeviceUID) else {
+                return nil
+            }
+            let candidateName = stringProperty(candidate, kAudioObjectPropertyName) ?? candidateUID
+            return isMixerDevice(uid: candidateUID, name: candidateName) ? nil : candidateUID
+        }.first
+    }
+
+    static func isMixerDevice(uid: String, name: String) -> Bool {
+        uid.hasPrefix("ControlBox-mix-") || name.hasPrefix("Control Box Mix")
     }
 
     public static func setDefaultOutput(uid: String) {

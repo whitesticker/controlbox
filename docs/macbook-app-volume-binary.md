@@ -14,8 +14,10 @@ A later tap-only aggregate avoided the seizure, but it has no speaker clock. The
 
 ## What we changed
 
-Stacked private aggregate (`kAudioAggregateDeviceIsStackedKey`) with the real output as clock / main subdevice plus the process tap. Apply gain in the aggregate IOProc and write that to the aggregate output. Do not silence the speakers, and do not play back through a second output unit.
+Tap-only private aggregate (clock from the output UID, no speaker subdevice). Capture the tap on the HAL thread, play through HALOutput aimed at the real output at that device’s sample rate, apply gain there. A stacked aggregate is only a fallback, and then output streams are disabled so the IOProc never drives the speakers.
+
+Writing gained samples onto a stacked speaker IOProc stopped the “100% or silence” symptom but froze Sequoia MacBooks (see [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md)).
 
 ## Do not
 
-Put the built-in speakers in a **non-stacked** aggregate and silence that output. Do not use a tap-only aggregate plus HALOutput / DefaultOutput as the MacBook playback path.
+Put the built-in speakers in a **non-stacked** aggregate and silence that output. Do not write speaker buffers from a GCD IOProc. Do not pump `CFRunLoopRunInMode` while creating a tap.

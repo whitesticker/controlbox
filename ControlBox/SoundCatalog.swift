@@ -58,11 +58,15 @@ final class SoundCatalog {
                 apps[index].isMuted = false
             }
         }
-        AppVolumeMixer.setVolume(value, id: id)
-        if value > 0.0001 {
-            AppVolumeMixer.setMuted(false, id: id)
+        debounce("app-\(id)") {
+            AppVolumeMixer.setVolume(value, id: id)
+            if value > 0.0001 {
+                AppVolumeMixer.setMuted(false, id: id)
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.mixError = AppVolumeMixer.lastError()
+            }
         }
-        mixError = AppVolumeMixer.lastError()
     }
 
     func setAppMuted(_ muted: Bool, id: String) {
