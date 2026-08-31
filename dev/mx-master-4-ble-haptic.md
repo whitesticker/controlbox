@@ -42,6 +42,7 @@ Opening the standard mouse collection **only to watch buttons** can still steal 
 - Talk HID++ on report `0x11` of that same device when extra firmware features are needed.
 - Do not assume Bolt receiver slot 1 is the MX4. Walk slots and read the name.
 - Keep `tools/hidpp-sniff.swift` for the next capture. Kill it when done so it does not hold the device.
+- Bolt-only MX4 is a separate path (`C548` slots). See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 
 ## Related
 

@@ -9,7 +9,7 @@ struct AddDeviceSheet: View {
             List {
                 Section {
                     if monitor.addableDevices.isEmpty {
-                        Text("No other supported device is available. Connect a DualSense or Apple TV remote, or pair it in Bluetooth settings.")
+                        Text("No other supported device is available. Connect a DualSense, Apple TV remote, MX Master, or MX Mechanical, or pair it in Bluetooth settings.")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(monitor.addableDevices) { device in
@@ -54,7 +54,7 @@ struct AddDeviceSheet: View {
 
     private func deviceRow(_ device: ConnectedBluetoothDevice, showsAdd: Bool) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: device.deviceKind == .appleTVRemote ? "appletvremote.gen4" : "gamecontroller")
+            Image(systemName: addDeviceSymbol(for: device.deviceKind))
                 .font(.body)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
@@ -73,5 +73,12 @@ struct AddDeviceSheet: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private func addDeviceSymbol(for kind: DeviceKind) -> String {
+        if kind == .appleTVRemote { return "appletvremote.gen4" }
+        if kind.isMXMaster { return "computermouse" }
+        if kind.isMXKeyboard { return "keyboard" }
+        return "gamecontroller"
     }
 }

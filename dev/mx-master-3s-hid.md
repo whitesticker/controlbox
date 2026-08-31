@@ -39,3 +39,4 @@ Divert flags are the same hold-only pair as MX4 (`0x33`). No persist, no force-r
 - [mx-master-3s-wrong-usage-page.md](mx-master-3s-wrong-usage-page.md)
 - [hid-open-seize-dual-mouse.md](hid-open-seize-dual-mouse.md)
 - [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md)
+- [logi-bolt-receiver.md](logi-bolt-receiver.md) — Bolt-only 3S is a `C548` slot, not product `0xB043`

@@ -21,6 +21,7 @@ HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz time
 | System Monitor | 1 s (sensors 3 s, battery 5 s) | CPU / GPU / memory / net / disk / SMC | System Monitor menu extra on | Sample process list on this tick (`ProcessMonitor` is on demand). |
 | Sound menu extra | 1.5 s | `SystemAudio` outputs + `AppVolumeMixer.apps()` | Only while the Sound extra menu is **open** | Rebuild process taps on an empty `!obj` list. See [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md). |
 | App volume taps | HAL IOProc / tap clock | Per-app gain while a tap is installed | Sound mixer is live | Two mixers on the same app. See [process-tap-exclusive.md](process-tap-exclusive.md). |
+| MX Mechanical battery | 30 s | HID++ `UNIFIED_BATTERY` | Keyboard HID++ ready | Do not put on the 120 Hz path. Do not divert keys. Do not `SetReport` on the main thread from a SwiftUI toggle. |
 
 ## Event-driven (no idle poll)
 
@@ -29,6 +30,7 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 | Path | Trigger | System API | Notes |
 |---|---|---|---|
 | MX HID++ / clicks | HID report, one shared click tap | `IOHID`, `CGEvent` tap | Do not open the standard mouse collection. |
+| MX Mechanical HID++ | HID++ report `0x11` + 30 s battery read while attached | `IOHID` SetReport on a serial IO queue, no seize | Do not treat keyboard reports as HID++. Do not divert keys. Do not read-after-write on backlight toggle / effect. See [mx-mechanical-hid.md](mx-mechanical-hid.md). |
 | Scroll speed / invert | Wheel `CGEvent` tap | `CGEvent` | Input Monitoring. |
 | Window Grab / Organize / Arrangement hotkeys | Listen-only `CGEvent` tap | `CGEvent`, then AX on a timer | Stash in the tap; AX on the tick. |
 | Shake to focus | Listen-only left-mouse tap; Window Grab move feeds points | Coalesced main-queue AX hit / minimize | **No idle timer.** Keep down and drag in the same flush. See [shake-to-focus.md](shake-to-focus.md). |

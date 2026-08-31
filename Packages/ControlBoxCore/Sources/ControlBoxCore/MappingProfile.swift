@@ -383,8 +383,16 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public static func makeDefault(
         name: String = "Default",
         isAppleTVRemote: Bool,
-        isMXMaster: Bool = false
+        isMXMaster: Bool = false,
+        isMXKeyboard: Bool = false
     ) -> MappingProfile {
+        if isMXKeyboard {
+            return MappingProfile(
+                name: name,
+                summary: "Backlight, lighting effects, and battery.",
+                bindings: [:]
+            )
+        }
         if isMXMaster {
             return MappingProfile(
                 name: name,

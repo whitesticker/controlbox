@@ -1,12 +1,12 @@
 # Control Box agent notes
 
-Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master) to pointer, keys, and system gestures.
+Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master, MX Mechanical) to pointer, keys, and system gestures.
 
-## Current status (2026-08-27)
+## Current status (2026-08-31)
 
-- Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, and MX Master 4 can stay attached at once. Each device has its own **Control this Mac** toggle.
-- Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
-- HID modules stay split: **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Each family has its own HID++ reader (product IDs only). Shared code is the HID++ pipe and hold-to-swipe engine.
+- Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, MX Master 4, and **MX Mechanical / Mini** can stay attached at once. Mice have a **Control this Mac** toggle. The keyboard family is settings-only (backlight, lighting effect, battery saving, battery %).
+- Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), `MXKeyboardSession`, MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
+- HID modules stay split: **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Keyboard is `MXMechanicalSupport` (`0xB366` / `0xB367`). Each family has its own HID++ reader (product IDs only). Shared code is the HID++ pipe and hold-to-swipe engine. `0xB366` is the keyboard, not MX4. See `dev/mx-mechanical-hid.md`.
 - 3S HID++ is nested on the mouse device (page `0xFF43`, report `0x11`). Gesture is thumb CID `0x00C3`. See `dev/mx-master-3s-hid.md`.
 - MX4 pointer / haptic stack is unchanged. How MX4 should feel is `dev/mx-master-4-pointer-and-haptic.md`.
 - Pointer speed and gesture speed are **separate sliders**. DPI is sensor resolution only. Both speeds divide out DPI so 1000 DPI is the reference feel.
@@ -29,7 +29,7 @@ Control Box is a local Mac app that maps unusual input devices (DualSense, Apple
 - MX wheel and thumb roller are **per-direction** bindings (`mxWheelUp/Down`, `mxThumbLeft/Right`). Missing or `.scroll` keeps native scroll for that direction; any other action replaces it (`MouseScrollTap` drop flags).
 - MX Calibration is a silhouette mouse plus a separate gesture pad. Wheel column is **Up, Click, Down**, then a gap, then **Mode**. Thumb is Forward above Back. MX4-only **Side** sits between the thumb roller and Forward.
 - MX4 left / right / wheel on Calibration come from report `0x02` on the HID++ device plus **one** shared `CGEvent` tap. Do not open the mouse collection; do not give each reader its own tap. See `dev/mx4-clicks-missing-in-calibration.md`.
-- Do not attach Bolt receiver `C548`. Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
+- Do not attach Bolt receiver `C548` from the mouse product-ID matchers. Bolt-only 3S/4 is planned as one vendor-HID++ slot walk (`dev/logi-bolt-receiver.md`). Do not seize HID. Do not open the standard mouse collection just to watch buttons. Do not go back to one matcher for every Logitech interface.
 
 ## Device rule
 
@@ -39,9 +39,10 @@ Treat these as **different devices**, not one “MX Master”:
 |---|---|---|
 | MX Master 3 | Unifying `0x4082`, BLE `0xB023`. Same HID module as 3S. | Gesture CID `0x00C3`. No 3 on this Mac; inferred from Solaar/logiops. |
 | MX Master 3S | BLE `0xB034`, Bolt `0xB043`. Nested `0xFF43` / report `0x11`. | Same CIDs as Master 3. Thumb gesture `0x00C3`. |
-| MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse. | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. Extra thumb **Side** button is CID `0x00C3` (in front of Back / Forward). |
+| MX Master 4 | BLE: vendor report `0x11` on the mouse device (page `0xFF43`), not a separate `0xFF00` collection. Bolt receiver `C548` is not the mouse (slots; see `dev/logi-bolt-receiver.md`). | Haptic is HID button 7 (`0x40` on report `0x02`). CID `0x01A0` is HID++ when that pipe exists. Extra thumb **Side** button is CID `0x00C3` (in front of Back / Forward). |
+| MX Mechanical / Mini | BLE `0xB366` / `0xB367`. Nested HID++ on the keyboard collection (report `0x11`). | Settings only (backlight, effect, battery). Do not divert keys. |
 
-3S + 4 at once is allowed through **two isolated readers**, not one manager that opens every Logitech collection. Keep 3/3S and 4 as separate HID modules. Shared code should stay at “send a HID++ report” / “list HID devices” / hold-to-swipe.
+3S + 4 at once is allowed through **two isolated readers**, not one manager that opens every Logitech collection. Keep 3/3S and 4 as separate HID modules. The keyboard is a third reader (`MXKeyboardReader`). Shared code should stay at “send a HID++ report” / “list HID devices” / hold-to-swipe.
 
 ## Hard constraints
 
@@ -54,4 +55,4 @@ Treat these as **different devices**, not one “MX Master”:
 
 ## Docs
 
-The public landing page is `docs/` (GitHub Pages from `/docs`). Developer notes are `dev/`. Start at `dev/README.md`. MX4 feel and architecture: `dev/mx-master-4-pointer-and-haptic.md`. Why Gestures is haptic-only: `dev/haptic-vs-back-gesture.md`. Open work: `dev/todo.md`. Repeating timers and system-API polls: `dev/polling-loops.md`. One issue type per file. Update those when a new failure mode or fix item shows up. Add a row to `dev/polling-loops.md` when you add a loop. Do not put incident notes in `docs/`.
+The public landing page is `docs/` (GitHub Pages from `/docs`). Developer notes are `dev/`. Start at `dev/README.md`. MX4 feel and architecture: `dev/mx-master-4-pointer-and-haptic.md`. MX Mechanical: `dev/mx-mechanical-hid.md`. Bolt receiver (planned): `dev/logi-bolt-receiver.md`. Why Gestures is haptic-only: `dev/haptic-vs-back-gesture.md`. Open work: `dev/todo.md`. Repeating timers and system-API polls: `dev/polling-loops.md`. One issue type per file. Update those when a new failure mode or fix item shows up. Add a row to `dev/polling-loops.md` when you add a loop. Do not put incident notes in `docs/`.

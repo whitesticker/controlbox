@@ -30,16 +30,23 @@ struct DeviceProfilePane: View {
                         if record.isMXMaster {
                             LabeledContent("HID++", value: mxHIDPPStatus(for: record))
                         }
+                        if record.isMXKeyboard {
+                            LabeledContent("HID++", value: keyboardHIDPPStatus(for: record))
+                        }
                     }
 
-                    Section {
-                        Toggle("Control this Mac", isOn: controlEnabledBinding)
-                        Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
-                    } footer: {
-                        Text("Sends this device’s inputs to the Mac. Injection is skipped while Control Box is frontmost unless you enable the second switch.")
-                    }
+                    if record.isMXKeyboard {
+                        keyboardBatterySection
+                        keyboardSettingsSection
+                    } else {
+                        Section {
+                            Toggle("Control this Mac", isOn: controlEnabledBinding)
+                            Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
+                        } footer: {
+                            Text("Sends this device’s inputs to the Mac. Injection is skipped while Control Box is frontmost unless you enable the second switch.")
+                        }
 
-                    Section("Profile") {
+                        Section("Profile") {
                         if record.profiles.count > 1 {
                             Picker("Active profile", selection: profileSelection) {
                                 ForEach(record.profiles) { profile in
@@ -69,7 +76,7 @@ struct DeviceProfilePane: View {
 
                     analogSection(for: record)
 
-                    if !record.isMXMaster && !record.isAppleTVRemote {
+                    if !record.isMXMaster && !record.isAppleTVRemote && !record.isMXKeyboard {
                         dualSenseTouchpadGesturesSection(for: record)
                     }
 
@@ -164,6 +171,7 @@ struct DeviceProfilePane: View {
                     } footer: {
                         Text("Opens a live capture window for this device so you can confirm buttons, clickpad, and motion.")
                     }
+                    }
 
                     if record.remembered {
                         Section {
@@ -204,6 +212,8 @@ struct DeviceProfilePane: View {
     @ViewBuilder
     private func analogSection(for record: DeviceRecord) -> some View {
         if record.isMXMaster {
+            EmptyView()
+        } else if record.isMXKeyboard {
             EmptyView()
         } else if record.isAppleTVRemote {
             Section {
@@ -655,7 +665,82 @@ struct DeviceProfilePane: View {
         return "Not connected"
     }
 
+    private func keyboardHIDPPStatus(for record: DeviceRecord) -> String {
+        let live = monitor.mxKeyboardSnapshot
+        if monitor.isLiveKeyboardSelection(live) {
+            return live.status
+        }
+        return "Not connected"
+    }
+
+    @ViewBuilder
+    private var keyboardBatterySection: some View {
+        let live = monitor.mxKeyboardSnapshot
+        Section("Battery") {
+            if live.batteryAvailable, let percent = live.batteryPercent {
+                LabeledContent("Level", value: "\(percent)%")
+                LabeledContent("State", value: live.batteryStateDescription)
+            } else {
+                LabeledContent("Level", value: monitor.isLiveKeyboardSelection(live) ? "Reading…" : "Not connected")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var keyboardSettingsSection: some View {
+        let live = monitor.mxKeyboardSnapshot
+        let liveForRecord = monitor.isLiveKeyboardSelection(live)
+        let disabled = !liveForRecord
+        Section {
+            Toggle("Backlight", isOn: keyboardBacklightBinding)
+                .disabled(disabled || !live.backlightSupported)
+            Picker("Lighting effect", selection: keyboardEffectBinding) {
+                ForEach(keyboardPickerEffects) { effect in
+                    Text(effect.title).tag(effect)
+                }
+            }
+            .disabled(disabled || !live.backlightSupported)
+            Toggle("Battery saving", isOn: keyboardBatterySavingBinding)
+                .disabled(disabled || !live.batterySavingSupported)
+        } header: {
+            Text("Keyboard")
+        } footer: {
+            Text("Backlight and battery saving are stored on the keyboard. Battery saving turns the backlight off when the charge is critically low. Quit Logi Options+ if HID++ stays disconnected.")
+        }
+    }
+
+    private var keyboardPickerEffects: [MXKeyboardBacklightEffect] {
+        let live = monitor.mxKeyboardSnapshot
+        var effects = live.supportedEffects
+        if !effects.contains(live.backlightEffect) {
+            effects.insert(live.backlightEffect, at: 0)
+        }
+        return effects
+    }
+
+    private var keyboardBacklightBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.mxKeyboardSnapshot.backlightEnabled },
+            set: { monitor.setKeyboardBacklightEnabled($0) }
+        )
+    }
+
+    private var keyboardEffectBinding: Binding<MXKeyboardBacklightEffect> {
+        Binding(
+            get: { monitor.mxKeyboardSnapshot.backlightEffect },
+            set: { monitor.setKeyboardBacklightEffect($0) }
+        )
+    }
+
+    private var keyboardBatterySavingBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.mxKeyboardSnapshot.batterySaving },
+            set: { monitor.setKeyboardBatterySaving($0) }
+        )
+    }
+
     private func buttonGroups(for record: DeviceRecord) -> [DeviceButtonGroup] {
+        if record.isMXKeyboard { return [] }
         if record.isMXMaster {
             if record.kind.isMXMaster3Family {
                 return DeviceButton.mxMasterGroups.map { group in

@@ -139,6 +139,10 @@ private struct DeviceRow: View {
         if !enabled { return "antenna.radiowaves.left.and.right" }
         switch device.deviceKind {
         case .appleTVRemote: return "appletvremote"
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+            return "computermouse.fill"
+        case .logitechMXMechanical, .logitechMXMechanicalMini:
+            return "keyboard.fill"
         default: return "gamecontroller.fill"
         }
     }

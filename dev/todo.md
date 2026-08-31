@@ -39,9 +39,10 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 
 ## Later
 
+- [ ] Logi Bolt (`0xC548`): HID++ slot walk, no mouse collection. Capture when the dongle is plugged in. See [logi-bolt-receiver.md](logi-bolt-receiver.md) / [roadmap.md](roadmap.md).
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, live gesture HUD, MX Keys / MX Mechanical, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles, product page) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys remapping, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles, product page) lives in [roadmap.md](roadmap.md). MX Mechanical settings and MX4 Side are shipped. Media skip / play / mute already show an action HUD.

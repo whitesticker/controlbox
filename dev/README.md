@@ -10,7 +10,7 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys / MX Mechanical, window management, onboarding, product page). System Monitor (top) and Dock Previews are shipped as Mac panes.
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page). MX Mechanical settings, System Monitor (top), and Dock Previews are shipped.
 
 HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list. Repeating timers and system-API polls are listed in [polling-loops.md](polling-loops.md).
 
@@ -29,6 +29,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [mx-master-3s-hid.md](mx-master-3s-hid.md) | BLE 3S HID++ lives on the mouse device, not a second collection |
 | [mx-settings-panel-wrong-model.md](mx-settings-panel-wrong-model.md) | 3S is controlled from the remembered MX4 settings panel |
 | [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) | BLE MX4 haptic/HID++ live on the mouse report, not `0xFF00` |
+| [mx-mechanical-hid.md](mx-mechanical-hid.md) | BLE MX Mechanical HID++ lives on the keyboard device; settings only |
+| [logi-bolt-receiver.md](logi-bolt-receiver.md) | Bolt-only MX 3S / 4 never attach; `C548` is slots, not the mouse |
 | [haptic-swipe-scales-with-dpi.md](haptic-swipe-scales-with-dpi.md) | High DPI makes hold-to-swipe much faster than 1000 DPI |
 | [dockswipe-down-skips-app-expose.md](dockswipe-down-skips-app-expose.md) | Swipe down never opens App Exposé |
 | [haptic-tap-starts-swipe.md](haptic-tap-starts-swipe.md) | A tap also peeks Spaces or Mission Control |

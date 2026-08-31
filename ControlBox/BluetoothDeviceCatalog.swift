@@ -10,6 +10,8 @@ enum DeviceKind: String, Codable, Equatable {
     case logitechMXMaster3
     case logitechMXMaster3S
     case logitechMXMaster4
+    case logitechMXMechanical
+    case logitechMXMechanicalMini
     case unsupported
 
     var isSupported: Bool { self != .unsupported }
@@ -21,6 +23,10 @@ enum DeviceKind: String, Codable, Equatable {
         default:
             return false
         }
+    }
+
+    var isMXKeyboard: Bool {
+        self == .logitechMXMechanical || self == .logitechMXMechanicalMini
     }
 
     var usesMXMasterHIDPP: Bool {
@@ -40,6 +46,8 @@ enum DeviceKind: String, Codable, Equatable {
         case .logitechMXMaster, .logitechMXMaster4: return "MX Master 4"
         case .logitechMXMaster3: return "MX Master 3"
         case .logitechMXMaster3S: return "MX Master 3S"
+        case .logitechMXMechanical: return "MX Mechanical"
+        case .logitechMXMechanicalMini: return "MX Mechanical Mini"
         case .unsupported: return "Not supported yet"
         }
     }
@@ -67,6 +75,7 @@ enum DeviceSupport {
     static let mxMasterProductIDs: Set<Int> =
         MXMaster3Support.productIDs
             .union(MXMaster4Support.productIDs)
+    static var mxKeyboardProductIDs: Set<Int> { MXMechanicalSupport.productIDs }
 
     static func classify(name: String, vendorID: Int?, productID: Int?) -> DeviceKind {
         if vendorID == sonyVendorID {
@@ -77,6 +86,9 @@ enum DeviceSupport {
             return .appleTVRemote
         }
         if vendorID == logitechVendorID, let productID {
+            if MXMechanicalSupport.productIDs.contains(productID) {
+                return MXMechanicalSupport.kind(productID: productID, product: name)
+            }
             if MXMaster4Support.productIDs.contains(productID) { return .logitechMXMaster4 }
             if MXMaster3Support.productIDs.contains(productID) {
                 return MXMaster3Support.kind(productID: productID, product: name)
@@ -92,6 +104,7 @@ enum DeviceSupport {
         if name.uppercased() == "DJ7FTR0Y17FC" {
             return .appleTVRemote
         }
+        if isMXMechanicalName(name) { return MXMechanicalSupport.kind(from: name) }
         if isMXMasterName(name) { return mxKind(from: name) }
         return .unsupported
     }
@@ -106,6 +119,10 @@ enum DeviceSupport {
 
     static func isMXMasterName(_ name: String) -> Bool {
         name.lowercased().contains("mx master")
+    }
+
+    static func isMXMechanicalName(_ name: String) -> Bool {
+        name.lowercased().contains("mx mechanical")
     }
 }
 
@@ -250,7 +267,7 @@ private struct HIDNameIndex {
                 kIOHIDProductIDKey as String: productID
             ])
         }
-        for productID in DeviceSupport.mxMasterProductIDs {
+        for productID in DeviceSupport.mxMasterProductIDs.union(DeviceSupport.mxKeyboardProductIDs) {
             matching.append([
                 kIOHIDVendorIDKey as String: DeviceSupport.logitechVendorID,
                 kIOHIDProductIDKey as String: productID

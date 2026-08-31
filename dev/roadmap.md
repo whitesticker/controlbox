@@ -7,10 +7,12 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **DualSense touchpad gestures.** 1-finger and 2-finger are separate Gestures (window navigation / media by default). Same hold-to-swipe engine as the MX gesture button.
 - [ ] **Microphone.** Capture and use the DualSense and Apple TV remote mics on macOS (Bluetooth HID-only today; USB DualSense jack is untested).
 - [x] **MX Master 4 extra button.** MX4 Side is CID `0x00C3` (frontmost thumb button under the roller). Calibration and mappings show it; default is Mission Control.
-- [ ] **MX keyboard.** Add Logitech MX Keys and **MX Mechanical** as a new device family, same host registration as mice / remotes. Map keys, layers, and extra keys the same way as the mice.
+- [x] **MX Mechanical settings.** Device family for MX Mechanical (`0xB366`) and Mini (`0xB367`): backlight, lighting effect, battery saving, battery %. See [mx-mechanical-hid.md](mx-mechanical-hid.md). Key remapping and MX Keys are still open.
+- [ ] **MX keyboard remapping.** Map MX Keys / Mechanical extra keys the same way as the mice. Settings panel for Mechanical is shipped.
 - [x] **Caps Lock as modifier.** Separate Mac pane: Caps Lock is a hold key that synthesizes a chosen modifier chord (default Control) for Control Box only, not a caps toggle. Off until the toggle is on. See [caps-lock-modifier.md](caps-lock-modifier.md).
 - [ ] **Smoother wheel scrolling.** Improve the existing Pointer & Scroll smooth-scrolling path so MX and generic mice feel closer to the trackpad (less stepped, less lag). See also [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md).
 - [ ] **MX4 gesture feel.** Haptic-pad swipes on MX4 are less smooth than the 3S gesture button. Measure HID++ XY vs CG fallback and match 3S feel without seizing the pointer.
+- [ ] **Logi Bolt.** MX 3S / 4 connected only through the USB receiver (`0xC548`) never attach: the mouse is a HID++ slot, not BLE product `0xB034` / `0xB042`. Open only the receiver vendor HID++ collection, walk slots by name, prefer BLE if both radios are up. Do not open the mouse collection. MX4 haptic XY cannot use nested report `0x02` on Bolt. Capture `C548` with `tools/hidpp-sniff.swift` when the dongle is plugged in. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - [ ] **Generic mouse / Xbox / other TV remotes.** Not this version. Family sessions are the add path.
 - [ ] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, scroll) when the frontmost app changes, so one MX mouse can have a different profile in each app.
 
@@ -44,6 +46,6 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 ## Do not
 
 - Call `IOBluetoothDevice.pairedDevices()`.
-- Seize Logitech mouse HID or open Bolt `C548`.
+- Seize Logitech mouse HID. Do not open Bolt `C548` except the planned vendor-HID++ slot walk in [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - Open the standard mouse collection just to watch buttons.
 - Merge 3/3S and 4 into one HID matcher.

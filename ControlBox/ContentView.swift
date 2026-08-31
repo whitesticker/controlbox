@@ -201,6 +201,12 @@ struct CalibrationWindow: View {
                 }
             } else if monitor.selectedKind.isMXMaster {
                 MXMasterCalibrationView(snapshot: monitor.mxMasterSnapshot)
+            } else if monitor.selectedKind.isMXKeyboard {
+                ContentUnavailableView(
+                    "No calibration for this keyboard",
+                    systemImage: "keyboard",
+                    description: Text("MX Mechanical settings live on the device page: backlight, lighting effect, and battery.")
+                )
             } else {
                 HeaderBar(snapshot: monitor.snapshot)
                 HStack(alignment: .top, spacing: 18) {
@@ -227,6 +233,9 @@ struct CalibrationWindow: View {
         }
         if monitor.selectedKind.isMXMaster {
             return monitor.isLiveMXSelection()
+        }
+        if monitor.selectedKind.isMXKeyboard {
+            return monitor.isLiveKeyboardSelection()
         }
         return monitor.snapshot.connected
     }

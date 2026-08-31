@@ -17,6 +17,7 @@ final class DualSenseMonitor {
     var selectedDeviceID: String?
     var appleTVSnapshot = AppleTVRemoteSnapshot()
     var mxMasterSnapshot = MXMasterSnapshot()
+    var mxKeyboardSnapshot = MXKeyboardSnapshot()
     var deviceRecords: [DeviceRecord] = []
     var accessibilityTrusted = false
     var inputMonitoringTrusted = false
@@ -58,7 +59,8 @@ final class DualSenseMonitor {
         selectedRecord?.selectedProfile
             ?? MappingProfile.makeDefault(
                 isAppleTVRemote: selectedKind == .appleTVRemote,
-                isMXMaster: selectedKind.isMXMaster
+                isMXMaster: selectedKind.isMXMaster,
+                isMXKeyboard: selectedKind.isMXKeyboard
             )
     }
 
@@ -135,12 +137,13 @@ final class DualSenseMonitor {
     private var engines: [String: ControlEngine] = [:]
     private let dualSense = DualSenseSession()
     private let appleTV = AppleTVRemoteSession()
+    private let keyboard = MXKeyboardSession()
     private let mx3Reader = LogitechMXMasterReader(model: MXMaster3Support.model)
     private let mx4Reader = LogitechMXMasterReader(model: MXMaster4Support.model)
     private let mouseScrollTap = MouseScrollTap()
 
     private var mxReaders: [LogitechMXMasterReader] { [mx3Reader, mx4Reader] }
-    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV] }
+    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV, keyboard] }
 
     func start() {
         guard !didStart else { return }
@@ -367,6 +370,32 @@ final class DualSenseMonitor {
         updateSharedMouseScroll { $0.smoothScrolling = enabled }
     }
 
+    func setKeyboardBacklightEnabled(_ enabled: Bool) {
+        keyboard.setBacklightEnabled(enabled)
+        mxKeyboardSnapshot = keyboard.snapshot
+    }
+
+    func setKeyboardBacklightEffect(_ effect: MXKeyboardBacklightEffect) {
+        keyboard.setBacklightEffect(effect)
+        mxKeyboardSnapshot = keyboard.snapshot
+    }
+
+    func setKeyboardBatterySaving(_ enabled: Bool) {
+        keyboard.setBatterySaving(enabled)
+        mxKeyboardSnapshot = keyboard.snapshot
+    }
+
+    func isLiveKeyboardSelection(_ live: MXKeyboardSnapshot? = nil) -> Bool {
+        guard let record = selectedRecord, record.isMXKeyboard else { return false }
+        let live = live ?? mxKeyboardSnapshot
+        return isLiveKeyboardDevice(
+            kind: record.kind,
+            address: record.address,
+            name: record.name,
+            live: live
+        )
+    }
+
     func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
         updateSelectedProfile { $0.setGestureSet(.named(preset), for: button) }
     }
@@ -510,7 +539,8 @@ final class DualSenseMonitor {
             let profile = MappingProfile.makeDefault(
                 name: "Untitled",
                 isAppleTVRemote: record.isAppleTVRemote,
-                isMXMaster: record.isMXMaster
+                isMXMaster: record.isMXMaster,
+                isMXKeyboard: record.isMXKeyboard
             )
             record.profiles.append(profile)
             record.selectedProfileID = profile.id
@@ -747,6 +777,7 @@ final class DualSenseMonitor {
         if Date().timeIntervalSince(lastAudioProbe) > 2 {
             refreshAudioInputs()
             mergeMXMasterStatus()
+            mergeKeyboardStatus()
             lastAudioProbe = Date()
         }
         if Date().timeIntervalSince(lastDeviceProbe) > 15, !isMenuTracking {
@@ -769,6 +800,7 @@ final class DualSenseMonitor {
             ingestControl(ControlFrameBuilder.make(from: ds), record: record)
         }
         captureMXMasters()
+        captureKeyboard()
         if appleTVShouldCapture {
             let device = connectedDevices.first(where: {
                 $0.deviceKind == .appleTVRemote && $0.isConnected
@@ -803,6 +835,13 @@ final class DualSenseMonitor {
         }
         applyMouseScrollTap()
         applyWindowGrab()
+    }
+
+    private func captureKeyboard() {
+        let next = keyboard.snapshot
+        if mxKeyboardSnapshot != next {
+            mxKeyboardSnapshot = next
+        }
     }
 
     private func publishDualSense(_ next: DualSenseSnapshot, wantMotion: Bool) {
@@ -1072,7 +1111,7 @@ final class DualSenseMonitor {
         if record.id == device.id { return true }
         if DeviceIdentity.same(record.address, device.address) { return true }
         guard record.kind == device.deviceKind else { return false }
-        if record.kind.isMXMaster {
+        if record.kind.isMXMaster || record.kind.isMXKeyboard {
             if DeviceIdentity.isConcrete(record.address), DeviceIdentity.isConcrete(device.address) {
                 return false
             }
@@ -1201,7 +1240,8 @@ final class DualSenseMonitor {
                 if next.profiles.isEmpty {
                     let profile = MappingProfile.makeDefault(
                         isAppleTVRemote: next.isAppleTVRemote,
-                        isMXMaster: next.isMXMaster
+                        isMXMaster: next.isMXMaster,
+                        isMXKeyboard: next.isMXKeyboard
                     )
                     next.profiles = [profile]
                     next.selectedProfileID = profile.id
@@ -1213,6 +1253,9 @@ final class DualSenseMonitor {
                             next.profiles[index].ensureMX4SideButton()
                         }
                     }
+                }
+                if DeviceSupport.isMXMechanicalName(next.name), !next.kind.isMXKeyboard {
+                    next.kind = MXMechanicalSupport.kind(from: next.name)
                 }
                 if next.kind == .dualSense || next.kind == .dualSenseEdge {
                     for index in next.profiles.indices {
@@ -1294,6 +1337,7 @@ final class DualSenseMonitor {
         for reader in mxReaders {
             mergeLiveMX(reader.current, into: &devices)
         }
+        mergeLiveKeyboard(keyboard.snapshot, into: &devices)
         for index in devices.indices {
             if let record = matchingRecord(for: devices[index]) {
                 devices[index].id = record.id
@@ -1329,6 +1373,50 @@ final class DualSenseMonitor {
         for reader in mxReaders {
             mergeLiveMX(reader.current, into: &connectedDevices)
         }
+    }
+
+    private func mergeKeyboardStatus() {
+        mergeLiveKeyboard(keyboard.snapshot, into: &connectedDevices)
+    }
+
+    private func mergeLiveKeyboard(_ live: MXKeyboardSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
+        guard live.connected else { return }
+        if let index = devices.firstIndex(where: {
+            isLiveKeyboardDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+        }) {
+            devices[index].deviceKind = live.kind
+            devices[index].isConnected = true
+            devices[index].name = live.name
+            if DeviceIdentity.isConcrete(live.address) {
+                devices[index].address = live.address
+            }
+            devices[index].detail = live.status
+            return
+        }
+        devices.append(
+            ConnectedBluetoothDevice(
+                id: "kb:\(DeviceIdentity.isConcrete(live.address) ? live.address : live.name)",
+                name: live.name,
+                address: DeviceIdentity.isConcrete(live.address) ? live.address : DeviceIdentity.hidFallback,
+                deviceKind: live.kind,
+                detail: live.status,
+                isConnected: true
+            )
+        )
+    }
+
+    private func isLiveKeyboardDevice(
+        kind: DeviceKind,
+        address: String,
+        name: String,
+        live: MXKeyboardSnapshot
+    ) -> Bool {
+        guard live.connected else { return false }
+        if DeviceIdentity.same(address, live.address) { return true }
+        if DeviceIdentity.isConcrete(address), DeviceIdentity.isConcrete(live.address) {
+            return false
+        }
+        return kind.isMXKeyboard && namesMatch(name, live.name)
     }
 
     private func mergeLiveMX(_ live: MXMasterSnapshot, into devices: inout [ConnectedBluetoothDevice]) {

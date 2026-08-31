@@ -15,6 +15,7 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
 
     var isAppleTVRemote: Bool { kind == .appleTVRemote }
     var isMXMaster: Bool { kind.isMXMaster }
+    var isMXKeyboard: Bool { kind.isMXKeyboard }
 
     var hapticFeedbackEnabled: Bool {
         hapticFeedback ?? (kind == .dualSense || kind == .dualSenseEdge)
@@ -23,13 +24,18 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var selectedProfile: MappingProfile {
         profiles.first { $0.id == selectedProfileID }
             ?? profiles.first
-            ?? MappingProfile.makeDefault(isAppleTVRemote: isAppleTVRemote, isMXMaster: isMXMaster)
+            ?? MappingProfile.makeDefault(
+                isAppleTVRemote: isAppleTVRemote,
+                isMXMaster: isMXMaster,
+                isMXKeyboard: isMXKeyboard
+            )
     }
 
     static func make(from device: ConnectedBluetoothDevice, remembered: Bool = false) -> DeviceRecord {
         var profile = MappingProfile.makeDefault(
             isAppleTVRemote: device.deviceKind == .appleTVRemote,
-            isMXMaster: device.deviceKind.isMXMaster
+            isMXMaster: device.deviceKind.isMXMaster,
+            isMXKeyboard: device.deviceKind.isMXKeyboard
         )
         if device.deviceKind.isMXMaster3Family {
             profile.summary = "Gesture button is Gestures. Back and Forward are browser buttons."
@@ -63,9 +69,10 @@ struct SidebarDevice: Identifiable, Hashable {
     var remembered: Bool
 
     var symbol: String {
-        kind == .appleTVRemote
-            ? "appletvremote.gen4.fill"
-            : kind.isMXMaster ? "computermouse.fill" : "gamecontroller.fill"
+        if kind == .appleTVRemote { return "appletvremote.gen4.fill" }
+        if kind.isMXMaster { return "computermouse.fill" }
+        if kind.isMXKeyboard { return "keyboard.fill" }
+        return "gamecontroller.fill"
     }
 
     var statusTitle: String {

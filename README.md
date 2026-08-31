@@ -15,7 +15,7 @@
   <a href="https://whitesticker.github.io/controlbox/">Product page</a>
 </p>
 
-Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them.
+Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, MX Master, and MX Mechanical when you want them.
 
 It started as a mapper for unusual input. The Mac sidebar outgrew that: brightness and DDC, Night Shift warmth over the day, display-layout presets, per-app volume, pointer and wheel feel, grab-to-move windows, Dock window previews, and an optional menu-bar monitor. Controllers are still first-class. They are no longer the whole app.
 
@@ -45,6 +45,7 @@ Control Box stays on your Mac. Nothing is uploaded.
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
 | **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Isolated HID++ reader. |
 | **MX Master 4** | Extra buttons including **Side**, **Haptic** pad, isolated HID++ reader. |
+| **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. |
 
 Wheel invert and scroll speed are shared across mice (one system scroll tap). Button and gesture mappings stay per device.
 
@@ -85,7 +86,7 @@ Tracked in [dev/roadmap.md](dev/roadmap.md):
 
 - DualSense and Siri Remote **microphone**
 - Stronger **gesture** hold / swipe on-screen cue (media skip / play / mute already show an action HUD)
-- **MX keyboard** support
+- **MX keyboard remapping** (Mechanical settings are shipped)
 - More accurate **calibration** layouts
 - Smoother **MX4 haptic** swipes (3S already feels better)
 - First-run **onboarding**

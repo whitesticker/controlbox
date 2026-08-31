@@ -2,7 +2,8 @@ import Foundation
 
 /// MX Master 4 HID++ / native-haptic profile. Do not reuse these CIDs on 3S.
 enum MXMaster4Support {
-    static let productIDs: Set<Int> = [0xB042, 0xB366, 0x4069]
+    /// `0xB366` is MX Mechanical, not this mouse. Keep it off this matcher.
+    static let productIDs: Set<Int> = [0xB042, 0x4069]
     static let hidppUsagePage = 0xFF00
     static let hidppUsagePageBLE = 0xFF43
     static let nativeHapticButtonBit: UInt8 = 0x40
