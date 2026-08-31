@@ -10,9 +10,9 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys, onboarding, Control Box menu icon). System Monitor (top) is shipped as a Mac pane.
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys / MX Mechanical, window management, onboarding). System Monitor (top) and Dock Previews are shipped as Mac panes.
 
-HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list.
+HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list. Repeating timers and system-API polls are listed in [polling-loops.md](polling-loops.md).
 
 ## Incident notes
 
@@ -51,6 +51,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [system-monitor-reorder.md](system-monitor-reorder.md) | System Monitor dashboard rows cannot be dragged in settings |
 | [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |
 | [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |
+| [dock-window-preview.md](dock-window-preview.md) | Dock hover does not show window thumbnails |
 | [modifier-chip-tint.md](modifier-chip-tint.md) | Modifier chips do not look selected on older macOS |
 | [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |
+| [polling-loops.md](polling-loops.md) | Inventory of timers and system-API polls (start here when idle CPU or a loop looks wrong) |

@@ -226,6 +226,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Control Box checks whether the DualSense microphone appears as an audio input, and may need mic access when a speaker device also has inputs so per-app volume can ignore those streams.";
 				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Control Box taps an app’s audio so you can set that app’s volume without changing the rest of the Mac.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Control Box captures a still of each window when you hover a Dock icon so Dock Previews can show thumbnails.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Control Box lists connected Bluetooth devices so you can choose a PS5 controller.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Control Box lists connected Bluetooth devices so you can choose a PS5 controller.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -264,6 +265,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Control Box checks whether the DualSense microphone appears as an audio input, and may need mic access when a speaker device also has inputs so per-app volume can ignore those streams.";
 				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Control Box taps an app’s audio so you can set that app’s volume without changing the rest of the Mac.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Control Box captures a still of each window when you hover a Dock icon so Dock Previews can show thumbnails.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Control Box lists connected Bluetooth devices so you can choose a PS5 controller.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Control Box lists connected Bluetooth devices so you can choose a PS5 controller.";
 				LD_RUNPATH_SEARCH_PATHS = (

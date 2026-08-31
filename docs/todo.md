@@ -35,7 +35,7 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Two mice at once (3S + 4) — isolated HID++ readers; still needs a 3S+4 hardware pass
 - [x] Device family sessions (DualSense, Apple TV A2540); host no longer owns those readers
 - [x] Displays pane lists one row per `NSScreen` (no leftover DDC ghost). Apple-silicon DDC matching follows MonitorControl (MIT); credit is on the Displays page (see [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md)).
-- [x] Sound pane: system output + per-app volume via Apple process tap (no FineTune / Background Music code). Two tap mixers cannot own the same app; Sound warns if FineTune / SoundSource / etc. is already running (see [process-tap-exclusive.md](process-tap-exclusive.md)). MacBook speakers use a tap-only aggregate plus HALOutput; do not drive speaker IO from the tap (see [macbook-app-volume-binary.md](macbook-app-volume-binary.md), [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md)).
+- [x] Sound pane: system output + per-app volume via Apple process tap (no FineTune / Background Music code). Two tap mixers cannot own the same app; Sound warns if FineTune / SoundSource / etc. is already running (see [process-tap-exclusive.md](process-tap-exclusive.md)). Tahoe: tap-only + HALOutput. Sequoia 15: stacked speaker clock + IOProc gain, and do not rebuild taps on `!obj` (see [macbook-app-volume-binary.md](macbook-app-volume-binary.md), [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md)).
 
 ## Later
 
@@ -44,4 +44,4 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, live gesture HUD, MX Keys, calibration art, MX4 swipe feel, onboarding, menu bar circle, per-app mouse profiles) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys / MX Mechanical, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.

@@ -45,6 +45,14 @@ public enum WindowGrab {
     public static func organizeAtPointer() {
         Controller.shared.organizeAtPointer()
     }
+
+    public static var isBusy: Bool {
+        Controller.shared.isBusy
+    }
+
+    public static func grabChordHeld(_ flags: CGEventFlags) -> Bool {
+        Controller.shared.grabChordHeld(flags)
+    }
 }
 
 private final class Controller: @unchecked Sendable {
@@ -89,6 +97,27 @@ private final class Controller: @unchecked Sendable {
 
     init() {
         AXUIElementSetMessagingTimeout(systemWide, 0.2)
+    }
+
+    var isBusy: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return session != nil || throwSession != nil
+    }
+
+    func grabChordHeld(_ flags: CGEventFlags) -> Bool {
+        lock.lock()
+        let on = enabled
+        let move = moveEnabled ? moveFlags : []
+        let resize = resizeEnabled ? resizeFlags : []
+        let throwHeld = throwEnabled ? throwFlags : []
+        lock.unlock()
+        guard on else { return false }
+        let current = ModifierChords.normalized(flags)
+        if !move.isEmpty, current == ModifierChords.normalized(move) { return true }
+        if !resize.isEmpty, current == ModifierChords.normalized(resize) { return true }
+        if !throwHeld.isEmpty, current == ModifierChords.normalized(throwHeld) { return true }
+        return false
     }
 
     func configure(

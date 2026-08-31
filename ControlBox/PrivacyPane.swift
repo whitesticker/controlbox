@@ -36,7 +36,7 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed to send keys, clicks, gestures, and volume to this Mac.")
+                    Text("Needed to send keys, clicks, gestures, and volume to this Mac, and to see which Dock icon the pointer is on.")
                 }
 
                 Section {
@@ -91,7 +91,24 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed only for per-app volume on Sound. Control Box does not need Screen Recording. Input mapping does not use this.")
+                    Text("Needed only for per-app volume on Sound. This is not Screen Recording. Input mapping does not use this.")
+                }
+
+                Section {
+                    permissionRow(
+                        title: "Screen Recording",
+                        allowed: monitor.screenRecordingTrusted
+                    )
+                    if !monitor.screenRecordingTrusted {
+                        Button("Request Screen Recording…") {
+                            monitor.promptForScreenRecording()
+                        }
+                        Button("Open Screen Recording Settings") {
+                            monitor.openScreenRecordingSettings()
+                        }
+                    }
+                } footer: {
+                    Text("Needed only for live thumbnails on Dock Previews. Window titles still work without it. This is not the System Audio Recording grant used by Sound.")
                 }
 
                 if monitor.needsRelaunchForPermissions {

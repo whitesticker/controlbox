@@ -6,6 +6,7 @@ struct ContentView: View {
     @Bindable var nightShiftCatalog: NightShiftCatalog
     @Bindable var displayCatalog: DisplayCatalog
     @Bindable var soundCatalog: SoundCatalog
+    @Bindable var dockPreviewCatalog: DockPreviewCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
@@ -21,6 +22,7 @@ struct ContentView: View {
                     macRow(.systemMonitor)
                     macRow(.pointerScroll)
                     macRow(.windowGrab)
+                    macRow(.dockPreview)
                 }
                 Section("Devices") {
                     if monitor.sidebarDevices.isEmpty {
@@ -82,6 +84,8 @@ struct ContentView: View {
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
                 WindowGrabPane(monitor: monitor, arrangementCatalog: arrangementCatalog)
+            case .dockPreview:
+                DockPreviewPane(catalog: dockPreviewCatalog)
             case .permissions:
                 PrivacyPane(monitor: monitor)
             case .device:

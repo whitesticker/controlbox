@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -12,6 +13,15 @@ public enum ModifierChords {
 
     public static func normalized(_ flags: UInt64) -> CGEventFlags {
         normalized(CGEventFlags(rawValue: flags))
+    }
+
+    public static func fromAppKit(_ flags: NSEvent.ModifierFlags) -> CGEventFlags {
+        var next = CGEventFlags(rawValue: 0)
+        if flags.contains(.control) { next.insert(.maskControl) }
+        if flags.contains(.shift) { next.insert(.maskShift) }
+        if flags.contains(.option) { next.insert(.maskAlternate) }
+        if flags.contains(.command) { next.insert(.maskCommand) }
+        return next
     }
 
     public static func count(_ flags: CGEventFlags) -> Int {

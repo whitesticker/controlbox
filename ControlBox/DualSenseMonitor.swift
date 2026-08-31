@@ -24,6 +24,7 @@ final class DualSenseMonitor {
     var launchAtLoginOn = false
     var backgroundNeedsApproval = false
     var screenCaptureTrusted = false
+    var screenRecordingTrusted = false
     let controlEngine = ControlEngine()
 
     var allPermissionsGranted: Bool {
@@ -584,6 +585,15 @@ final class DualSenseMonitor {
         AppVolumeMixer.openCaptureSettings()
     }
 
+    func promptForScreenRecording() {
+        _ = DockPreview.requestScreenRecordingAccess()
+        refreshPermissions()
+    }
+
+    func openScreenRecordingSettings() {
+        DockPreview.openScreenRecordingSettings()
+    }
+
     func promptForBackgroundActivity() {
         do {
             try SMAppService.mainApp.register()
@@ -648,6 +658,10 @@ final class DualSenseMonitor {
         let screenCapture = AppVolumeMixer.hasCaptureAccess
         if screenCaptureTrusted != screenCapture {
             screenCaptureTrusted = screenCapture
+        }
+        let screenRecording = DockPreview.hasScreenRecordingAccess
+        if screenRecordingTrusted != screenRecording {
+            screenRecordingTrusted = screenRecording
         }
     }
 

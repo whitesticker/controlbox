@@ -20,7 +20,8 @@ let package = Package(
                 .linkedFramework("AudioUnit"),
                 .linkedFramework("CoreAudio"),
                 .linkedFramework("CoreGraphics"),
-                .linkedFramework("IOKit")
+                .linkedFramework("IOKit"),
+                .linkedFramework("ScreenCaptureKit")
             ]
         )
     ]

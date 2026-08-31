@@ -11,7 +11,7 @@
   <img src="docs/screenshots/app-icon.png" alt="Control Box icon" width="96">
 </p>
 
-It started as a mapper for unusual input. The Mac sidebar outgrew that: brightness and DDC, Night Shift warmth over the day, display-layout presets, per-app volume, pointer and wheel feel, grab-to-move windows, and an optional menu-bar monitor. Controllers are still first-class. They are no longer the whole app.
+It started as a mapper for unusual input. The Mac sidebar outgrew that: brightness and DDC, Night Shift warmth over the day, display-layout presets, per-app volume, pointer and wheel feel, grab-to-move windows, Dock window previews, and an optional menu-bar monitor. Controllers are still first-class. They are no longer the whole app.
 
 Mac panes work with the built-in trackpad and any USB or Bluetooth mouse. Each attached controller has its own mappings and its own **Control this Mac** switch. Several can stay connected at once.
 
@@ -28,6 +28,7 @@ Control Box stays on your Mac. Nothing is uploaded.
 | **System Monitor** | Optional second menu bar extra from [top](https://github.com/whitesticker/top): live network speed plus CPU, GPU, memory, disk, sensors, and battery. Off until you turn the pane on. Hide or quit that extra without quitting Control Box. |
 | **Pointer & Scroll** | Pointer speed for USB and Bluetooth mice, wheel and thumb-wheel speed, smooth scrolling, natural vs standard direction. DualSense and Siri Remote keep their own sliders on the device page. |
 | **Window Grab** | Hold a modifier chord and move to drag a window from anywhere; add Shift (by default) to resize with the top-left anchored. Optional throw snaps to a 3×3 map of the screen; optional organize (default Control-Command-O) tiles windows. Trackpad, any mouse, or DualSense. Accessibility must be on. |
+| **Dock Previews** | Hover a Dock icon to see that app’s open windows and click one to bring it forward. Off until you turn the pane on. Live thumbnails need Screen Recording; titles work without it. |
 
 ## Devices
 
@@ -48,9 +49,9 @@ brew install --cask whitesticker/controlbox/controlbox
 
 Open **Control Box**, then grant what you use in **System Settings → Privacy & Security**:
 
-- **Accessibility** — keys, clicks, gestures, volume, Window Grab, Display Arrangement shortcut
+- **Accessibility** — keys, clicks, gestures, volume, Window Grab, Display Arrangement shortcut, Dock Previews
 - **Input Monitoring** — mouse wheel speed and direction
-- **Screen & System Audio Recording** — per-app volume on Sound (macOS 15 needs System Audio Recording, not Screen Recording alone)
+- **Screen & System Audio Recording** — per-app volume on Sound (macOS 15 needs System Audio Recording, not Screen Recording alone). Dock Previews uses **Screen Recording** for live thumbnails; that is a different grant.
 - **Allow in the Background** — keep mapping after the window closes, and start again after login
 
 Relaunch if macOS asks. If you previously granted those to an older app identity, grant them again for Control Box.

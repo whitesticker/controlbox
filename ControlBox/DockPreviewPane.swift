@@ -1,0 +1,109 @@
+import ControlBoxCore
+import SwiftUI
+
+struct DockPreviewPane: View {
+    @Bindable var catalog: DockPreviewCatalog
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle("Show window previews on the Dock", isOn: enabledBinding)
+                } footer: {
+                    Text(footer)
+                }
+
+                Section {
+                    SettingsSlider(
+                        "Hover delay",
+                        value: delayBinding,
+                        in: 0.08...0.8,
+                        enabled: catalog.enabled,
+                        valueText: delayText
+                    )
+                    SettingsSlider(
+                        "Preview size",
+                        value: scaleBinding,
+                        in: Double(DockPreview.minCardScale)...Double(DockPreview.maxCardScale),
+                        enabled: catalog.enabled,
+                        valueText: scaleText
+                    )
+                    Toggle("Show Dock icon names", isOn: namesBinding)
+                } footer: {
+                    Text(optionsFooter)
+                }
+
+                Section {
+                    LabeledContent("Screen Recording") {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(catalog.hasScreenRecording ? Palette.good : Palette.bad)
+                                .frame(width: 8, height: 8)
+                            Text(catalog.hasScreenRecording ? "Allowed" : "Titles only")
+                        }
+                    }
+                    if !catalog.hasScreenRecording {
+                        Button("Request Screen Recording…") {
+                            catalog.requestScreenRecording()
+                        }
+                        Button("Open Screen Recording Settings") {
+                            catalog.openScreenRecordingSettings()
+                        }
+                    }
+                } footer: {
+                    Text("Live thumbnails need Screen Recording. Without it the panel still lists every window by title. This is not the same grant as System Audio Recording on Sound.")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Dock Previews")
+            .onAppear { catalog.refreshScreenRecording() }
+        }
+    }
+
+    private var enabledBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.enabled },
+            set: { catalog.setEnabled($0) }
+        )
+    }
+
+    private var delayBinding: Binding<Double> {
+        Binding(
+            get: { catalog.showDelay },
+            set: { catalog.setShowDelay($0) }
+        )
+    }
+
+    private var namesBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.showDockNames },
+            set: { catalog.setShowDockNames($0) }
+        )
+    }
+
+    private var scaleBinding: Binding<Double> {
+        Binding(
+            get: { Double(catalog.cardScale) },
+            set: { catalog.setCardScale(CGFloat($0)) }
+        )
+    }
+
+    private var optionsFooter: String {
+        "Hover delay is how long the pointer stays on an icon before the panel first appears; moving to another icon updates immediately. Preview size defaults to 130%. Dock icon names are the native labels on pinned icons. Off clears them and keeps a copy so they come back when you turn this on. Icons that are only running (not pinned) may still show a name. The Dock is not restarted."
+    }
+
+    private var delayText: String {
+        String(format: "%.2fs", catalog.showDelay)
+    }
+
+    private var scaleText: String {
+        "\(Int((catalog.cardScale * 100).rounded()))%"
+    }
+
+    private var footer: String {
+        if catalog.enabled {
+            return "Point at a Dock icon that has open windows to see them. Apps with no windows stay native — no empty card. Click a card to open that window. Hover a card on this Space for close (red), minimize (yellow) or restore (green), and quit (purple). Cards on another Space have no HUD. The preview hides while a Dock right-click menu is open. Accessibility must be on. Native Dock clicks still work."
+        }
+        return "Off until you turn it on. Then hovering a Dock icon shows that app’s open windows, including minimized ones and windows on other Spaces."
+    }
+}
