@@ -137,24 +137,6 @@ a { color: var(--ink); }
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
 
-.window-bar {
-  display: flex;
-  gap: 7px;
-  padding: 10px 12px;
-  background: #2a2a2c;
-}
-
-.window-bar span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #3a3a3c;
-}
-
-.window-bar span:nth-child(1) { background: #ff5f57; }
-.window-bar span:nth-child(2) { background: #febc2e; }
-.window-bar span:nth-child(3) { background: #28c840; }
-
 .reel {
   position: relative;
   aspect-ratio: 1920 / 1344;
