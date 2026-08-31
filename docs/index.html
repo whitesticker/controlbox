@@ -12,7 +12,9 @@
   <header class="hero">
     <div class="lockup">
       <div class="mark" aria-hidden="true">
-        <span class="ring"></span>
+        <svg class="ring" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="28" />
+        </svg>
       </div>
       <div class="titles">
         <h1>Control Box</h1>
@@ -22,84 +24,40 @@
     </div>
     <p class="hero-lead">Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them. Nothing is uploaded.</p>
     <div class="cta">
-      <a class="btn" href="#install">Install</a>
-      <a class="btn ghost" href="https://github.com/whitesticker/controlbox">GitHub</a>
+      <a class="btn" href="#tour">See the panes</a>
+      <a class="btn ghost" href="#install">Install</a>
     </div>
-    <pre class="brew" id="install"><code>brew install --cask whitesticker/controlbox/controlbox</code></pre>
+    <button class="brew" id="install" type="button" title="Copy install command">
+      <code>brew install --cask whitesticker/controlbox/controlbox</code>
+      <span class="brew-hint" data-hint>Copy</span>
+    </button>
   </header>
 
-  <section class="stage" aria-label="App screenshots">
-    <div class="window">
-      <div class="reel">
-        <img src="screenshots/displays.png" alt="Display Brightness" class="shot s1">
-        <img src="screenshots/night-shift.png" alt="Night Shift" class="shot s2">
-        <img src="screenshots/windows.png" alt="Window Management" class="shot s3">
-        <img src="screenshots/dock-previews.png" alt="Dock Previews" class="shot s4">
-        <img src="screenshots/sound.png" alt="Sound" class="shot s5">
-        <img src="screenshots/arrangement.png" alt="Display Arrangement" class="shot s6">
-      </div>
-    </div>
-    <p class="caption">Display Brightness, Night Shift, Window Management, Dock Previews, Sound, Display Arrangement</p>
-  </section>
-
-  <section>
+  <section class="tour" id="tour">
     <h2>This Mac</h2>
-    <div class="grid">
-      <article>
-        <h3>Display Brightness</h3>
-        <p>Per-panel brightness and contrast. One slider can keep each display’s mix. Optional menu bar extra.</p>
-      </article>
-      <article>
-        <h3>Night Shift</h3>
-        <p>A 24-hour warmth curve for system Night Shift. Optional follow dims or brightens external monitors.</p>
-      </article>
-      <article>
-        <h3>Display Arrangement</h3>
-        <p>Save layout presets for the screens that are plugged in now. Keyboard shortcut plus a layout HUD.</p>
-      </article>
-      <article>
-        <h3>Sound</h3>
-        <p>Output volume, then a per-app mixer. Optional menu bar extra. Needs System Audio Recording for per-app volume.</p>
-      </article>
-      <article>
-        <h3>Window Management</h3>
-        <p>Hold a chord to move or resize from anywhere. Throw, organize, shake-to-focus, Dock-click minimize.</p>
-      </article>
-      <article>
-        <h3>Dock Previews</h3>
-        <p>Hover a Dock icon to see that app’s windows. Optional cards in the app switcher while Command-Tab is up.</p>
-      </article>
-      <article>
-        <h3>Pointer &amp; Scroll</h3>
-        <p>Pointer speed, wheel and thumb-wheel speed, smooth scrolling, direction. Not gated on an MX Master.</p>
-      </article>
-      <article>
-        <h3>System Monitor</h3>
-        <p>Optional second menu bar extra: live network speed plus CPU, GPU, memory, disk, sensors, and battery.</p>
-      </article>
+    <p class="tour-lead">Click a pane. The shot stays; the intro plays again.</p>
+    <div class="chips" id="mac-chips" role="tablist" aria-label="Mac panes"></div>
+    <div class="board">
+      <div class="window">
+        <img id="shot" class="shot-js" src="screenshots/displays.png" alt="Display Brightness">
+      </div>
+      <aside class="intro" aria-live="polite">
+        <div class="demo" id="demo" data-kind="brightness"></div>
+        <h3 id="intro-title">Display Brightness</h3>
+        <p id="intro-copy">Per-panel brightness and contrast. One slider can keep each display’s mix. Optional menu bar extra.</p>
+      </aside>
     </div>
   </section>
 
-  <section>
+  <section class="tour" id="devices">
     <h2>Devices</h2>
-    <div class="grid">
-      <article>
-        <h3>DualSense / Edge</h3>
-        <p>Buttons, sticks, rumble. 1-finger and 2-finger touchpad are separate Gestures. Sticks can be pointer or scroll.</p>
-      </article>
-      <article>
-        <h3>Siri Remote</h3>
-        <p>Clickpad pointer, click-wheel scroll, face buttons, live calibration. A2540.</p>
-      </article>
-      <article>
-        <h3>MX Master 3 / 3S</h3>
-        <p>Extra buttons plus thumb Gesture — tap is a click, hold and move is a swipe.</p>
-      </article>
-      <article>
-        <h3>MX Master 4</h3>
-        <p>Extra buttons including Side, plus the Haptic pad. Isolated HID++ reader.</p>
-      </article>
-    </div>
+    <p class="tour-lead">Same idea for the controllers. No extra grant to look.</p>
+    <div class="chips" id="device-chips" role="tablist" aria-label="Devices"></div>
+    <aside class="intro device-intro" aria-live="polite">
+      <div class="demo" id="device-demo" data-kind="dualsense"></div>
+      <h3 id="device-title">DualSense / Edge</h3>
+      <p id="device-copy">Buttons, sticks, rumble. 1-finger and 2-finger touchpad are separate Gestures. Sticks can be pointer or scroll.</p>
+    </aside>
   </section>
 
   <section>
@@ -111,5 +69,6 @@
     <img src="screenshots/app-icon.png" alt="" width="40" height="40">
     <p>Control Box · local only · <a href="https://github.com/whitesticker/controlbox">source</a></p>
   </footer>
+  <script src="site.js"></script>
 </body>
 </html>
