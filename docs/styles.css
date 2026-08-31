@@ -42,18 +42,14 @@ a { color: var(--ink); }
   width: 112px;
   height: 112px;
   border-radius: 26%;
-  background: var(--orange);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 16px 40px rgba(242, 90, 34, 0.28);
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(32, 30, 29, 0.45);
 }
 
-.ring {
-  width: 54%;
-  height: 54%;
-  border: 11px solid #fff;
-  border-radius: 50%;
-  animation: ring-in 1.1s ease both;
+.mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .titles h1 {
@@ -75,11 +71,6 @@ a { color: var(--ink); }
   margin: 10px 0 0;
   color: var(--muted);
   font-size: 15px;
-}
-
-@keyframes ring-in {
-  from { transform: scale(0.72); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
 }
 
 .hero-lead {
@@ -205,6 +196,38 @@ article {
   padding: 16px 16px 14px;
 }
 
+.glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  border-radius: 7px;
+}
+
+.glyph::after {
+  content: "";
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.g-displays { background: #337ae6; --icon: url("icons/display-brightness-filled.svg"); }
+.g-night { background: #f57a2e; --icon: url("icons/night-shift-filled.svg"); }
+.g-arrangement { background: #1f66c7; --icon: url("icons/display-arrangement-filled.svg"); }
+.g-sound { background: #5957d6; --icon: url("icons/sound-filled.svg"); }
+.g-windows { background: #f28c2e; --icon: url("icons/window-management-filled.svg"); }
+.g-dock { background: #6b5cdb; --icon: url("icons/dock-previews-filled.svg"); }
+.g-pointer { background: #2ea384; --icon: url("icons/pointer-scroll-filled.svg"); }
+.g-monitor { background: #2694b8; --icon: url("icons/system-monitor-filled.svg"); }
+.g-caps { background: #615c94; --icon: url("icons/caps-lock-filled.svg"); }
+.g-dualsense { background: #337ae6; --icon: url("icons/device-dualsense-filled.svg"); }
+.g-siri { background: #5957d6; --icon: url("icons/device-siri-remote-filled.svg"); }
+.g-mx { background: #337ae6; --icon: url("icons/device-mx-master-line.svg"); }
+.g-keyboard { background: #337ae6; --icon: url("icons/device-mx-mechanical-filled.svg"); }
+
 article p,
 .prose {
   margin: 0;
@@ -236,7 +259,6 @@ footer a { color: var(--muted); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shot,
-  .ring { animation: none; }
+  .shot { animation: none; }
   .s1 { opacity: 1; }
 }
