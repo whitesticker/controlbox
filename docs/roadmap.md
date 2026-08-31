@@ -8,7 +8,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **Microphone.** Capture and use the DualSense and Apple TV remote mics on macOS (Bluetooth HID-only today; USB DualSense jack is untested).
 - [x] **MX Master 4 extra button.** MX4 Side is CID `0x00C3` (frontmost thumb button under the roller). Calibration and mappings show it; default is Mission Control.
 - [ ] **MX keyboard.** Add Logitech MX Keys and **MX Mechanical** as a new device family, same host registration as mice / remotes. Map keys, layers, and extra keys the same way as the mice.
-- [ ] **Caps Lock as modifier.** Treat Caps Lock as another modifier for Control Box chords (Hyper-style), not a caps toggle. Must not collide with existing Window Management / Display Arrangement chords.
+- [x] **Caps Lock as modifier.** Separate Mac pane: Caps Lock is a hold key that synthesizes a chosen modifier chord (default Control) for Control Box only, not a caps toggle. Off until the toggle is on. See [caps-lock-modifier.md](caps-lock-modifier.md).
 - [ ] **Smoother wheel scrolling.** Improve the existing Pointer & Scroll smooth-scrolling path so MX and generic mice feel closer to the trackpad (less stepped, less lag). See also [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md).
 - [ ] **MX4 gesture feel.** Haptic-pad swipes on MX4 are less smooth than the 3S gesture button. Measure HID++ XY vs CG fallback and match 3S feel without seizing the pointer.
 - [ ] **Generic mouse / Xbox / other TV remotes.** Not this version. Family sessions are the add path.
@@ -32,11 +32,14 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **More organize layouts.** More Organize options than the current “tile visible windows on this screen” shortcut (e.g. columns, rows, left/right halves, leave one app full).
 - [x] **Shake to hide others.** Window Management pane: shake a window (title bar or Move) to hide every other visible window. Second shake restores. Scope is this display or all displays (monitors). Off until the toggle is on. Hide Dock Previews while the shake drag is watched.
 - [x] **Minimize on Dock click.** Window Management pane: if that app is already front with a visible window, click its Dock icon to minimize that window. Off until the toggle is on. Listen-only — do not swallow the native click. No display picker.
-- [ ] **App switcher window previews.** Show that app’s window cards (including minimized / other Spaces) in the tab / application switcher, same catalog as Dock Previews. Related: [app-switcher-no-bar.md](app-switcher-no-bar.md), [dock-window-preview.md](dock-window-preview.md).
-- [ ] **Dock icon scroll.** Scroll up/down on a Dock icon to minimize or restore/maximize that app’s window. Do not intercept native Dock clicks.
+- [x] **App switcher window previews.** Dock Previews pane: while Command-Tab (or Next / Previous application) is up, show that app’s window cards from the same catalog. No title line, no HUD. Off until the toggle is on. Related: [app-switcher-window-preview.md](app-switcher-window-preview.md), [app-switcher-no-bar.md](app-switcher-no-bar.md).
 - [ ] **Temp shelf.** A Dropover-style floating shelf: drop files onto a parked pane, keep them while you switch apps, drag them out later. Off until a pane toggle is on. Not a full Finder replacement.
 - [ ] **Selection popup.** A PopClip-style bar when text is selected: copy, search, and a short list of actions. Accessibility required. Do not steal the selection or replace the system Services menu wholesale.
 - [x] **Dock window previews.** Separate Mac pane: hover a Dock icon to see that app’s windows and click one to focus it. Off until the pane toggle is on. Live thumbnails need Screen Recording; titles work without it. Not gated on an MX Master.
+
+## Site
+
+- [ ] **Product page.** One static landing page (hero, Mac panes, devices, brew install, permissions, privacy). GitHub Pages on this repo is enough; hosting is $0. Optional custom domain later (~$10–15/year) — `getcontrolbox.com` if a short URL is wanted. Do not buy aftermarket `controlbox.com`. Do not chase `controlbox.net` (existing Miami company). Point the Homebrew cask `homepage` and the README at the page when it exists. No backend, no analytics unless first-party and optional. Do not paste the incident log.
 
 ## Do not
 

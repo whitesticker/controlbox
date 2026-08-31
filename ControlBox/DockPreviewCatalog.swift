@@ -7,8 +7,10 @@ import Observation
 @MainActor
 final class DockPreviewCatalog {
     var enabled = false
+    var switcherEnabled = false
     var showDelay = DockPreview.defaultShowDelay
     var cardScale = DockPreview.defaultCardScale
+    var switcherCardScale = DockPreview.defaultCardScale
     var showDockNames = true
     var hasScreenRecording = false
 
@@ -24,6 +26,9 @@ final class DockPreviewCatalog {
         }
         if enabled {
             start()
+        }
+        if switcherEnabled {
+            startSwitcher()
         }
     }
 
@@ -64,6 +69,26 @@ final class DockPreviewCatalog {
         DockPreviewOverlay.shared.cardScale = next
     }
 
+    func setSwitcherCardScale(_ value: CGFloat) {
+        let next = min(max(value, DockPreview.minCardScale), DockPreview.maxSwitcherCardScale)
+        guard abs(next - switcherCardScale) > 0.001 else { return }
+        switcherCardScale = next
+        persist()
+        AppSwitcherPreviewOverlay.shared.cardScale = next
+    }
+
+    func setSwitcherEnabled(_ on: Bool) {
+        guard on != switcherEnabled else { return }
+        switcherEnabled = on
+        persist()
+        if on {
+            startSwitcher()
+        } else {
+            AppSwitcherPreview.stop()
+            AppSwitcherPreviewOverlay.shared.hide()
+        }
+    }
+
     func setShowDockNames(_ on: Bool) {
         guard on != showDockNames else { return }
         showDockNames = on
@@ -101,6 +126,18 @@ final class DockPreviewCatalog {
         )
     }
 
+    private func startSwitcher() {
+        AppSwitcherPreviewOverlay.shared.cardScale = switcherCardScale
+        AppSwitcherPreview.configure(enabled: true) { hover in
+            if let hover {
+                DockPreview.dismiss()
+                AppSwitcherPreviewOverlay.shared.show(hover)
+            } else {
+                AppSwitcherPreviewOverlay.shared.hide()
+            }
+        }
+    }
+
     private func applyDockNames(_ show: Bool) {
         if show {
             DockFileLabel.restore(labelBackup)
@@ -113,8 +150,10 @@ final class DockPreviewCatalog {
     private func persist() {
         let store = Store(
             enabled: enabled,
+            switcherEnabled: switcherEnabled,
             showDelay: showDelay,
             cardScale: cardScale,
+            switcherCardScale: switcherCardScale,
             showDockNames: showDockNames,
             labelBackup: labelBackup
         )
@@ -133,16 +172,24 @@ final class DockPreviewCatalog {
             DockPreview.maxCardScale
         )
         showDockNames = store.showDockNames ?? true
+        switcherEnabled = store.switcherEnabled ?? false
+        switcherCardScale = min(
+            max(store.switcherCardScale ?? DockPreview.defaultCardScale, DockPreview.minCardScale),
+            DockPreview.maxSwitcherCardScale
+        )
         labelBackup = store.labelBackup ?? []
         DockPreviewOverlay.shared.cardScale = cardScale
+        AppSwitcherPreviewOverlay.shared.cardScale = switcherCardScale
     }
 
     private var labelBackup: [DockFileLabel.BackupItem] = []
 
     private struct Store: Codable {
         var enabled: Bool
+        var switcherEnabled: Bool?
         var showDelay: TimeInterval
         var cardScale: CGFloat?
+        var switcherCardScale: CGFloat?
         var showDockNames: Bool?
         var labelBackup: [DockFileLabel.BackupItem]?
     }

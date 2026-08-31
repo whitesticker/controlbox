@@ -9,6 +9,7 @@ struct ModifierChordPicker: View {
     var occupied: [(name: String, flags: CGEventFlags)] = []
     @Binding var message: String?
     var onConflict: ((String) -> Void)? = nil
+    var showsCapsLock = false
 
     var body: some View {
         HStack {
@@ -18,6 +19,9 @@ struct ModifierChordPicker: View {
             chip("⇧", .maskShift)
             chip("⌥", .maskAlternate)
             chip("⌘", .maskCommand)
+            if showsCapsLock || CGEventFlags(rawValue: flags).contains(.maskAlphaShift) {
+                chip("⇪", .maskAlphaShift)
+            }
         }
     }
 

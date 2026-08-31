@@ -34,13 +34,15 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 | Shake to focus | Listen-only left-mouse tap; Window Grab move feeds points | Coalesced main-queue AX hit / minimize | **No idle timer.** Keep down and drag in the same flush. See [shake-to-focus.md](shake-to-focus.md). |
 | Minimize on Dock click | Listen-only left-mouse tap | Dock AX tile + window list on mouse up | One-shot per click. Do not swallow the native click. |
 | Dock Previews | Listen-only mouse tap + local `NSEvent` + Dock selected-child `AXObserver` | Coalesced `CGEvent` moves, cached Dock AX tiles, ScreenCaptureKit stills (≤6, cached) | **No pointer sampling.** One resolve per run-loop turn. AX tile walk at most ~8 Hz; hit-test the cache otherwise. Do not observe Dock layout (magnification). See [dock-window-preview.md](dock-window-preview.md). |
+| App switcher previews | Listen-only Command/Tab tap | Window list + stills for the highlighted app | Only while the switcher session is up. See [app-switcher-window-preview.md](app-switcher-window-preview.md). |
+| Caps Lock modifier | `defaultTap` on Caps Lock + listen-only keyboard HID usage `0x39` | Swallow Caps Lock; track hold; mapped modifiers in `live()` | **No idle timer.** Do not seize the keyboard. See [caps-lock-modifier.md](caps-lock-modifier.md). |
 | Display Brightness / Arrangement | Screen connect, pane appear | CoreDisplay / DDC / `NSScreen` | DDC is queued, not polled. Brightness extra does not poll while the menu is open. |
 | Permissions / device list | Launch, wake, HID attach | TCC, `SMAppService`, IOHID | Not on the 120 Hz path. |
 | Apple TV battery | Cached; not on 120 Hz | IORegistry | See [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md). |
 
 ## One-shot or user-driven (not loops)
 
-Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview thumbnail stills (only while the hover panel is up).
+Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview and app-switcher thumbnail stills (only while that panel is up).
 
 ## Rules for a new loop
 

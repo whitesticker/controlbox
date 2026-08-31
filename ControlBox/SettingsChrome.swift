@@ -8,6 +8,7 @@ enum SidebarItem: Hashable, Identifiable {
     case systemMonitor
     case pointerScroll
     case windowGrab
+    case capsLock
     case dockPreview
     case permissions
     case device(String)
@@ -21,6 +22,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .systemMonitor: return "mac.systemMonitor"
         case .pointerScroll: return "mac.pointerScroll"
         case .windowGrab: return "mac.windowGrab"
+        case .capsLock: return "mac.capsLock"
         case .dockPreview: return "mac.dockPreview"
         case .permissions: return "app.permissions"
         case .device(let id): return "device.\(id)"
@@ -36,6 +38,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .systemMonitor: return "System Monitor"
         case .pointerScroll: return "Pointer & Scroll"
         case .windowGrab: return "Window Management"
+        case .capsLock: return "Caps Lock"
         case .dockPreview: return "Dock Previews"
         case .permissions: return "Permissions"
         case .device: return "Device"
@@ -51,6 +54,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .systemMonitor: return "chart.xyaxis.line"
         case .pointerScroll: return "computermouse.fill"
         case .windowGrab: return "macwindow.on.rectangle"
+        case .capsLock: return "capslock"
         case .dockPreview: return "dock.rectangle"
         case .permissions: return "lock.shield.fill"
         case .device: return "gamecontroller.fill"
@@ -66,6 +70,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .systemMonitor: return Color(red: 0.15, green: 0.58, blue: 0.72)
         case .pointerScroll: return Color(red: 0.18, green: 0.64, blue: 0.52)
         case .windowGrab: return Color(red: 0.95, green: 0.55, blue: 0.18)
+        case .capsLock: return Color(red: 0.38, green: 0.36, blue: 0.58)
         case .dockPreview: return Color(red: 0.42, green: 0.36, blue: 0.86)
         case .permissions: return Color(red: 0.22, green: 0.55, blue: 0.90)
         case .device: return Color(red: 0.20, green: 0.48, blue: 0.96)

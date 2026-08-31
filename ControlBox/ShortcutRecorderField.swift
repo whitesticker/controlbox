@@ -225,7 +225,7 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
             let flags = Self.capturedFlags(from: event)
             if event.type == .flagsChanged {
                 liveFlags = CGEventFlags(rawValue: flags)
-                if awaitingKeyUp, ModifierChords.normalized(liveFlags).isEmpty {
+                if awaitingKeyUp, ModifierChords.live(liveFlags).isEmpty {
                     finishHold()
                 } else {
                     refresh()
@@ -263,7 +263,11 @@ private struct ShortcutRecorderNSView: NSViewRepresentable {
 
         private static func capturedFlags(from event: NSEvent) -> UInt64 {
             let allowed: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
-            return UInt64(event.modifierFlags.intersection(allowed).rawValue)
+            var flags = UInt64(event.modifierFlags.intersection(allowed).rawValue)
+            if CapsLockModifier.isHeld {
+                flags |= CapsLockModifier.mappedFlags.rawValue
+            }
+            return flags
         }
     }
 }

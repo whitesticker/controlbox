@@ -28,6 +28,22 @@ public struct DockPreviewHover {
     public var iconFrame: CGRect
     public var edge: DockPreviewEdge
     public var windows: [DockPreviewWindow]
+
+    public init(
+        bundleID: String,
+        appName: String,
+        appIcon: NSImage,
+        iconFrame: CGRect,
+        edge: DockPreviewEdge,
+        windows: [DockPreviewWindow]
+    ) {
+        self.bundleID = bundleID
+        self.appName = appName
+        self.appIcon = appIcon
+        self.iconFrame = iconFrame
+        self.edge = edge
+        self.windows = windows
+    }
 }
 
 @MainActor
@@ -37,6 +53,7 @@ public enum DockPreview {
     public static let defaultCardScale: CGFloat = 1.3
     public static let minCardScale: CGFloat = 0.8
     public static let maxCardScale: CGFloat = 2.0
+    public static let maxSwitcherCardScale: CGFloat = 3.0
 
     public static func configure(
         enabled: Bool,
@@ -167,6 +184,10 @@ public enum DockPreview {
                 Controller.shared.restoreWindow(window)
             }
         }
+    }
+
+    public static func windows(for app: NSRunningApplication) -> [DockPreviewWindow] {
+        DockPreviewWindows.list(app: app)
     }
 
     public static func thumbnails(

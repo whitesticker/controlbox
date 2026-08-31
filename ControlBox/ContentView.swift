@@ -7,6 +7,7 @@ struct ContentView: View {
     @Bindable var displayCatalog: DisplayCatalog
     @Bindable var soundCatalog: SoundCatalog
     @Bindable var dockPreviewCatalog: DockPreviewCatalog
+    @Bindable var capsLockCatalog: CapsLockCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
@@ -22,6 +23,7 @@ struct ContentView: View {
                     macRow(.systemMonitor)
                     macRow(.pointerScroll)
                     macRow(.windowGrab)
+                    macRow(.capsLock)
                     macRow(.dockPreview)
                 }
                 Section("Devices") {
@@ -84,6 +86,8 @@ struct ContentView: View {
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
                 WindowGrabPane(monitor: monitor, arrangementCatalog: arrangementCatalog)
+            case .capsLock:
+                CapsLockPane(catalog: capsLockCatalog)
             case .dockPreview:
                 DockPreviewPane(catalog: dockPreviewCatalog)
             case .permissions:

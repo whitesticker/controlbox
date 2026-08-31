@@ -16,6 +16,7 @@ public enum ShortcutFormatter {
         if flags.contains(.maskAlternate) { glyphs += "⌥" }
         if flags.contains(.maskShift) { glyphs += "⇧" }
         if flags.contains(.maskCommand) { glyphs += "⌘" }
+        if flags.contains(.maskAlphaShift) { glyphs += "⇪" }
         return glyphs
     }
 

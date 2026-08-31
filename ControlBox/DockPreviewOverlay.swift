@@ -223,8 +223,8 @@ final class DockPreviewOverlay {
     }
 }
 
-private final class DockPreviewChrome: NSView {
-    init(hosting: NSHostingView<DockPreviewPanelView>) {
+final class DockPreviewChrome<Content: View>: NSView {
+    init(hosting: NSHostingView<Content>) {
         super.init(frame: hosting.frame)
         autoresizingMask = [.width, .height]
         hosting.autoresizingMask = [.width, .height]
@@ -297,21 +297,26 @@ struct DockPreviewPanelView: View {
         ScrollView(.horizontal, showsIndicators: hover.windows.count > 4) {
             HStack(spacing: 8) {
                 ForEach(hover.windows) { window in
-                    DockPreviewCard(window: window, appIcon: hover.appIcon, model: model)
+                    DockPreviewCard(window: window, appIcon: hover.appIcon, model: model, compact: false)
                 }
             }
         }
     }
 }
 
-private struct DockPreviewCard: View {
+struct DockPreviewCard: View {
     let window: DockPreviewWindow
     let appIcon: NSImage
     @ObservedObject var model: DockPreviewModel
+    var compact = false
     @State private var hovering = false
 
     private var cardWidth: CGFloat { DockPreviewCardMetrics.width(for: window, scale: model.cardScale) }
-    private var cardHeight: CGFloat { DockPreviewCardMetrics.cardHeight(scale: model.cardScale) }
+    private var cardHeight: CGFloat {
+        compact
+            ? DockPreviewCardMetrics.thumbHeight(scale: model.cardScale)
+            : DockPreviewCardMetrics.cardHeight(scale: model.cardScale)
+    }
     private var thumbHeight: CGFloat { DockPreviewCardMetrics.thumbHeight(scale: model.cardScale) }
     private var iconSize: CGFloat { 42 * model.cardScale }
     private var hudButton: CGFloat { max(20, 22 * model.cardScale) }
@@ -319,6 +324,10 @@ private struct DockPreviewCard: View {
     var body: some View {
         ZStack(alignment: .top) {
             Button {
+                if compact {
+                    AppSwitcherPreview.dismissSwitcher()
+                    AppSwitcherPreviewOverlay.shared.hide()
+                }
                 DockPreview.focus(window)
                 DockPreviewOverlay.shared.hide()
             } label: {
@@ -345,10 +354,12 @@ private struct DockPreviewCard: View {
                     }
                     .frame(height: thumbHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    Text(window.title)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
+                    if !compact {
+                        Text(window.title)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                    }
                 }
                 .frame(width: cardWidth, height: cardHeight)
                 .contentShape(Rectangle())
@@ -371,7 +382,7 @@ private struct DockPreviewCard: View {
     }
 
     private var showsHUD: Bool {
-        window.isOnScreen || window.isMinimized
+        !compact && (window.isOnScreen || window.isMinimized)
     }
 
     private var hud: some View {

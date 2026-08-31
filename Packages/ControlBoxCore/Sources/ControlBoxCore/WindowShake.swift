@@ -557,6 +557,7 @@ private final class Controller: @unchecked Sendable {
 
     private static let ignoredTitles: Set<String> = [
         WindowThrowOverlay.windowTitle,
-        DockPreview.overlayTitle
+        DockPreview.overlayTitle,
+        AppSwitcherPreview.overlayTitle
     ]
 }

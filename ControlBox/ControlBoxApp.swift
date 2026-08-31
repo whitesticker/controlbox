@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let displayCatalog = DisplayCatalog()
     let soundCatalog = SoundCatalog()
     let dockPreviewCatalog = DockPreviewCatalog()
+    let capsLockCatalog = CapsLockCatalog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
@@ -29,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
         nightShiftCatalog.attachDisplays(displayCatalog)
         dockPreviewCatalog.attachSuppress {
-            WindowGrab.isBusy || WindowShake.isBusy
+            WindowGrab.isBusy || WindowShake.isBusy || AppSwitcherPreview.isBusy
                 || WindowGrab.grabChordHeld(ModifierChords.fromAppKit(NSEvent.modifierFlags))
         }
         DispatchQueue.main.async { [monitor] in
@@ -50,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         nightShiftCatalog.invalidate()
         DockPreview.stop()
         DockPreviewOverlay.shared.hide()
+        AppSwitcherPreview.stop()
+        AppSwitcherPreviewOverlay.shared.hide()
+        capsLockCatalog.invalidate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -85,7 +89,8 @@ struct ControlBoxApp: App {
                 nightShiftCatalog: appDelegate.nightShiftCatalog,
                 displayCatalog: appDelegate.displayCatalog,
                 soundCatalog: appDelegate.soundCatalog,
-                dockPreviewCatalog: appDelegate.dockPreviewCatalog
+                dockPreviewCatalog: appDelegate.dockPreviewCatalog,
+                capsLockCatalog: appDelegate.capsLockCatalog
             )
                 .frame(minWidth: 860, minHeight: 620)
                 .preferredColorScheme(nil)

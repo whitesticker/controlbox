@@ -10,7 +10,7 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys / MX Mechanical, window management, onboarding). System Monitor (top) and Dock Previews are shipped as Mac panes.
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys / MX Mechanical, window management, onboarding, product page). System Monitor (top) and Dock Previews are shipped as Mac panes.
 
 HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list. Repeating timers and system-API polls are listed in [polling-loops.md](polling-loops.md).
 
@@ -35,6 +35,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [dockswipe-progress-snapback.md](dockswipe-progress-snapback.md) | Spaces / Mission Control jump backward mid-swipe |
 | [dockswipe-button-overshoot.md](dockswipe-button-overshoot.md) | L1/R1 desktop switch peeks into the next Space and bounces |
 | [app-switcher-no-bar.md](app-switcher-no-bar.md) | Next/Previous application swaps apps with no Command-Tab bar |
+| [app-switcher-window-preview.md](app-switcher-window-preview.md) | Application switcher has no window cards |
+| [caps-lock-modifier.md](caps-lock-modifier.md) | Caps Lock toggles caps instead of acting as a modifier |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
 | [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only (enforcement) |
 | [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |

@@ -14,6 +14,19 @@ struct DockPreviewPane: View {
                 }
 
                 Section {
+                    Toggle("Show window previews in the app switcher", isOn: switcherBinding)
+                    SettingsSlider(
+                        "Preview size",
+                        value: switcherScaleBinding,
+                        in: Double(DockPreview.minCardScale)...Double(DockPreview.maxSwitcherCardScale),
+                        enabled: catalog.switcherEnabled,
+                        valueText: switcherScaleText
+                    )
+                } footer: {
+                    Text("While Command-Tab (or Next / Previous application) is up, show that app’s window cards — same catalog as Dock hover, without titles or the close / minimize / quit HUD. Click a card to open that window. Preview size is only for the switcher. Off until this toggle is on.")
+                }
+
+                Section {
                     SettingsSlider(
                         "Hover delay",
                         value: delayBinding,
@@ -74,6 +87,13 @@ struct DockPreviewPane: View {
         )
     }
 
+    private var switcherBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.switcherEnabled },
+            set: { catalog.setSwitcherEnabled($0) }
+        )
+    }
+
     private var namesBinding: Binding<Bool> {
         Binding(
             get: { catalog.showDockNames },
@@ -88,8 +108,15 @@ struct DockPreviewPane: View {
         )
     }
 
+    private var switcherScaleBinding: Binding<Double> {
+        Binding(
+            get: { Double(catalog.switcherCardScale) },
+            set: { catalog.setSwitcherCardScale(CGFloat($0)) }
+        )
+    }
+
     private var optionsFooter: String {
-        "Hover delay is how long the pointer stays on an icon before the panel first appears; moving to another icon updates immediately. Preview size defaults to 130%. Dock icon names are the native labels on pinned icons. Off clears them and keeps a copy so they come back when you turn this on. Icons that are only running (not pinned) may still show a name. The Dock is not restarted."
+        "Hover delay is how long the pointer stays on an icon before the panel first appears; moving to another icon updates immediately. Dock preview size defaults to 130%. Dock icon names are the native labels on pinned icons. Off clears them and keeps a copy so they come back when you turn this on. Icons that are only running (not pinned) may still show a name. The Dock is not restarted."
     }
 
     private var delayText: String {
@@ -98,6 +125,10 @@ struct DockPreviewPane: View {
 
     private var scaleText: String {
         "\(Int((catalog.cardScale * 100).rounded()))%"
+    }
+
+    private var switcherScaleText: String {
+        "\(Int((catalog.switcherCardScale * 100).rounded()))%"
     }
 
     private var footer: String {

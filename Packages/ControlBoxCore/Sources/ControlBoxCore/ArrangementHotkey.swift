@@ -109,7 +109,7 @@ private final class Controller: @unchecked Sendable {
         if ShortcutCapture.isActive {
             return Unmanaged.passUnretained(event)
         }
-        let bits = ModifierChords.normalized(event.flags)
+        let bits = ModifierChords.live(event.flags)
         guard bits == need, !need.isEmpty else { return Unmanaged.passUnretained(event) }
 
         let key = UInt16(event.getIntegerValueField(.keyboardEventKeycode))

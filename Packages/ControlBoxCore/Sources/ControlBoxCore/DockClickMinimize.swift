@@ -111,7 +111,7 @@ private final class Controller: @unchecked Sendable {
         guard on, let down = downPoint, let up = upPoint else { return }
         downPoint = nil
         upPoint = nil
-        guard ModifierChords.normalized(downFlags).isEmpty else { return }
+        guard ModifierChords.live(downFlags).isEmpty else { return }
         guard hypot(up.x - down.x, up.y - down.y) < 10 else { return }
         if DockMenu.isVisible() { return }
         let cocoa = WindowLayout.cocoaFrame(

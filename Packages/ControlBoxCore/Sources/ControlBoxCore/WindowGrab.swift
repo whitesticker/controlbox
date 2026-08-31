@@ -113,7 +113,7 @@ private final class Controller: @unchecked Sendable {
         let throwHeld = throwEnabled ? throwFlags : []
         lock.unlock()
         guard on else { return false }
-        let current = ModifierChords.normalized(flags)
+        let current = ModifierChords.live(flags)
         if !move.isEmpty, current == ModifierChords.normalized(move) { return true }
         if !resize.isEmpty, current == ModifierChords.normalized(resize) { return true }
         if !throwHeld.isEmpty, current == ModifierChords.normalized(throwHeld) { return true }
@@ -487,7 +487,7 @@ private final class Controller: @unchecked Sendable {
         resizeFlags: CGEventFlags,
         throwFlags: CGEventFlags
     ) -> PointerMode? {
-        let bits = ModifierChords.normalized(flags)
+        let bits = ModifierChords.live(flags)
         let throwNeed = ModifierChords.normalized(throwFlags)
         let resizeNeed = ModifierChords.normalized(resizeFlags)
         let moveNeed = ModifierChords.normalized(moveFlags)

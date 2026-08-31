@@ -28,7 +28,8 @@ Control Box stays on your Mac. Nothing is uploaded.
 | **System Monitor** | Optional second menu bar extra from [top](https://github.com/whitesticker/top): live network speed plus CPU, GPU, memory, disk, sensors, and battery. Off until you turn the pane on. Hide or quit that extra without quitting Control Box. |
 | **Pointer & Scroll** | Pointer speed for USB and Bluetooth mice, wheel and thumb-wheel speed, smooth scrolling, natural vs standard direction. DualSense and Siri Remote keep their own sliders on the device page. |
 | **Window Management** | Hold a modifier chord and move to drag a window from anywhere; add Shift (by default) to resize with the top-left anchored. Optional throw snaps to a 3×3 map of the screen; optional organize (default Control-Command-O) tiles windows. Optional shake-to-focus hides every other window on this display or all displays; optional Dock-click minimize hides an already-visible app. Trackpad, any mouse, or DualSense. Accessibility must be on. |
-| **Dock Previews** | Hover a Dock icon to see that app’s open windows and click one to bring it forward. Off until you turn the pane on. Live thumbnails need Screen Recording; titles work without it. |
+| **Caps Lock** | Hold Caps Lock as the modifiers you pick on that pane (default Control) for Window Management and Display Arrangement. It no longer toggles capital letters. Off until you turn the pane on. Other apps do not see Caps Lock or a Hyper key. |
+| **Dock Previews** | Hover a Dock icon to see that app’s open windows and click one to bring it forward. Optional app-switcher cards (no title, no HUD) while Command-Tab is up. Off until you turn each toggle on. Live thumbnails need Screen Recording; titles work without it on Dock hover. |
 
 ## Devices
 
@@ -50,7 +51,7 @@ brew install --cask whitesticker/controlbox/controlbox
 Open **Control Box**, then grant what you use in **System Settings → Privacy & Security**:
 
 - **Accessibility** — keys, clicks, gestures, volume, Window Management, Display Arrangement shortcut, Dock Previews
-- **Input Monitoring** — mouse wheel speed and direction
+- **Input Monitoring** — mouse wheel speed and direction, Caps Lock as a modifier
 - **Screen & System Audio Recording** — per-app volume on Sound (macOS 15 needs System Audio Recording, not Screen Recording alone). Dock Previews uses **Screen Recording** for live thumbnails; that is a different grant.
 - **Allow in the Background** — keep mapping after the window closes, and start again after login
 
@@ -85,6 +86,7 @@ Tracked in [docs/roadmap.md](docs/roadmap.md):
 - Menu bar icon: a **circle**, matching the app icon (not a game-controller glyph)
 - **Background** (Allow in the Background) — request is in the Permissions pane; confirm after login
 - **Per-app mouse profiles** — different Control mappings when the frontmost app changes
+- **Product page** — static landing page (GitHub Pages is $0; optional custom domain later)
 
 Generic mouse, Xbox, and other TV remotes are later. New hardware should land as a device family, not another special case in the host.
 
