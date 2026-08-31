@@ -18,7 +18,7 @@ struct NightShiftPane: View {
                         }
                     }
                 } footer: {
-                    Text(footer)
+                    footer
                 }
 
                 Section {
@@ -45,7 +45,10 @@ struct NightShiftPane: View {
                 } header: {
                     Text("Yellowness")
                 } footer: {
-                    Text("X is the time of day. Y is how yellow Night Shift is, from cool daylight at the bottom to Night Shift’s maximum warmth at the top. Drag a dot to edit. Double-click the chart to add a point. Drag a point off the bottom to remove it.")
+                    footerBullets(
+                        "X is time of day; Y is warmth (cool at the bottom, max yellow at the top).",
+                        "Drag a dot to edit. Double-click to add. Drag off the bottom to remove."
+                    )
                 }
 
                 Section {
@@ -63,7 +66,10 @@ struct NightShiftPane: View {
                 } header: {
                     Text("External brightness")
                 } footer: {
-                    Text("When the curve is warm, external monitors dim by up to this amount from the level you set. When it is cool, they brighten by the same amount. The built-in panel is left alone. Default is ±10%.")
+                    footerBullets(
+                        "Warm curve dims external monitors; cool brightens them.",
+                        "Built-in panel is left alone. Default ±10%."
+                    )
                 }
             }
             .formStyle(.grouped)
@@ -106,13 +112,19 @@ struct NightShiftPane: View {
         return "\(NightShiftCurve.timeLabel(minutes: NightShiftCurve.minutes(from: date))) · \(percent)% · \(kelvin) K"
     }
 
-    private var footer: String {
+    private var footer: Text {
         if !catalog.isSupported {
-            return "Night Shift is not available on this Mac."
+            return Text("Night Shift is not available on this Mac.")
         }
         if catalog.enabled {
-            return "Control Box owns system Night Shift. Turning it off or on in System Settings or Control Center is undone immediately; only this toggle releases it."
+            return footerBullets(
+                "Control Box owns system Night Shift.",
+                "System Settings / Control Center changes are undone until you turn this off."
+            )
         }
-        return "Off until you turn it on. Then Control Box owns system Night Shift from the curve, including against System Settings."
+        return footerBullets(
+            "Off until this is on.",
+            "Then Control Box owns system Night Shift from the curve."
+        )
     }
 }

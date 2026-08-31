@@ -27,7 +27,10 @@ struct DisplayArrangementPane: View {
                     }
                     .disabled(catalog.live.screens.count < 2)
                 } footer: {
-                    Text("Save Current captures this layout. New Arrangement opens an editor; screens do not move until you apply a preset.")
+                    footerBullets(
+                        "Save Current captures this layout.",
+                        "New Arrangement is an editor; screens do not move until you apply."
+                    )
                 }
 
                 if let applyMessage = catalog.applyMessage {
@@ -54,7 +57,12 @@ struct DisplayArrangementPane: View {
                 } header: {
                     Text("Shortcut")
                 } footer: {
-                    Text("Hold at least three modifier keys, then press 1–9 to apply a layout for the displays that are connected now, or press an arrow key to move through them. Accessibility must be on. These keys cannot match Window Management move, resize, or throw. If Organize uses the same modifiers, it cannot use 1–9 or the arrows.")
+                    footerBullets(
+                        "Hold at least three modifiers, then 1–9 to apply, or arrows to cycle.",
+                        "Accessibility required.",
+                        "Cannot match Window Management move, resize, or throw.",
+                        "If Organize uses the same modifiers, it cannot use 1–9 or arrows."
+                    )
                 }
 
                 if catalog.store.presets.isEmpty && catalog.live.screens.count < 2 {
@@ -172,9 +180,9 @@ struct DisplayArrangementPane: View {
     @ViewBuilder
     private func comboFooter(_ combo: DisplayCombo, presets: [ArrangementPreset]) -> some View {
         if combo.id != catalog.live.comboID {
-            Text("Connect these displays to apply. You can still edit the layout.")
+            Text("Connect these displays to apply. You can still edit.")
         } else if !catalog.live.includesBuiltIn, presets.contains(where: \.includesBuiltIn) {
-            Text("The built-in display is off. Open the lid to apply arrangements that include it.")
+            Text("Built-in is off. Open the lid to apply layouts that include it.")
         }
     }
 

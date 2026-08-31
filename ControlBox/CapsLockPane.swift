@@ -28,7 +28,7 @@ struct CapsLockPane: View {
                             .foregroundStyle(.red)
                     }
                 } footer: {
-                    Text(footer)
+                    footer
                 }
             }
             .formStyle(.grouped)
@@ -50,7 +50,12 @@ struct CapsLockPane: View {
         )
     }
 
-    private var footer: String {
-        "When this is on, Caps Lock no longer toggles capital letters. Hold it and Control Box treats that as the modifiers you pick here — same as holding those keys for Window Management and Display Arrangement. Default is Control, so Move works immediately. Other apps do not see Caps Lock or a Hyper key. Off until this toggle is on. Input Monitoring must be on."
+    private var footer: Text {
+        footerBullets(
+            "Caps Lock no longer toggles capitals.",
+            "Hold it for the modifiers below (default: Control).",
+            "Other apps do not see Caps Lock or a Hyper key.",
+            "Input Monitoring must be on."
+        )
     }
 }

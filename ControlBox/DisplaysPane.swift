@@ -12,7 +12,11 @@ struct DisplaysPane: View {
                 Section {
                     Toggle("Show in menu bar", isOn: $settings.brightnessMenuBarEnabled)
                 } footer: {
-                    Text("Adds a separate menu bar icon with brightness sliders. Click it for a native menu, same as System Monitor. The Control Box icon stays as it is.")
+                    footerBullets(
+                        "Separate extra. The Control Box icon stays.",
+                        "Click for brightness sliders.",
+                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
+                    )
                 }
 
                 if catalog.displays.isEmpty {
@@ -71,7 +75,7 @@ struct DisplaysPane: View {
                 SettingsSlider("Brightness", value: unifiedBrightnessBinding)
             }
         } footer: {
-            Text(unifiedFooter)
+            unifiedFooter
         }
     }
 
@@ -89,11 +93,15 @@ struct DisplaysPane: View {
         )
     }
 
-    private var unifiedFooter: String {
+    private var unifiedFooter: Text {
         if catalog.canUnify {
-            return "On enable, Control Box remembers how bright each panel is relative to the brightest one. The shared slider keeps that mix: 0% is all dark, 100% raises the brightest panel to full and scales the others with it. Turn it off to set each display again."
+            return footerBullets(
+                "Remembers each panel’s mix relative to the brightest.",
+                "0% is all dark; 100% raises the brightest to full and scales the rest.",
+                "Off to set each display again."
+            )
         }
-        return "Connect at least two brightness-adjustable displays to link them."
+        return Text("Needs two brightness-adjustable displays.")
     }
 
     private func brightnessBinding(_ display: AttachedDisplay) -> Binding<Double> {
@@ -118,7 +126,7 @@ struct DisplaysPane: View {
             return display.detail
         }
         if display.isBuiltIn {
-            return "Built-in brightness is not available on this panel."
+            return "Built-in brightness is not available here."
         }
         return "\(display.detail). HDMI on some Apple silicon Macs cannot do DDC; USB-C / DisplayPort usually can."
     }

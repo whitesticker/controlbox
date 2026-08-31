@@ -18,7 +18,12 @@ struct PointerScrollPane: View {
                     }
                     .pickerStyle(.radioGroup)
                 } footer: {
-                    Text("Pointer speed applies to USB and Bluetooth mice, including every MX Master. Wheel speed, smooth scrolling, and scroll direction use one system scroll tap once a mouse is attached, so they cannot differ per mouse. Accessibility must be on for wheel speed. DualSense and Siri Remote keep their own pointer and scroll on the device page.")
+                    footerBullets(
+                        "Pointer speed: USB and Bluetooth mice, including every MX Master.",
+                        "Wheel speed, smooth scrolling, and direction are shared once a mouse is attached.",
+                        "Accessibility is required for wheel speed.",
+                        "DualSense and Siri Remote keep their own sliders on the device page."
+                    )
                 }
             }
             .formStyle(.grouped)

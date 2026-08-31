@@ -39,7 +39,7 @@ struct ContentView: View {
                 }
                 Section("App") {
                     HStack(spacing: 8) {
-                        SettingsGlyph(symbol: SidebarItem.permissions.symbol, tint: SidebarItem.permissions.tint)
+                        SettingsGlyph(name: SidebarItem.permissions.glyph, tint: SidebarItem.permissions.tint)
                         Text(SidebarItem.permissions.title)
                         Spacer(minLength: 8)
                         Circle()
@@ -47,6 +47,7 @@ struct ContentView: View {
                             .frame(width: 8, height: 8)
                     }
                     .tag(SidebarItem.permissions)
+                    macRow(.settings)
                 }
             }
             .listStyle(.sidebar)
@@ -92,6 +93,8 @@ struct ContentView: View {
                 DockPreviewPane(catalog: dockPreviewCatalog)
             case .permissions:
                 PrivacyPane(monitor: monitor)
+            case .settings:
+                SettingsPane()
             case .device:
                 DeviceProfilePane(monitor: monitor)
             }
@@ -124,7 +127,7 @@ struct ContentView: View {
 
     private func macRow(_ item: SidebarItem) -> some View {
         HStack(spacing: 8) {
-            SettingsGlyph(symbol: item.symbol, tint: item.tint)
+            SettingsGlyph(name: item.glyph, tint: item.tint, system: item.systemGlyph)
             Text(item.title)
         }
         .tag(item)
@@ -149,7 +152,7 @@ private struct DeviceSidebarRow: View {
     var body: some View {
         HStack(spacing: 8) {
             SettingsGlyph(
-                symbol: device.symbol,
+                name: device.glyph,
                 tint: device.kind == .appleTVRemote
                     ? Color(red: 0.35, green: 0.34, blue: 0.84)
                     : Color(red: 0.20, green: 0.48, blue: 0.96)

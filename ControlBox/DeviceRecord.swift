@@ -68,12 +68,7 @@ struct SidebarDevice: Identifiable, Hashable {
     var controlEnabled: Bool
     var remembered: Bool
 
-    var symbol: String {
-        if kind == .appleTVRemote { return "appletvremote.gen4.fill" }
-        if kind.isMXMaster { return "computermouse.fill" }
-        if kind.isMXKeyboard { return "keyboard.fill" }
-        return "gamecontroller.fill"
-    }
+    var glyph: String { kind.paneGlyph }
 
     var statusTitle: String {
         if isConnected { return "Connected" }

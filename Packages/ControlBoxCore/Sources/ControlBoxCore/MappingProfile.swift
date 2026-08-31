@@ -396,7 +396,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if isMXMaster {
             return MappingProfile(
                 name: name,
-                summary: "Haptic pad is Gestures. Side is Switch Desktop. Back and Forward are browser buttons.",
+                summary: "Gesture / Haptic is Gestures. Back and Forward are browser buttons.",
                 bindings: mxMasterBindings,
                 pointerSpeed: 0.21,
                 hapticGestureSpeed: 0.5,

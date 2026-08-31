@@ -75,7 +75,7 @@ private final class ExtraStatusItem: NSObject, NSMenuDelegate {
 
     static func brightness(catalog: DisplayCatalog) -> ExtraStatusItem {
         ExtraStatusItem(
-            symbol: "sun.max.fill",
+            imageName: "display-brightness-line",
             accessibility: "Display Brightness",
             openTitle: "Open Display Brightness…",
             open: { PaneNavigation.open(.displays) },
@@ -90,7 +90,7 @@ private final class ExtraStatusItem: NSObject, NSMenuDelegate {
 
     static func sound(catalog: SoundCatalog) -> ExtraStatusItem {
         ExtraStatusItem(
-            symbol: "speaker.wave.2.fill",
+            imageName: "sound-line",
             accessibility: "Sound",
             openTitle: "Open Sound…",
             open: { PaneNavigation.open(.sound) },
@@ -104,7 +104,7 @@ private final class ExtraStatusItem: NSObject, NSMenuDelegate {
     }
 
     private init(
-        symbol: String,
+        imageName: String,
         accessibility: String,
         openTitle: String,
         open: @escaping () -> Void,
@@ -139,8 +139,9 @@ private final class ExtraStatusItem: NSObject, NSMenuDelegate {
         self.hideHandler = hide
 
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: accessibility)
+            let image = NSImage(named: imageName) ?? NSImage(systemSymbolName: "circle", accessibilityDescription: accessibility)
             image?.isTemplate = true
+            image?.size = NSSize(width: 18, height: 18)
             button.image = image
             button.imagePosition = .imageOnly
         }

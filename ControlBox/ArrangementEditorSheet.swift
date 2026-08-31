@@ -59,7 +59,7 @@ struct ArrangementEditorSheet: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                Text("Drag a display to move it. Edges snap. Click the menu bar on a display to make it the main screen.")
+                Text("• Drag to move. Edges snap.\n• Click the menu bar on a display to make it the main screen.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)

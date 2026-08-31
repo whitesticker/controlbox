@@ -22,6 +22,7 @@ HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz time
 | Sound menu extra | 1.5 s | `SystemAudio` outputs + `AppVolumeMixer.apps()` | Only while the Sound extra menu is **open** | Rebuild process taps on an empty `!obj` list. See [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md). |
 | App volume taps | HAL IOProc / tap clock | Per-app gain while a tap is installed | Sound mixer is live | Two mixers on the same app. See [process-tap-exclusive.md](process-tap-exclusive.md). |
 | MX Mechanical battery | 30 s | HID++ `UNIFIED_BATTERY` | Keyboard HID++ ready | Do not put on the 120 Hz path. Do not divert keys. Do not `SetReport` on the main thread from a SwiftUI toggle. |
+| MX Master battery | 30 s | HID++ `UNIFIED_BATTERY` | Mouse HID++ ready | Do not put on the 120 Hz path. |
 
 ## Event-driven (no idle poll)
 

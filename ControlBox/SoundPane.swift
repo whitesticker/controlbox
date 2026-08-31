@@ -11,7 +11,11 @@ struct SoundPane: View {
                 Section {
                     Toggle("Show in menu bar", isOn: $settings.soundMenuBarEnabled)
                 } footer: {
-                    Text("Adds a separate menu bar icon with output and per-app volume. Click it for a native menu, same as System Monitor. The Control Box icon stays as it is.")
+                    footerBullets(
+                        "Separate extra. The Control Box icon stays.",
+                        "Click for output and per-app volume.",
+                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
+                    )
                 }
 
                 Section {
@@ -69,7 +73,10 @@ struct SoundPane: View {
                 } header: {
                     Text("Apps")
                 } footer: {
-                    Text("The first slider keeps that app here. The saved level applies again the next time it plays.")
+                    footerBullets(
+                        "Moving a slider keeps that app here.",
+                        "The saved level applies the next time it plays."
+                    )
                 }
             }
             .formStyle(.grouped)

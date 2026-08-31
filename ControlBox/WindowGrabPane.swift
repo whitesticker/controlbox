@@ -36,7 +36,12 @@ struct WindowGrabPane: View {
                             .foregroundStyle(.red)
                     }
                 } footer: {
-                    Text("Hold the move keys and move the pointer to drag a window from anywhere. Hold the resize keys and move to grow or shrink from the bottom-right; the top-left stays put. Works with the trackpad, any mouse, or DualSense. Accessibility must be on. These keys cannot match Throw, Display Arrangement, or each other.")
+                    footerBullets(
+                        "Hold Move and drag from anywhere.",
+                        "Hold Resize and move: grows from the bottom-right; top-left stays put.",
+                        "Trackpad, mouse, or DualSense. Accessibility required.",
+                        "These keys cannot match Throw, Display Arrangement, or each other."
+                    )
                 }
 
                 Section {
@@ -50,7 +55,11 @@ struct WindowGrabPane: View {
                         onConflict: { conflictName = $0 }
                     )
                 } footer: {
-                    Text("Hold these keys and move the pointer. The window under the cursor snaps to a 3×3 map of that screen: corners are quarters, edges are halves, center is full size. Off until this toggle is on.")
+                    footerBullets(
+                        "Hold and move: snaps the window under the cursor to a 3×3 map of that screen.",
+                        "Corners = quarters, edges = halves, center = full.",
+                        "Off until this toggle is on."
+                    )
                 }
 
                 Section {
@@ -74,7 +83,11 @@ struct WindowGrabPane: View {
                         )
                     }
                 } footer: {
-                    Text("Press this shortcut to tile visible windows on the pointer’s screen. Press it again to shuffle which window sits in each tile. Default is Control-Command-O. Off until this toggle is on. Record modifiers plus a key; it cannot use Display Arrangement’s number or arrow keys with the same modifiers.")
+                    footerBullets(
+                        "Tiles visible windows on the pointer’s screen. Press again to shuffle.",
+                        "Default Control-Command-O. Off until this toggle is on.",
+                        "Cannot reuse Display Arrangement’s number or arrow keys with the same modifiers."
+                    )
                 }
 
                 Section {
@@ -86,13 +99,20 @@ struct WindowGrabPane: View {
                     .pickerStyle(.radioGroup)
                     .disabled(!monitor.macMouseProfile.resolvedWindowShakeEnabled)
                 } footer: {
-                    Text("Shake a window left and right — from the title bar, or while Move is held — to hide every other visible window. Shake again to bring them back. This display / All displays is the physical monitor, not a Space. Off until this toggle is on. Accessibility must be on.")
+                    footerBullets(
+                        "Shake a window (title bar, or while Move is held) to hide the others. Shake again to restore.",
+                        "This display / All displays is the physical monitor, not a Space.",
+                        "Off until this toggle is on. Accessibility required."
+                    )
                 }
 
                 Section {
                     Toggle("Minimize on Dock click", isOn: windowDockClickMinimizeBinding)
                 } footer: {
-                    Text("If that app is already front and has a visible window, click its Dock icon to minimize that window. Off until this toggle is on. Accessibility must be on.")
+                    footerBullets(
+                        "If that app is already front, click its Dock icon to minimize its visible window.",
+                        "Off until this toggle is on. Accessibility required."
+                    )
                 }
             }
             .formStyle(.grouped)

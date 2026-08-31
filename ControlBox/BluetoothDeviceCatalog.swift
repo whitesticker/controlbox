@@ -29,6 +29,13 @@ enum DeviceKind: String, Codable, Equatable {
         self == .logitechMXMechanical || self == .logitechMXMechanicalMini
     }
 
+    var paneGlyph: String {
+        if self == .appleTVRemote { return "device-siri-remote-filled" }
+        if isMXMaster { return "device-mx-master-line" }
+        if isMXKeyboard { return "device-mx-mechanical-filled" }
+        return "device-dualsense-filled"
+    }
+
     var usesMXMasterHIDPP: Bool {
         switch self {
         case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:

@@ -1,21 +1,12 @@
 import AppKit
 
-/// Template ring for the Control Box menu extra, matching the app icon’s
-/// centered annulus (not the orange squircle — menu bar items stay monochrome).
+/// Template D-segments for the Control Box menu extra, matching the app icon
+/// mark (not the orange squircle — menu bar items stay monochrome).
 enum MenuBarRingIcon {
     static let image: NSImage = {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let lineWidth = rect.width * 0.16
-            let inset = rect.width * 0.14 + lineWidth / 2
-            let path = NSBezierPath(ovalIn: rect.insetBy(dx: inset, dy: inset))
-            path.lineWidth = lineWidth
-            path.lineCapStyle = .round
-            NSColor.black.setStroke()
-            path.stroke()
-            return true
-        }
+        let image = NSImage(named: "menu-bar-icon-template") ?? NSImage(size: NSSize(width: 14, height: 14))
         image.isTemplate = true
+        image.size = NSSize(width: 14, height: 14)
         return image
     }()
 }

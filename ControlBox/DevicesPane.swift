@@ -24,7 +24,10 @@ struct AddDeviceSheet: View {
                 } header: {
                     Text("Available")
                 } footer: {
-                    Text("Supported devices stay in the sidebar after they sleep. Use Add Device if a paired controller is missing.")
+                    footerBullets(
+                        "Supported devices stay in the sidebar after they sleep.",
+                        "Use Add Device if a paired one is missing."
+                    )
                 }
 
                 Section("Not supported yet") {
@@ -54,9 +57,11 @@ struct AddDeviceSheet: View {
 
     private func deviceRow(_ device: ConnectedBluetoothDevice, showsAdd: Bool) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: addDeviceSymbol(for: device.deviceKind))
-                .font(.body)
-                .frame(width: 22)
+            Image(device.deviceKind.paneGlyph)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                 Text(device.detail)
@@ -73,12 +78,5 @@ struct AddDeviceSheet: View {
             }
         }
         .contentShape(Rectangle())
-    }
-
-    private func addDeviceSymbol(for kind: DeviceKind) -> String {
-        if kind == .appleTVRemote { return "appletvremote.gen4" }
-        if kind.isMXMaster { return "computermouse" }
-        if kind.isMXKeyboard { return "keyboard" }
-        return "gamecontroller"
     }
 }

@@ -5,11 +5,15 @@ struct TopPane: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            Form {
                 Section {
                     Toggle("Show in menu bar", isOn: $store.menuBarEnabled)
                 } footer: {
-                    Text("Adds a separate menu bar icon with live network speed. Click it for CPU, GPU, memory, disk, sensors, and battery. The Control Box icon stays as it is.")
+                    footerBullets(
+                        "Separate extra with live network speed. The Control Box icon stays.",
+                        "Click for CPU, GPU, memory, disk, sensors, and battery.",
+                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
+                    )
                 }
 
                 Section {
@@ -38,10 +42,13 @@ struct TopPane: View {
                 } header: {
                     Text("Dashboard rows")
                 } footer: {
-                    Text("Drag to reorder. Turn a row off to hide it from the menu bar dashboard.")
+                    footerBullets(
+                        "Drag to reorder.",
+                        "Off hides the row from the extra."
+                    )
                 }
             }
-            .listStyle(.inset)
+            .formStyle(.grouped)
             .navigationTitle("System Monitor")
         }
     }

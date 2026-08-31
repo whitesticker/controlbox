@@ -10,7 +10,7 @@ struct DockPreviewPane: View {
                 Section {
                     Toggle("Show window previews on the Dock", isOn: enabledBinding)
                 } footer: {
-                    Text(footer)
+                    footer
                 }
 
                 Section {
@@ -23,7 +23,11 @@ struct DockPreviewPane: View {
                         valueText: switcherScaleText
                     )
                 } footer: {
-                    Text("While Command-Tab (or Next / Previous application) is up, show that app’s window cards — same catalog as Dock hover, without titles or the close / minimize / quit HUD. Click a card to open that window. Preview size is only for the switcher. Off until this toggle is on.")
+                    footerBullets(
+                        "Same cards while Command-Tab is up, without titles or HUD.",
+                        "Click a card to open that window.",
+                        "Preview size is only for the switcher. Off until this toggle is on."
+                    )
                 }
 
                 Section {
@@ -43,7 +47,7 @@ struct DockPreviewPane: View {
                     )
                     Toggle("Show Dock icon names", isOn: namesBinding)
                 } footer: {
-                    Text(optionsFooter)
+                    optionsFooter
                 }
 
                 Section {
@@ -64,7 +68,11 @@ struct DockPreviewPane: View {
                         }
                     }
                 } footer: {
-                    Text("Live thumbnails need Screen Recording. Without it the panel still lists every window by title. This is not the same grant as System Audio Recording on Sound.")
+                    footerBullets(
+                        "Live thumbnails need Screen Recording.",
+                        "Without it, windows still list by title.",
+                        "Not the same grant as System Audio Recording on Sound."
+                    )
                 }
             }
             .formStyle(.grouped)
@@ -115,8 +123,12 @@ struct DockPreviewPane: View {
         )
     }
 
-    private var optionsFooter: String {
-        "Hover delay is how long the pointer stays on an icon before the panel first appears; moving to another icon updates immediately. Dock preview size defaults to 130%. Dock icon names are the native labels on pinned icons. Off clears them and keeps a copy so they come back when you turn this on. Icons that are only running (not pinned) may still show a name. The Dock is not restarted."
+    private var optionsFooter: Text {
+        footerBullets(
+            "Hover delay is the first wait; moving to another icon updates immediately.",
+            "Dock preview size defaults to 130%.",
+            "Icon names: off snapshots and clears pinned labels; on restores them. Dock is not restarted."
+        )
     }
 
     private var delayText: String {
@@ -131,10 +143,18 @@ struct DockPreviewPane: View {
         "\(Int((catalog.switcherCardScale * 100).rounded()))%"
     }
 
-    private var footer: String {
+    private var footer: Text {
         if catalog.enabled {
-            return "Point at a Dock icon that has open windows to see them. Apps with no windows stay native — no empty card. Click a card to open that window. Hover a card on this Space for close (red), minimize (yellow) or restore (green), and quit (purple). Cards on another Space have no HUD. The preview hides while a Dock right-click menu is open. Accessibility must be on. Native Dock clicks still work."
+            return footerBullets(
+                "Hover a Dock icon that has windows to preview them. Apps with none stay native.",
+                "Click a card to focus. HUD: close, minimize/restore, quit. Other Spaces have no HUD.",
+                "Hides while a Dock right-click menu is open.",
+                "Accessibility must be on. Native Dock clicks still work."
+            )
         }
-        return "Off until you turn it on. Then hovering a Dock icon shows that app’s open windows, including minimized ones and windows on other Spaces."
+        return footerBullets(
+            "Off until this is on.",
+            "Then hover a Dock icon to see that app’s windows, including minimized and other Spaces."
+        )
     }
 }

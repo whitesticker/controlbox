@@ -46,6 +46,12 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var extras: [MXMasterControl] = []
     var events: [InputLogEvent] = []
     var lastHIDEvent = "—"
+    var batterySupported = false
+    var batteryAvailable = false
+    var batteryPercent: Int?
+    var batteryCharging = false
+    var batteryFull = false
+    var batteryStateDescription = "Unknown"
 }
 
 final class LogitechMXMasterReader {
@@ -128,6 +134,8 @@ final class LogitechMXMasterReader {
     private var forceSensingIndex: UInt8?
     private var pointerScaleIndex: UInt8?
     private var dpiIndex: UInt8?
+    private var batteryIndex: UInt8?
+    private var batteryTimer: Timer?
     private var dpiValues: [Int] = []
     private var lastSentDPI = -1
     private var lastSentPointerScale = -1
@@ -197,6 +205,7 @@ final class LogitechMXMasterReader {
         unlockCursor()
         restoreNativeReporting()
         stopClickProbe()
+        stopBatteryTimer()
         if let hidppDevice {
             IOHIDDeviceUnscheduleFromRunLoop(hidppDevice, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         }
@@ -219,6 +228,7 @@ final class LogitechMXMasterReader {
         forceSensingIndex = nil
         pointerScaleIndex = nil
         dpiIndex = nil
+        batteryIndex = nil
         dpiValues = []
         lastSentDPI = -1
         lastSentPointerScale = -1
@@ -739,6 +749,8 @@ final class LogitechMXMasterReader {
         thumbWheelIndex = nil
         pointerScaleIndex = nil
         dpiIndex = nil
+        batteryIndex = nil
+        stopBatteryTimer()
         ready = false
         hidppDevice = device
         lastAppliedOSDPI = -1
@@ -813,6 +825,7 @@ final class LogitechMXMasterReader {
             return
         }
         teardownHIDPP(incoming, keepQueued: false)
+        stopBatteryTimer()
         unfreezeCursor()
         hidppDevice = nil
         ready = false
@@ -835,6 +848,7 @@ final class LogitechMXMasterReader {
         hidppEpoch += 1
         hidppQueue.removeAll()
         pending = nil
+        stopBatteryTimer()
         if let current = hidppDevice {
             teardownHIDPP(current, keepQueued: true)
             hidppDevice = nil
@@ -1045,6 +1059,7 @@ final class LogitechMXMasterReader {
                 self.lastSentPointerScale = -1
                 self.sendSensorSettingsIfNeeded()
                 self.applyWheelRouting()
+                self.startBatteryPolling()
             }
             return
         }
@@ -1162,6 +1177,7 @@ final class LogitechMXMasterReader {
                 self.lastSentPointerScale = -1
                 self.sendSensorSettingsIfNeeded()
                 self.applyWheelRouting()
+                self.startBatteryPolling()
             }
         }
     }
@@ -1247,6 +1263,7 @@ final class LogitechMXMasterReader {
                 case 0x2150: self.thumbWheelIndex = index
                 case 0x2205: self.pointerScaleIndex = index
                 case 0x2201: self.dpiIndex = index
+                case 0x1004: self.batteryIndex = index
                 default: break
                 }
             }
@@ -1267,7 +1284,11 @@ final class LogitechMXMasterReader {
                     self.lookupFeature(0x2201) { [weak self] dpi in
                         guard let self else { return }
                         if self.dpiIndex == nil { self.dpiIndex = dpi }
-                        self.readDPIList(then: completion)
+                        self.lookupFeature(0x1004) { [weak self] battery in
+                            guard let self else { return }
+                            if self.batteryIndex == nil { self.batteryIndex = battery }
+                            self.readDPIList(then: completion)
+                        }
                     }
                 }
             }
@@ -1312,6 +1333,60 @@ final class LogitechMXMasterReader {
             self.dpiValues = Array(Set(values)).sorted()
             self.publishMotionSettings()
         }
+    }
+
+    private func startBatteryPolling() {
+        lock.lock()
+        snapshot.batterySupported = batteryIndex != nil
+        lock.unlock()
+        readBattery()
+        startBatteryTimer()
+    }
+
+    private func readBattery() {
+        guard let batteryIndex else { return }
+        request(featureIndex: batteryIndex, function: 1, params: []) { [weak self] data in
+            self?.applyBattery(data)
+        }
+    }
+
+    private func applyBattery(_ data: Data?) {
+        guard let data, !data.isEmpty else { return }
+        let percent = Int(data[0])
+        let status = data.count > 2 ? data[2] : 0
+        let charging = status == 1 || status == 4
+        let full = status == 3 || (percent >= 95 && (status == 2 || status == 3))
+        let description: String
+        switch status {
+        case 1, 4: description = "Charging"
+        case 2: description = "Almost full"
+        case 3: description = full ? "Full" : "Almost full"
+        default: description = "Discharging"
+        }
+        lock.lock()
+        snapshot.batterySupported = true
+        snapshot.batteryAvailable = true
+        snapshot.batteryPercent = percent
+        snapshot.batteryCharging = charging
+        snapshot.batteryFull = full
+        snapshot.batteryStateDescription = description
+        lock.unlock()
+    }
+
+    private func startBatteryTimer() {
+        stopBatteryTimer()
+        guard batteryIndex != nil else { return }
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            self?.readBattery()
+        }
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        batteryTimer = timer
+    }
+
+    private func stopBatteryTimer() {
+        batteryTimer?.invalidate()
+        batteryTimer = nil
     }
 
     private func applyWheelRouting() {
@@ -1537,6 +1612,10 @@ final class LogitechMXMasterReader {
         }
         if let forceSensingIndex, featureIndex == forceSensingIndex {
             handleForceSensing(payload)
+            return
+        }
+        if let batteryIndex, featureIndex == batteryIndex {
+            applyBattery(payload)
             return
         }
         noteLastEvent(String(format: "HID++ feat %02X fn%d %@", featureIndex, function, Self.hex(payload)))

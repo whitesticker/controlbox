@@ -102,10 +102,20 @@ private struct DeviceRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: iconName)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(iconColor)
-                .frame(width: 18)
+            Group {
+                if enabled {
+                    Image(device.deviceKind.paneGlyph)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .foregroundStyle(iconColor)
+            .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
@@ -133,18 +143,6 @@ private struct DeviceRow: View {
         .background(rowBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .opacity(enabled ? 1 : 0.55)
         .accessibilityAddTraits(enabled ? .isButton : .isStaticText)
-    }
-
-    private var iconName: String {
-        if !enabled { return "antenna.radiowaves.left.and.right" }
-        switch device.deviceKind {
-        case .appleTVRemote: return "appletvremote"
-        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
-            return "computermouse.fill"
-        case .logitechMXMechanical, .logitechMXMechanicalMini:
-            return "keyboard.fill"
-        default: return "gamecontroller.fill"
-        }
     }
 
     private var iconColor: Color {

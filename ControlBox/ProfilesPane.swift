@@ -39,11 +39,17 @@ struct DeviceProfilePane: View {
                         keyboardBatterySection
                         keyboardSettingsSection
                     } else {
+                        if record.isMXMaster {
+                            mxBatterySection
+                        }
                         Section {
                             Toggle("Control this Mac", isOn: controlEnabledBinding)
                             Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
                         } footer: {
-                            Text("Sends this device’s inputs to the Mac. Injection is skipped while Control Box is frontmost unless you enable the second switch.")
+                            bullets(
+                                "Sends this device’s inputs to the Mac.",
+                                "Skipped while Control Box is frontmost, unless the second switch is on."
+                            )
                         }
 
                         Section("Profile") {
@@ -90,7 +96,7 @@ struct DeviceProfilePane: View {
                         } header: {
                             Text("This mouse")
                         } footer: {
-                            Text(mxPointerScrollFooter(for: record))
+                            mxPointerScrollFooter(for: record)
                         }
                     } else {
                         Section {
@@ -115,9 +121,20 @@ struct DeviceProfilePane: View {
                         } header: {
                             Text("Pointer & scroll")
                         } footer: {
-                            Text(record.isAppleTVRemote
-                                ? "Pointer speed scales stick, clickpad, and touchpad cursor motion. Scroll speed only applies when a stick or clickpad analog is set to Scroll. Natural matches the Mac’s default direction."
-                                : "Pointer speed scales stick and touchpad cursor motion. Gesture speed is 1-finger and 2-finger hold-to-swipe. Scroll speed and scroll acceleration only apply when a stick or Touchpad analog is set to Scroll — not touchpad Gestures. Natural matches the Mac’s default direction.")
+                            if record.isAppleTVRemote {
+                                bullets(
+                                    "Pointer speed: stick, clickpad, and touchpad.",
+                                    "Scroll speed: only when that analog is set to Scroll.",
+                                    "Natural matches the Mac."
+                                )
+                            } else {
+                                bullets(
+                                    "Pointer speed: stick and touchpad.",
+                                    "Gesture speed: 1-finger and 2-finger hold-to-swipe.",
+                                    "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
+                                    "Natural matches the Mac."
+                                )
+                            }
                         }
                     }
 
@@ -149,17 +166,29 @@ struct DeviceProfilePane: View {
                             Text(group.title)
                         } footer: {
                             if group.id == "clickpad" {
-                                Text("Tap Select twice quickly for a double-click. Hold for the Hold action.")
+                                bullets(
+                                    "Double-tap Select for a double-click.",
+                                    "Hold for the Hold action."
+                                )
                             } else if group.id == "buttons" {
-                                Text(mxButtonsFooter(for: record))
+                                mxButtonsFooter(for: record)
                             } else if group.id == "wheel" {
-                                Text("Scroll up and Scroll down are the main wheel, one direction each. Scroll keeps native scrolling; pick another action to fire it instead of scrolling that way.")
+                                bullets(
+                                    "Up and Down are the main wheel, one direction each.",
+                                    "Scroll keeps native scrolling; any other action replaces that direction."
+                                )
                             } else if group.id == "thumb-wheel" {
-                                Text("Scroll left and Scroll right are the thumb wheel. Scroll keeps native scrolling; pick another action to fire it instead of scrolling that way.")
+                                bullets(
+                                    "Left and Right are the thumb wheel.",
+                                    "Scroll keeps native scrolling; any other action replaces that direction."
+                                )
                             } else if group.id == "sticks" {
-                                Text("L3 and R3 are clicks of the analog sticks, not extra shoulder buttons.")
+                                Text("L3 and R3 are stick clicks.")
                             } else if group.id == "shoulders", !record.isMXMaster, !record.isAppleTVRemote {
-                                Text("L2 and R2 are analog triggers. Map Previous tab / Next tab to use travel: a mid pull switches one tab, a full hold repeats. L1 and R1 stay click buttons.")
+                                bullets(
+                                    "L2 / R2 are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
+                                    "L1 / R1 are click buttons."
+                                )
                             }
                         }
                     }
@@ -169,7 +198,7 @@ struct DeviceProfilePane: View {
                             openWindow(id: "calibration")
                         }
                     } footer: {
-                        Text("Opens a live capture window for this device so you can confirm buttons, clickpad, and motion.")
+                        Text("Live capture of this device’s buttons and motion.")
                     }
                     }
 
@@ -179,7 +208,11 @@ struct DeviceProfilePane: View {
                                 monitor.removeSelectedDevice()
                             }
                         } footer: {
-                            Text("Removes this device from the sidebar. Add it again from Add Device. If it is still connected, it stays in the list until it disconnects.")
+                            bullets(
+                                "Removes it from the sidebar.",
+                                "Add Device brings it back.",
+                                "If it’s still connected, it stays until it disconnects."
+                            )
                         }
                     }
                 }
@@ -199,7 +232,7 @@ struct DeviceProfilePane: View {
                 ContentUnavailableView(
                     "Select a Device",
                     systemImage: "appletvremote.gen4",
-                    description: Text("Choose a controller in the sidebar to set up mapping.")
+                    description: Text("Choose a device in the sidebar.")
                 )
             }
         }
@@ -228,7 +261,11 @@ struct DeviceProfilePane: View {
                 Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                     .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
             } footer: {
-                Text("Slow slides stay precise. Faster flicks cover more of the screen. The pointer does not move while Select is pressed. Sticky targeting outlines the control under the pointer and clicks that control.")
+                bullets(
+                    "Slow slides stay precise; flicks cover more of the screen.",
+                    "Pointer does not move while Select is pressed.",
+                    "Sticky targeting outlines the control under the pointer and clicks it."
+                )
             }
         } else {
             Section {
@@ -246,7 +283,13 @@ struct DeviceProfilePane: View {
             } header: {
                 Text("Analog")
             } footer: {
-                Text("Sticks only move the pointer or scroll if you turn that source on. Touchpad analog is pointer/scroll only — swipe mappings are in Touchpad gestures below. Pointer acceleration keeps small stick or touch moves precise and speeds up flicks. Sticky targeting outlines the control under the pointer and clicks that control. Haptic feedback rumbles the DualSense when you press a button.")
+                bullets(
+                    "Sticks only move or scroll if that source is on.",
+                    "Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.",
+                    "Acceleration: small moves stay precise, flicks speed up.",
+                    "Sticky targeting outlines the control under the pointer and clicks it.",
+                    "Haptic rumble on DualSense button press."
+                )
             }
         }
     }
@@ -259,7 +302,11 @@ struct DeviceProfilePane: View {
         } header: {
             Text("Touchpad gestures")
         } footer: {
-            Text("These are two separate Gestures, like the MX gesture button. One finger and two fingers each have their own preset. Hold and move for the four directions. Lift without moving is Click. The physical click is Touchpad click under System.")
+            bullets(
+                "Two separate Gestures, like the MX gesture button.",
+                "Hold and move for the four directions; lift without moving is Click.",
+                "Physical click is Touchpad click under System."
+            )
         }
     }
 
@@ -641,20 +688,35 @@ struct DeviceProfilePane: View {
         return nil
     }
 
-    private func mxPointerScrollFooter(for record: DeviceRecord) -> String {
-        let feel = record.kind.isMXMaster3Family
-            ? "DPI is sensor resolution on this mouse. Gesture speed is hold-to-swipe on the thumb button."
-            : "DPI is sensor resolution on this mouse. Haptic gesture speed is the thumb pad."
-        return feel
-            + " Pointer speed, scroll direction, smooth scrolling, and wheel/thumb speed live under Mac → Pointer & Scroll because one system scroll tap is shared by every mouse."
+    private func bullets(_ lines: String...) -> Text {
+        footerBullets(Array(lines))
     }
 
-    private func mxButtonsFooter(for record: DeviceRecord) -> String {
-        let gesture = record.kind.isMXMaster3Family
-            ? "Gesture is the only Gestures button. Hold the thumb button and move for the four directions. A tap without moving is Click."
-            : "Haptic is the only Gestures button. Hold the pad and move for the four directions. A tap without moving is Click. Side is the extra thumb button in front of Back / Forward; it defaults to Mission Control (Switch Desktop)."
-        return gesture
-            + " macOS click events do not say which physical mouse generated them, so extra-button fallbacks are gated per model: MX4 haptic (buttons 5/6) will not start a 3S gesture."
+    private func mxPointerScrollFooter(for record: DeviceRecord) -> Text {
+        if record.kind.isMXMaster3Family {
+            return footerBullets(
+                "DPI is this mouse’s sensor.",
+                "Gesture speed is hold-to-swipe on the thumb button.",
+                "Pointer, scroll, and wheel speed are under Mac → Pointer & Scroll."
+            )
+        }
+        return footerBullets(
+            "DPI is this mouse’s sensor.",
+            "Haptic gesture speed is the thumb pad.",
+            "Pointer, scroll, and wheel speed are under Mac → Pointer & Scroll."
+        )
+    }
+
+    private func mxButtonsFooter(for record: DeviceRecord) -> Text {
+        if record.kind.isMXMaster3Family {
+            return footerBullets(
+                "Gesture is the only Gestures button: hold and move, or tap to Click."
+            )
+        }
+        return footerBullets(
+            "Haptic is the only Gestures button: hold and move, or tap to Click.",
+            "Side is the extra thumb button (default: Mission Control)."
+        )
     }
 
     private func mxHIDPPStatus(for record: DeviceRecord) -> String {
@@ -671,6 +733,26 @@ struct DeviceProfilePane: View {
             return live.status
         }
         return "Not connected"
+    }
+
+    @ViewBuilder
+    private var mxBatterySection: some View {
+        let live = monitor.mxMasterSnapshot
+        Section("Battery") {
+            if live.batteryAvailable, let percent = live.batteryPercent {
+                LabeledContent("Level", value: "\(percent)%")
+                LabeledContent("State", value: live.batteryStateDescription)
+            } else if monitor.isLiveMXSelection(live) {
+                LabeledContent(
+                    "Level",
+                    value: live.batterySupported || !live.status.hasPrefix("Connected")
+                        ? "Reading…"
+                        : "Not available"
+                )
+            } else {
+                LabeledContent("Level", value: "Not connected")
+            }
+        }
     }
 
     @ViewBuilder
@@ -705,7 +787,11 @@ struct DeviceProfilePane: View {
         } header: {
             Text("Keyboard")
         } footer: {
-            Text("Backlight and battery saving are stored on the keyboard. Battery saving turns the backlight off when the charge is critically low. Quit Logi Options+ if HID++ stays disconnected.")
+            bullets(
+                "Backlight and battery saving are stored on the keyboard.",
+                "Battery saving turns the backlight off when charge is critically low.",
+                "Quit Logi Options+ if HID++ stays disconnected."
+            )
         }
     }
 

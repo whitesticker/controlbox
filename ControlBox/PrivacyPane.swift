@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PrivacyPane: View {
     @Bindable var monitor: DualSenseMonitor
-    @Bindable private var settings = AppSettings.shared
 
     var body: some View {
         NavigationStack {
@@ -17,9 +16,14 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text(monitor.allPermissionsGranted
-                         ? "Control Box can listen to input, inject keyboard, pointer, and scroll events."
-                         : "Turn on Accessibility and Input Monitoring. Both need a relaunch after you grant them.")
+                    if monitor.allPermissionsGranted {
+                        Text("Accessibility and Input Monitoring are on.")
+                    } else {
+                        footerBullets(
+                            "Accessibility and Input Monitoring are required for most features.",
+                            "Relaunch after granting those two."
+                        )
+                    }
                 }
 
                 Section {
@@ -36,7 +40,12 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed to send keys, clicks, gestures, and volume to this Mac, and to see which Dock icon the pointer is on.")
+                    footerBullets(
+                        "Devices: keys, clicks, gestures, and volume.",
+                        "Window Management.",
+                        "Display Arrangement shortcut.",
+                        "Dock Previews: which Dock icon the pointer is on."
+                    )
                 }
 
                 Section {
@@ -53,7 +62,10 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed to intercept the mouse wheel so scroll speed and direction can be applied.")
+                    footerBullets(
+                        "Pointer & Scroll: wheel speed and direction.",
+                        "Caps Lock as a modifier."
+                    )
                 }
 
                 Section {
@@ -68,13 +80,11 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Starts Control Box when you log in to this Mac. macOS lists this under System Settings → General → Login Items & Extensions. You may also need Allow in the Background.")
-                }
-
-                Section {
-                    Toggle("Hide Dock icon", isOn: $settings.hideDockIcon)
-                } footer: {
-                    Text("Control Box stays in the menu bar. Command-Q closes the window and leaves the app running. Quit from the Control Box menu bar icon.")
+                    footerBullets(
+                        "Starts Control Box at login.",
+                        "Listed under System Settings → General → Login Items & Extensions.",
+                        "You may also need Allow in the Background."
+                    )
                 }
 
                 Section {
@@ -91,7 +101,10 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed only for per-app volume on Sound. This is not Screen Recording. Input mapping does not use this.")
+                    footerBullets(
+                        "Sound: per-app volume only.",
+                        "Not Screen Recording. Devices do not use this."
+                    )
                 }
 
                 Section {
@@ -108,7 +121,11 @@ struct PrivacyPane: View {
                         }
                     }
                 } footer: {
-                    Text("Needed only for live thumbnails on Dock Previews. Window titles still work without it. This is not the System Audio Recording grant used by Sound.")
+                    footerBullets(
+                        "Dock Previews: live thumbnails.",
+                        "Titles still work without it.",
+                        "Not the System Audio Recording grant used by Sound."
+                    )
                 }
 
                 if monitor.needsRelaunchForPermissions {
@@ -117,7 +134,11 @@ struct PrivacyPane: View {
                             monitor.relaunchApp()
                         }
                     } footer: {
-                        Text("After you enable Control Box in System Settings, relaunch so this running copy picks up the new permission. Debug builds are signed with your Apple Development certificate, so later rebuilds keep the same grant. Remove leftover ad-hoc Control Box rows if macOS still shows more than one.")
+                        footerBullets(
+                            "Relaunch so this copy picks up new grants.",
+                            "Debug builds keep the same Apple Development identity.",
+                            "Remove leftover ad-hoc Control Box rows if macOS lists more than one."
+                        )
                     }
                 }
             }
