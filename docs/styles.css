@@ -24,15 +24,62 @@ a { color: var(--ink); }
 .hero {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 48px 24px 16px;
+  padding: 64px 24px 16px;
   text-align: center;
 }
 
-.hero-banner {
-  width: min(100%, 880px);
-  height: auto;
-  display: block;
-  margin: 0 auto 20px;
+.lockup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin: 0 auto 32px;
+  text-align: left;
+}
+
+.mark {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 112px;
+  border-radius: 26%;
+  background: var(--orange);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 16px 40px rgba(242, 90, 34, 0.28);
+}
+
+.ring {
+  width: 54%;
+  height: 54%;
+  border: 11px solid #fff;
+  border-radius: 50%;
+  animation: ring-in 1.1s ease both;
+}
+
+.titles h1 {
+  margin: 0;
+  font-size: clamp(40px, 7vw, 64px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.tag {
+  margin: 10px 0 0;
+  font-size: clamp(18px, 2.6vw, 24px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.pills {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+@keyframes ring-in {
+  from { transform: scale(0.72); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .hero-lead {
@@ -198,7 +245,16 @@ footer img {
 
 footer a { color: var(--muted); }
 
+@media (max-width: 640px) {
+  .lockup {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .shot { animation: none; }
+  .shot,
+  .ring { animation: none; }
   .s1 { opacity: 1; }
 }

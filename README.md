@@ -1,19 +1,21 @@
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Control Box" width="960">
+  <img src="docs/screenshots/app-icon.png" alt="Control Box" width="96">
 </p>
 
 <p align="center">
-  <strong>Control Box</strong> is the missing control panel for macOS.<br>
-  Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them.
+  <strong>Control Box</strong><br>
+  The missing control panel for macOS
+</p>
+
+<p align="center">
+  Displays · Sound · Pointer · Windows · Devices
 </p>
 
 <p align="center">
   <a href="https://whitesticker.github.io/controlbox/">Product page</a>
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/app-icon.png" alt="Control Box icon" width="96">
-</p>
+Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them.
 
 It started as a mapper for unusual input. The Mac sidebar outgrew that: brightness and DDC, Night Shift warmth over the day, display-layout presets, per-app volume, pointer and wheel feel, grab-to-move windows, Dock window previews, and an optional menu-bar monitor. Controllers are still first-class. They are no longer the whole app.
 
