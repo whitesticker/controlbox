@@ -5,7 +5,7 @@ cask "controlbox" do
   url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/ControlBox-#{version}.zip"
   name "Control Box"
   desc "Control your Mac with a DualSense, Siri Remote, or MX Master"
-  homepage "https://github.com/whitesticker/controlbox"
+  homepage "https://whitesticker.github.io/controlbox/"
 
   depends_on macos: :sonoma
 

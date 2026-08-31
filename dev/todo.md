@@ -15,11 +15,11 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Pointer / wheel / thumb speed feel (slider 50% applies the old 25%)
 - [x] MX4 sensor DPI + smooth scrolling (HiRes wheel), with settings controls
 - [x] Haptic swipes keep 1000-DPI physical travel; pointer speed stays on its own slider.
-- [x] BLE MX4 haptic is native HID button 7 (see `docs/mx-master-4-ble-haptic.md`)
-- [x] 100ms arm delay so a haptic tap is not a swipe (see `docs/haptic-tap-starts-swipe.md`)
-- [x] App Exposé is a discrete down-swipe, not live DockSwipe (see `docs/dockswipe-down-skips-app-expose.md`)
-- [x] Media gesture left/right fires previous/next track (see `docs/media-gesture-skip-dead.md`)
-- [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `docs/haptic-vs-back-gesture.md`)
+- [x] BLE MX4 haptic is native HID button 7 (see `mx-master-4-ble-haptic.md`)
+- [x] 100ms arm delay so a haptic tap is not a swipe (see `haptic-tap-starts-swipe.md`)
+- [x] App Exposé is a discrete down-swipe, not live DockSwipe (see `dockswipe-down-skips-app-expose.md`)
+- [x] Media gesture left/right fires previous/next track (see `media-gesture-skip-dead.md`)
+- [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `haptic-vs-back-gesture.md`)
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 - [x] MX Master 3 / 3S reader (same CID table; BLE `0xB034` measured). Separate module from MX4.
@@ -44,4 +44,4 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
 
-Product-facing work (mic, live gesture HUD, MX Keys / MX Mechanical, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys / MX Mechanical, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles, product page) lives in [roadmap.md](roadmap.md). MX4 Side is shipped. Media skip / play / mute already show an action HUD.

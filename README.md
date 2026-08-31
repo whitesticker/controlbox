@@ -3,8 +3,12 @@
 </p>
 
 <p align="center">
-  <strong>Control Box</strong> is a local Mac control panel.<br>
+  <strong>Control Box</strong> is the missing control panel for macOS.<br>
   Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them.
+</p>
+
+<p align="center">
+  <a href="https://whitesticker.github.io/controlbox/">Product page</a>
 </p>
 
 <p align="center">
@@ -75,7 +79,7 @@ Control Box does not send input or audio to a server. Bluetooth is used only to 
 
 ## Roadmap
 
-Tracked in [docs/roadmap.md](docs/roadmap.md):
+Tracked in [dev/roadmap.md](dev/roadmap.md):
 
 - DualSense and Siri Remote **microphone**
 - Stronger **gesture** hold / swipe on-screen cue (media skip / play / mute already show an action HUD)
@@ -92,4 +96,4 @@ Generic mouse, Xbox, and other TV remotes are later. New hardware should land as
 
 ## Docs for contributors
 
-Start at [docs/README.md](docs/README.md) and [AGENTS.md](AGENTS.md).
+Start at [dev/README.md](dev/README.md) and [AGENTS.md](AGENTS.md).

@@ -39,7 +39,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 
 ## Site
 
-- [ ] **Product page.** One static landing page (hero, Mac panes, devices, brew install, permissions, privacy). GitHub Pages on this repo is enough; hosting is $0. Optional custom domain later (~$10–15/year) — `getcontrolbox.com` if a short URL is wanted. Do not buy aftermarket `controlbox.com`. Do not chase `controlbox.net` (existing Miami company). Point the Homebrew cask `homepage` and the README at the page when it exists. No backend, no analytics unless first-party and optional. Do not paste the incident log.
+- [ ] **Product page.** Public site is `docs/` (`index.html`, `styles.css`, `screenshots/`). GitHub Pages **Deploy from a branch** → `main` / `/docs` → `https://whitesticker.github.io/controlbox/`. Optional custom domain later (~$10–15/year) — `getcontrolbox.com` if a short URL is wanted. Do not buy aftermarket `controlbox.com`. Do not chase `controlbox.net` (existing Miami company). Cask `homepage` and the README point at the Pages URL. No backend, no analytics. Do not paste the incident log. Problem log lives in `dev/`. Regenerate pane shots with `ControlBox --export-screenshots docs/screenshots`.
 
 ## Do not
 

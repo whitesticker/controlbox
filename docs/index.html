@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Control Box — The missing control panel for macOS</title>
+  <meta name="description" content="Control Box is the missing control panel for macOS. Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them. Stays on your Mac.">
+  <link rel="icon" href="screenshots/app-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <img class="hero-banner" src="screenshots/hero.png" alt="Control Box">
+    <p class="hero-lead">Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, and MX Master when you want them. Nothing is uploaded.</p>
+    <div class="cta">
+      <a class="btn" href="#install">Install</a>
+      <a class="btn ghost" href="https://github.com/whitesticker/controlbox">GitHub</a>
+    </div>
+    <pre class="brew" id="install"><code>brew install --cask whitesticker/controlbox/controlbox</code></pre>
+  </header>
+
+  <section class="stage" aria-label="App screenshots">
+    <div class="window">
+      <div class="window-bar" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="reel">
+        <img src="screenshots/displays.png" alt="Display Brightness" class="shot s1">
+        <img src="screenshots/night-shift.png" alt="Night Shift" class="shot s2">
+        <img src="screenshots/windows.png" alt="Window Management" class="shot s3">
+        <img src="screenshots/dock-previews.png" alt="Dock Previews" class="shot s4">
+        <img src="screenshots/sound.png" alt="Sound" class="shot s5">
+        <img src="screenshots/arrangement.png" alt="Display Arrangement" class="shot s6">
+      </div>
+    </div>
+    <p class="caption">Display Brightness, Night Shift, Window Management, Dock Previews, Sound, Display Arrangement</p>
+  </section>
+
+  <section>
+    <h2>This Mac</h2>
+    <div class="grid">
+      <article>
+        <h3>Display Brightness</h3>
+        <p>Per-panel brightness and contrast. One slider can keep each display’s mix. Optional menu bar extra.</p>
+      </article>
+      <article>
+        <h3>Night Shift</h3>
+        <p>A 24-hour warmth curve for system Night Shift. Optional follow dims or brightens external monitors.</p>
+      </article>
+      <article>
+        <h3>Display Arrangement</h3>
+        <p>Save layout presets for the screens that are plugged in now. Keyboard shortcut plus a layout HUD.</p>
+      </article>
+      <article>
+        <h3>Sound</h3>
+        <p>Output volume, then a per-app mixer. Optional menu bar extra. Needs System Audio Recording for per-app volume.</p>
+      </article>
+      <article>
+        <h3>Window Management</h3>
+        <p>Hold a chord to move or resize from anywhere. Throw, organize, shake-to-focus, Dock-click minimize.</p>
+      </article>
+      <article>
+        <h3>Dock Previews</h3>
+        <p>Hover a Dock icon to see that app’s windows. Optional cards in the app switcher while Command-Tab is up.</p>
+      </article>
+      <article>
+        <h3>Pointer &amp; Scroll</h3>
+        <p>Pointer speed, wheel and thumb-wheel speed, smooth scrolling, direction. Not gated on an MX Master.</p>
+      </article>
+      <article>
+        <h3>System Monitor</h3>
+        <p>Optional second menu bar extra: live network speed plus CPU, GPU, memory, disk, sensors, and battery.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Devices</h2>
+    <div class="grid">
+      <article>
+        <h3>DualSense / Edge</h3>
+        <p>Buttons, sticks, rumble. 1-finger and 2-finger touchpad are separate Gestures. Sticks can be pointer or scroll.</p>
+      </article>
+      <article>
+        <h3>Siri Remote</h3>
+        <p>Clickpad pointer, click-wheel scroll, face buttons, live calibration. A2540.</p>
+      </article>
+      <article>
+        <h3>MX Master 3 / 3S</h3>
+        <p>Extra buttons plus thumb Gesture — tap is a click, hold and move is a swipe.</p>
+      </article>
+      <article>
+        <h3>MX Master 4</h3>
+        <p>Extra buttons including Side, plus the Haptic pad. Isolated HID++ reader.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Privacy</h2>
+    <p class="prose">Control Box stays on your Mac. It does not send input or audio to a server. Grant only what you use: Accessibility, Input Monitoring, Screen Recording for Dock thumbnails, and System Audio Recording for the per-app mixer.</p>
+  </section>
+
+  <footer>
+    <img src="screenshots/app-icon.png" alt="" width="40" height="40">
+    <p>Control Box · local only · <a href="https://github.com/whitesticker/controlbox">source</a></p>
+  </footer>
+</body>
+</html>

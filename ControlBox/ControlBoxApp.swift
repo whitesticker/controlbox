@@ -25,7 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
-        AppSettings.shared.applyDockPolicy()
+        if ScreenshotExport.isActive {
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            AppSettings.shared.applyDockPolicy()
+        }
         TopMenuBarHost.shared.start()
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
         nightShiftCatalog.attachDisplays(displayCatalog)
@@ -36,7 +40,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [monitor] in
             monitor.start()
         }
-        if AppSettings.shared.hideDockIcon {
+        if ScreenshotExport.isActive {
+            DispatchQueue.main.async {
+                ScreenshotExport.runIfRequested()
+            }
+        } else if AppSettings.shared.hideDockIcon {
             DispatchQueue.main.async { [weak self] in
                 self?.closeSessionWindows()
             }
