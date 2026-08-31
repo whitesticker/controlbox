@@ -20,6 +20,9 @@ struct MacMouseSettings: Codable, Equatable {
     var windowThrowFlags: UInt64
     var windowOrganizeFlags: UInt64
     var windowOrganizeKey: UInt16
+    var windowShakeEnabled: Bool
+    var windowShakeScope: WindowShakeScope
+    var windowDockClickMinimizeEnabled: Bool
 
     static let defaultsKey = "controlbox.macMouse.v1"
 
@@ -38,7 +41,10 @@ struct MacMouseSettings: Codable, Equatable {
             windowResizeFlags: MappingProfile.defaultWindowResizeFlags,
             windowThrowFlags: MappingProfile.defaultWindowThrowFlags,
             windowOrganizeFlags: MappingProfile.defaultWindowOrganizeFlags,
-            windowOrganizeKey: MappingProfile.defaultWindowOrganizeKey
+            windowOrganizeKey: MappingProfile.defaultWindowOrganizeKey,
+            windowShakeEnabled: false,
+            windowShakeScope: .thisDisplay,
+            windowDockClickMinimizeEnabled: false
         )
     }
 
@@ -63,6 +69,9 @@ struct MacMouseSettings: Codable, Equatable {
             settings.windowThrowFlags = profile.resolvedWindowThrowFlags.rawValue
             settings.windowOrganizeFlags = profile.resolvedWindowOrganizeFlags.rawValue
             settings.windowOrganizeKey = profile.resolvedWindowOrganizeKey
+            settings.windowShakeEnabled = profile.resolvedWindowShakeEnabled
+            settings.windowShakeScope = profile.resolvedWindowShakeScope
+            settings.windowDockClickMinimizeEnabled = profile.resolvedWindowDockClickMinimizeEnabled
         } else {
             settings.pointerSpeed = 0.5
             settings.naturalScrolling = true
@@ -91,6 +100,9 @@ struct MacMouseSettings: Codable, Equatable {
         profile.windowThrowFlags = windowThrowFlags
         profile.windowOrganizeFlags = windowOrganizeFlags
         profile.windowOrganizeKey = windowOrganizeKey
+        profile.windowShakeEnabled = windowShakeEnabled
+        profile.windowShakeScope = windowShakeScope
+        profile.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
     }
 
     var asProfile: MappingProfile {
@@ -113,7 +125,10 @@ struct MacMouseSettings: Codable, Equatable {
         windowResizeFlags: UInt64,
         windowThrowFlags: UInt64,
         windowOrganizeFlags: UInt64,
-        windowOrganizeKey: UInt16
+        windowOrganizeKey: UInt16,
+        windowShakeEnabled: Bool,
+        windowShakeScope: WindowShakeScope,
+        windowDockClickMinimizeEnabled: Bool
     ) {
         self.pointerSpeed = pointerSpeed
         self.wheelScrollSpeed = wheelScrollSpeed
@@ -129,6 +144,9 @@ struct MacMouseSettings: Codable, Equatable {
         self.windowThrowFlags = windowThrowFlags
         self.windowOrganizeFlags = windowOrganizeFlags
         self.windowOrganizeKey = windowOrganizeKey
+        self.windowShakeEnabled = windowShakeEnabled
+        self.windowShakeScope = windowShakeScope
+        self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -155,5 +173,12 @@ struct MacMouseSettings: Codable, Equatable {
             windowOrganizeFlags = MappingProfile.defaultWindowOrganizeFlags
             windowOrganizeKey = MappingProfile.defaultWindowOrganizeKey
         }
+        windowShakeEnabled = try container.decodeIfPresent(Bool.self, forKey: .windowShakeEnabled) ?? false
+        windowShakeScope = try container.decodeIfPresent(WindowShakeScope.self, forKey: .windowShakeScope)
+            ?? .thisDisplay
+        windowDockClickMinimizeEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .windowDockClickMinimizeEnabled
+        ) ?? false
     }
 }

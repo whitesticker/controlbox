@@ -226,6 +226,14 @@ private final class Controller: @unchecked Sendable {
                 NSCursor.crosshair.set()
             }
         }
+        if mode == .move, let session {
+            WindowShake.noteGrab(
+                window: session.window,
+                windowID: session.windowID,
+                bounds: session.startFrame,
+                point: point
+            )
+        }
         pendingPoint = point
     }
 
@@ -455,6 +463,7 @@ private final class Controller: @unchecked Sendable {
     private func endGrabSession() {
         if session != nil {
             NSCursor.arrow.set()
+            WindowShake.endGrab()
         }
         session = nil
         pendingPoint = nil

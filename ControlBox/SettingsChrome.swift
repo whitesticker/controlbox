@@ -35,7 +35,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .sound: return "Sound"
         case .systemMonitor: return "System Monitor"
         case .pointerScroll: return "Pointer & Scroll"
-        case .windowGrab: return "Window Grab"
+        case .windowGrab: return "Window Management"
         case .dockPreview: return "Dock Previews"
         case .permissions: return "Permissions"
         case .device: return "Device"

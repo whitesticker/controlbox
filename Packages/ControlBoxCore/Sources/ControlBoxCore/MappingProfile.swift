@@ -34,6 +34,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var windowThrowFlags: UInt64?
     public var windowOrganizeFlags: UInt64?
     public var windowOrganizeKey: UInt16?
+    public var windowShakeEnabled: Bool?
+    public var windowShakeScope: WindowShakeScope?
+    public var windowDockClickMinimizeEnabled: Bool?
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -65,6 +68,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedWindowOrganizeKey: UInt16 {
         windowOrganizeKey ?? Self.defaultWindowOrganizeKey
     }
+    public var resolvedWindowShakeEnabled: Bool { windowShakeEnabled ?? false }
+    public var resolvedWindowShakeScope: WindowShakeScope { windowShakeScope ?? .thisDisplay }
+    public var resolvedWindowDockClickMinimizeEnabled: Bool { windowDockClickMinimizeEnabled ?? false }
 
     public static let defaultWindowMoveFlags = CGEventFlags.maskControl.rawValue
     public static let defaultWindowResizeFlags = CGEventFlags.maskControl.union(.maskShift).rawValue
@@ -107,7 +113,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         windowResizeFlags: UInt64? = nil,
         windowThrowFlags: UInt64? = nil,
         windowOrganizeFlags: UInt64? = nil,
-        windowOrganizeKey: UInt16? = nil
+        windowOrganizeKey: UInt16? = nil,
+        windowShakeEnabled: Bool? = nil,
+        windowShakeScope: WindowShakeScope? = nil,
+        windowDockClickMinimizeEnabled: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -141,6 +150,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.windowThrowFlags = windowThrowFlags
         self.windowOrganizeFlags = windowOrganizeFlags
         self.windowOrganizeKey = windowOrganizeKey
+        self.windowShakeEnabled = windowShakeEnabled
+        self.windowShakeScope = windowShakeScope
+        self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -361,7 +373,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             windowResizeFlags: windowResizeFlags,
             windowThrowFlags: windowThrowFlags,
             windowOrganizeFlags: windowOrganizeFlags,
-            windowOrganizeKey: windowOrganizeKey
+            windowOrganizeKey: windowOrganizeKey,
+            windowShakeEnabled: windowShakeEnabled,
+            windowShakeScope: windowShakeScope,
+            windowDockClickMinimizeEnabled: windowDockClickMinimizeEnabled
         )
     }
 

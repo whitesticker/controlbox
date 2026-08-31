@@ -43,7 +43,7 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. No HUD on other-Space cards. Quit calls `NSRunningApplication.terminate()` (graceful, not force).
 - Place the panel above the revealed Dock, not the screen edge. If auto-hide is instant and AX still has a collapsed tile, use tilesize clearance and refresh the icon frame after the hover delay.
 - Hide the panel while a Dock right-click menu is up. Right-click dismisses and stays down until that menu is gone. Do not cover the native menu (our panel is above menu level).
-- Hide the panel while Window Grab is busy or its modifier chord is held.
+- Hide the panel while Window Grab is busy, Shake to focus is watching a drag, or a Window Grab modifier chord is held.
 - Native Dock left-click is not intercepted. The panel sits above the icons.
 
 Screen Recording is a **separate** grant from System Audio Recording. Do not fold it into `screenCaptureTrusted` or `allPermissionsGranted`.

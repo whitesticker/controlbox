@@ -230,6 +230,8 @@ final class DualSenseMonitor {
         mouseScrollTap.stop()
         WindowGrab.stop()
         WindowOrganizeHotkey.stop()
+        WindowShake.stop()
+        DockClickMinimize.stop()
     }
 
     func selectDevice(_ device: ConnectedBluetoothDevice) {
@@ -901,12 +903,14 @@ final class DualSenseMonitor {
             if lastWindowGrabSignature != "off" {
                 WindowGrab.stop()
                 WindowOrganizeHotkey.stop()
+                WindowShake.stop()
+                DockClickMinimize.stop()
                 lastWindowGrabSignature = "off"
             }
             return
         }
         let profile = macMouseProfile
-        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowThrowEnabled)|\(profile.resolvedWindowOrganizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)|\(profile.resolvedWindowThrowFlags)|\(profile.resolvedWindowOrganizeFlags)|\(profile.resolvedWindowOrganizeKey)"
+        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowThrowEnabled)|\(profile.resolvedWindowOrganizeEnabled)|\(profile.resolvedWindowShakeEnabled)|\(profile.resolvedWindowShakeScope)|\(profile.resolvedWindowDockClickMinimizeEnabled)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)|\(profile.resolvedWindowThrowFlags)|\(profile.resolvedWindowOrganizeFlags)|\(profile.resolvedWindowOrganizeKey)"
         guard signature != lastWindowGrabSignature else { return }
         lastWindowGrabSignature = signature
         WindowGrab.configure(
@@ -925,6 +929,13 @@ final class DualSenseMonitor {
         ) {
             WindowGrab.organizeAtPointer()
         }
+        WindowShake.configure(
+            enabled: profile.resolvedWindowShakeEnabled,
+            scope: profile.resolvedWindowShakeScope
+        )
+        DockClickMinimize.configure(
+            enabled: profile.resolvedWindowDockClickMinimizeEnabled
+        )
     }
 
     func setWindowMoveEnabled(_ enabled: Bool) {
@@ -972,6 +983,18 @@ final class DualSenseMonitor {
             $0.windowOrganizeKey = virtualKey
             $0.windowOrganizeFlags = ModifierChords.normalized(flags).rawValue
         }
+    }
+
+    func setWindowShakeEnabled(_ enabled: Bool) {
+        updateMacMouse { $0.windowShakeEnabled = enabled }
+    }
+
+    func setWindowShakeScope(_ scope: WindowShakeScope) {
+        updateMacMouse { $0.windowShakeScope = scope }
+    }
+
+    func setWindowDockClickMinimizeEnabled(_ enabled: Bool) {
+        updateMacMouse { $0.windowDockClickMinimizeEnabled = enabled }
     }
 
     func macModifierOccupancy(

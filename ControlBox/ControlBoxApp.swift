@@ -29,7 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
         nightShiftCatalog.attachDisplays(displayCatalog)
         dockPreviewCatalog.attachSuppress {
-            WindowGrab.isBusy || WindowGrab.grabChordHeld(ModifierChords.fromAppKit(NSEvent.modifierFlags))
+            WindowGrab.isBusy || WindowShake.isBusy
+                || WindowGrab.grabChordHeld(ModifierChords.fromAppKit(NSEvent.modifierFlags))
         }
         DispatchQueue.main.async { [monitor] in
             monitor.start()

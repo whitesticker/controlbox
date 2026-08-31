@@ -52,6 +52,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |
 | [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |
 | [dock-window-preview.md](dock-window-preview.md) | Dock hover does not show window thumbnails |
+| [shake-to-focus.md](shake-to-focus.md) | Shaking a window does not hide the others |
 | [modifier-chip-tint.md](modifier-chip-tint.md) | Modifier chips do not look selected on older macOS |
 | [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |

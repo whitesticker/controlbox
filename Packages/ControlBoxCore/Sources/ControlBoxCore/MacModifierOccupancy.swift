@@ -17,13 +17,13 @@ public struct MacModifierOccupancy: Sendable {
     ) {
         var items: [(name: String, flags: CGEventFlags)] = []
         if moveEnabled {
-            items.append(("Window Grab move", ModifierChords.normalized(moveFlags)))
+            items.append(("Window Management move", ModifierChords.normalized(moveFlags)))
         }
         if resizeEnabled {
-            items.append(("Window Grab resize", ModifierChords.normalized(resizeFlags)))
+            items.append(("Window Management resize", ModifierChords.normalized(resizeFlags)))
         }
         if throwEnabled {
-            items.append(("Window Grab throw", ModifierChords.normalized(throwFlags)))
+            items.append(("Window Management throw", ModifierChords.normalized(throwFlags)))
         }
         if arrangementEnabled {
             items.append(("Display Arrangement", ModifierChords.normalized(arrangementFlags)))

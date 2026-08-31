@@ -31,6 +31,8 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 | MX HID++ / clicks | HID report, one shared click tap | `IOHID`, `CGEvent` tap | Do not open the standard mouse collection. |
 | Scroll speed / invert | Wheel `CGEvent` tap | `CGEvent` | Input Monitoring. |
 | Window Grab / Organize / Arrangement hotkeys | Listen-only `CGEvent` tap | `CGEvent`, then AX on a timer | Stash in the tap; AX on the tick. |
+| Shake to focus | Listen-only left-mouse tap; Window Grab move feeds points | Coalesced main-queue AX hit / minimize | **No idle timer.** Keep down and drag in the same flush. See [shake-to-focus.md](shake-to-focus.md). |
+| Minimize on Dock click | Listen-only left-mouse tap | Dock AX tile + window list on mouse up | One-shot per click. Do not swallow the native click. |
 | Dock Previews | Listen-only mouse tap + local `NSEvent` + Dock selected-child `AXObserver` | Coalesced `CGEvent` moves, cached Dock AX tiles, ScreenCaptureKit stills (≤6, cached) | **No pointer sampling.** One resolve per run-loop turn. AX tile walk at most ~8 Hz; hit-test the cache otherwise. Do not observe Dock layout (magnification). See [dock-window-preview.md](dock-window-preview.md). |
 | Display Brightness / Arrangement | Screen connect, pane appear | CoreDisplay / DDC / `NSScreen` | DDC is queued, not polled. Brightness extra does not poll while the menu is open. |
 | Permissions / device list | Launch, wake, HID attach | TCC, `SMAppService`, IOHID | Not on the 120 Hz path. |

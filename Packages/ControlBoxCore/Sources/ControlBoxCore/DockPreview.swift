@@ -117,6 +117,18 @@ public enum DockPreview {
         }
     }
 
+    /// Application tile under a Quartz point. Works when Dock Previews is off.
+    public static func runningApp(atQuartz point: CGPoint) -> NSRunningApplication? {
+        if Thread.isMainThread {
+            return Controller.shared.runningApp(atQuartz: point)
+        }
+        var app: NSRunningApplication?
+        DispatchQueue.main.sync {
+            app = Controller.shared.runningApp(atQuartz: point)
+        }
+        return app
+    }
+
     public static func focus(_ window: DockPreviewWindow) {
         DockPreviewFocus.raise(window)
         dismiss()
@@ -244,6 +256,13 @@ private final class Controller {
         pendingID = nil
         cancelRevealRetry()
         clearHover()
+    }
+
+    func runningApp(atQuartz point: CGPoint) -> NSRunningApplication? {
+        let cocoa = WindowLayout.cocoaFrame(
+            from: CGRect(origin: point, size: CGSize(width: 1, height: 1))
+        ).origin
+        return dockIcon(at: cocoa)?.app
     }
 
     private func startMonitors() {
@@ -421,7 +440,8 @@ private final class Controller {
     private func resolveHover(fromMove: Bool) {
         guard enabled else { return }
         let cocoa = NSEvent.mouseLocation
-        if shouldSuppress() || WindowGrab.isBusy || WindowGrab.grabChordHeld(Self.cgFlags(NSEvent.modifierFlags)) {
+        if shouldSuppress() || WindowGrab.isBusy || WindowShake.isBusy
+            || WindowGrab.grabChordHeld(Self.cgFlags(NSEvent.modifierFlags)) {
             dismissImmediately()
             return
         }

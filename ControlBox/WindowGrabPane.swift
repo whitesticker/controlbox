@@ -18,7 +18,7 @@ struct WindowGrabPane: View {
                         title: "Move keys",
                         flags: windowMoveFlagsBinding,
                         minimumCount: 1,
-                        occupied: occupancy.occupied(except: "Window Grab move"),
+                        occupied: occupancy.occupied(except: "Window Management move"),
                         message: $chordMessage,
                         onConflict: { conflictName = $0 }
                     )
@@ -27,7 +27,7 @@ struct WindowGrabPane: View {
                         title: "Resize keys",
                         flags: windowResizeFlagsBinding,
                         minimumCount: 1,
-                        occupied: occupancy.occupied(except: "Window Grab resize"),
+                        occupied: occupancy.occupied(except: "Window Management resize"),
                         message: $chordMessage,
                         onConflict: { conflictName = $0 }
                     )
@@ -45,7 +45,7 @@ struct WindowGrabPane: View {
                         title: "Throw keys",
                         flags: windowThrowFlagsBinding,
                         minimumCount: 1,
-                        occupied: occupancy.occupied(except: "Window Grab throw"),
+                        occupied: occupancy.occupied(except: "Window Management throw"),
                         message: $chordMessage,
                         onConflict: { conflictName = $0 }
                     )
@@ -76,9 +76,27 @@ struct WindowGrabPane: View {
                 } footer: {
                     Text("Press this shortcut to tile visible windows on the pointer’s screen. Press it again to shuffle which window sits in each tile. Default is Control-Command-O. Off until this toggle is on. Record modifiers plus a key; it cannot use Display Arrangement’s number or arrow keys with the same modifiers.")
                 }
+
+                Section {
+                    Toggle("Shake to focus", isOn: windowShakeEnabledBinding)
+                    Picker("Hide other windows on", selection: windowShakeScopeBinding) {
+                        Text("This display").tag(WindowShakeScope.thisDisplay)
+                        Text("All displays").tag(WindowShakeScope.allDisplays)
+                    }
+                    .pickerStyle(.radioGroup)
+                    .disabled(!monitor.macMouseProfile.resolvedWindowShakeEnabled)
+                } footer: {
+                    Text("Shake a window left and right — from the title bar, or while Move is held — to hide every other visible window. Shake again to bring them back. This display / All displays is the physical monitor, not a Space. Off until this toggle is on. Accessibility must be on.")
+                }
+
+                Section {
+                    Toggle("Minimize on Dock click", isOn: windowDockClickMinimizeBinding)
+                } footer: {
+                    Text("If that app is already front and has a visible window, click its Dock icon to minimize that window. Off until this toggle is on. Accessibility must be on.")
+                }
             }
             .formStyle(.grouped)
-            .navigationTitle("Window Grab")
+            .navigationTitle("Window Management")
             .modifierConflictAlert($conflictName)
         }
     }
@@ -94,7 +112,7 @@ struct WindowGrabPane: View {
         enabledBinding(
             get: { monitor.macMouseProfile.resolvedWindowMoveEnabled },
             flags: { monitor.macMouseProfile.resolvedWindowMoveFlags },
-            except: "Window Grab move",
+            except: "Window Management move",
             set: { monitor.setWindowMoveEnabled($0) }
         )
     }
@@ -103,7 +121,7 @@ struct WindowGrabPane: View {
         enabledBinding(
             get: { monitor.macMouseProfile.resolvedWindowResizeEnabled },
             flags: { monitor.macMouseProfile.resolvedWindowResizeFlags },
-            except: "Window Grab resize",
+            except: "Window Management resize",
             set: { monitor.setWindowResizeEnabled($0) }
         )
     }
@@ -112,7 +130,7 @@ struct WindowGrabPane: View {
         enabledBinding(
             get: { monitor.macMouseProfile.resolvedWindowThrowEnabled },
             flags: { monitor.macMouseProfile.resolvedWindowThrowFlags },
-            except: "Window Grab throw",
+            except: "Window Management throw",
             set: { monitor.setWindowThrowEnabled($0) }
         )
     }
@@ -199,6 +217,27 @@ struct WindowGrabPane: View {
         Binding(
             get: { monitor.macMouseProfile.resolvedWindowThrowFlags.rawValue },
             set: { monitor.setWindowThrowFlags($0) }
+        )
+    }
+
+    private var windowShakeEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.macMouseProfile.resolvedWindowShakeEnabled },
+            set: { monitor.setWindowShakeEnabled($0) }
+        )
+    }
+
+    private var windowShakeScopeBinding: Binding<WindowShakeScope> {
+        Binding(
+            get: { monitor.macMouseProfile.resolvedWindowShakeScope },
+            set: { monitor.setWindowShakeScope($0) }
+        )
+    }
+
+    private var windowDockClickMinimizeBinding: Binding<Bool> {
+        Binding(
+            get: { monitor.macMouseProfile.resolvedWindowDockClickMinimizeEnabled },
+            set: { monitor.setWindowDockClickMinimizeEnabled($0) }
         )
     }
 }

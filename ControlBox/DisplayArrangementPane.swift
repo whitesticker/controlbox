@@ -54,7 +54,7 @@ struct DisplayArrangementPane: View {
                 } header: {
                     Text("Shortcut")
                 } footer: {
-                    Text("Hold at least three modifier keys, then press 1–9 to apply a layout for the displays that are connected now, or press an arrow key to move through them. Accessibility must be on. These keys cannot match Window Grab move, resize, or throw. If Organize uses the same modifiers, it cannot use 1–9 or the arrows.")
+                    Text("Hold at least three modifier keys, then press 1–9 to apply a layout for the displays that are connected now, or press an arrow key to move through them. Accessibility must be on. These keys cannot match Window Management move, resize, or throw. If Organize uses the same modifiers, it cannot use 1–9 or the arrows.")
                 }
 
                 if catalog.store.presets.isEmpty && catalog.live.screens.count < 2 {
@@ -209,7 +209,7 @@ struct DisplayArrangementPane: View {
                     return
                 }
                 if enabled, organizeUsesArrangementLayoutKeys(CGEventFlags(rawValue: catalog.shortcutFlags)) {
-                    conflictName = "Window Grab organize"
+                    conflictName = "Window Management organize"
                     return
                 }
                 shortcutMessage = nil
@@ -223,7 +223,7 @@ struct DisplayArrangementPane: View {
             get: { catalog.shortcutFlags },
             set: { flags in
                 if catalog.shortcutEnabled, organizeUsesArrangementLayoutKeys(CGEventFlags(rawValue: flags)) {
-                    conflictName = "Window Grab organize"
+                    conflictName = "Window Management organize"
                     return
                 }
                 catalog.shortcutFlags = flags
