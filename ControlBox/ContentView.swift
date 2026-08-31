@@ -82,7 +82,7 @@ struct ContentView: View {
             case .sound:
                 SoundPane(catalog: soundCatalog)
             case .systemMonitor:
-                TopPane()
+                SystemMonitorPane()
             case .pointerScroll:
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
@@ -115,8 +115,8 @@ struct ContentView: View {
     }
 
     private func applyPendingPane() {
-        if TopNavigation.pendingOpen {
-            TopNavigation.pendingOpen = false
+        if SystemMonitorNavigation.pendingOpen {
+            SystemMonitorNavigation.pendingOpen = false
             selection = .systemMonitor
         }
         if let pending = PaneNavigation.pending {

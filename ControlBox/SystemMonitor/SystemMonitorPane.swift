@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct TopPane: View {
+struct SystemMonitorPane: View {
     @ObservedObject private var store = PreferencesStore.shared
 
     var body: some View {

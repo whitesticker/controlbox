@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             AppSettings.shared.applyDockPolicy()
         }
-        TopMenuBarHost.shared.start()
+        SystemMonitorMenuBarHost.shared.start()
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
         nightShiftCatalog.attachDisplays(displayCatalog)
         dockPreviewCatalog.attachSuppress {
@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
-        TopMenuBarHost.shared.stop()
+        SystemMonitorMenuBarHost.shared.stop()
         MenuBarExtrasHost.shared.stop()
         ArrangementHotkey.stop()
         nightShiftCatalog.invalidate()

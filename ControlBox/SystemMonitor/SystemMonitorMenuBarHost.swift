@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 /// Opens the System Monitor pane even if the main window is still being created.
-enum TopNavigation {
+enum SystemMonitorNavigation {
     static var pendingOpen = false
 
     @MainActor
@@ -12,12 +12,12 @@ enum TopNavigation {
     }
 }
 
-/// Owns the *top* menu bar extra. Control Box already has a ring
+/// Owns the System Monitor menu bar extra. Control Box already has a ring
 /// `MenuBarExtra`; this is a second `NSStatusItem` (live ↑/↓ network icon +
 /// dashboard menu) that only exists while System Monitor is enabled.
 @MainActor
-final class TopMenuBarHost {
-    static let shared = TopMenuBarHost()
+final class SystemMonitorMenuBarHost {
+    static let shared = SystemMonitorMenuBarHost()
 
     private var statusController: StatusItemController?
     private var prefsCancellable: AnyCancellable?

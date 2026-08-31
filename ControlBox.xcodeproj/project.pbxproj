@@ -25,8 +25,8 @@
 			membershipExceptions = (
 				AppIcon.iconset,
 				Info.plist,
-				Top/LICENSE,
-				Top/NOTICE.md,
+				SystemMonitor/LICENSE,
+				SystemMonitor/NOTICE.md,
 			);
 			target = A10000000000000000000006 /* ControlBox */;
 		};

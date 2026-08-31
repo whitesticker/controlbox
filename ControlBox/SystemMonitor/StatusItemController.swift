@@ -186,7 +186,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @MainActor
     @objc private func openControlBox() {
-        TopNavigation.openSystemMonitorPane()
+        SystemMonitorNavigation.openSystemMonitorPane()
     }
 
     @objc private func hideFromMenuBar() {
