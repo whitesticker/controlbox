@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 
@@ -7,6 +8,11 @@ public enum MacAppearance {
     public struct Snapshot: Codable, Equatable, Sendable {
         public var automatic: Bool
         public var dark: Bool
+
+        public init(automatic: Bool, dark: Bool) {
+            self.automatic = automatic
+            self.dark = dark
+        }
     }
 
     private static let autoKey = "AppleInterfaceStyleSwitchesAutomatically"
@@ -20,14 +26,22 @@ public enum MacAppearance {
         Snapshot(automatic: automatic(), dark: isDark())
     }
 
+    public static func isCurrentlyDark() -> Bool {
+        isDark()
+    }
+
+    public static func applyDark(_ dark: Bool) {
+        pin(Snapshot(automatic: false, dark: dark))
+    }
+
     /// Freeze Light or Dark so Auto cannot follow Night Shift.
     public static func pin(_ snapshot: Snapshot) {
         if automatic() {
             setAutomatic(false)
         }
-        if isDark() != snapshot.dark {
-            setDark(snapshot.dark)
-        }
+        // Turning Auto off applies the stored legacy theme, which stays Dark
+        // while Auto is showing Light. Always write the captured look.
+        setDark(snapshot.dark)
     }
 
     public static func restore(_ snapshot: Snapshot) {
@@ -52,19 +66,17 @@ public enum MacAppearance {
     }
 
     private static func isDark() -> Bool {
-        if let get = dlsym(sky, "SLSGetAppearanceThemeLegacy") {
-            typealias Fn = @convention(c) () -> Bool
-            return unsafeBitCast(get, to: Fn.self)()
+        let appearance: NSAppearance
+        if Thread.isMainThread {
+            appearance = NSApp.effectiveAppearance
+        } else {
+            var value: NSAppearance?
+            DispatchQueue.main.sync {
+                value = NSApp.effectiveAppearance
+            }
+            appearance = value ?? NSAppearance(named: .aqua) ?? NSAppearance()
         }
-        if let style = CFPreferencesCopyValue(
-            styleKey as CFString,
-            kCFPreferencesAnyApplication,
-            kCFPreferencesCurrentUser,
-            kCFPreferencesAnyHost
-        ) as? String {
-            return style == "Dark"
-        }
-        return false
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
     private static func setAutomatic(_ on: Bool) {

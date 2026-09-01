@@ -12,6 +12,8 @@ A shell spike on this Mac (Tahoe / darwin 25.5) could see Dock pid `690`. The te
 
 Auto-hide Dock: the pointer can stop on the reveal strip before AX icon frames exist, so there is no further `mouseMoved`. Retry while the pointer stays in the strip. Hit-test AX frames in Quartz (`CGEvent.location`), same as Sticky Targeting; convert to Cocoa only to place the panel.
 
+Do not treat the tilesize strip as the auto-hide trigger. Stock reveal is the last few pixels of the display edge. The tilesize strip plus 16 px padding is ~100 px tall when the Dock is hidden (`visibleFrame` has no inset), so “close to the bottom but not touching” used to arm a preview and pick the nearest tile within 140 px. Arm only on the 3 px edge hit; keep the fat strip after that so icons still work once the bar is out. Leave the fat strip and the next hover must hit the edge again. Minimize on Dock click: auto-hide AX tiles stay full-size while the bar is in, so frame size is not a reveal signal. Hidden chrome is off-screen. Minimize only when the Dock bar window is on-screen and the click hits a tile.
+
 Do not flip `CoreDockSetAutoHideEnabled` to keep the Dock out. That changes `visibleFrame` and every tiled / maximized window on that display jumps. Do not try to pin or delay auto-hide while the pointer is on the preview — leave the Dock’s hide behavior alone. Place the panel above the icon (from the AX frame) so native Dock clicks still work. Do not show a card for an app with no windows. While the pointer is on the panel, do not retarget a neighboring icon.
 
 Three displays: macOS keeps the Dock on one screen and can move it to the display you approach. Do not assume `NSScreen.main` or a single strip at the origin. Build a strip per `NSScreen` from that screen’s `visibleFrame` vs `frame` inset, Dock `orientation`, and `tilesize`. Place the panel from the hovered icon’s AX frame on that screen — never a hardcoded point or a 1920×1080 assumption.
@@ -24,7 +26,7 @@ The Dock app-name tooltip has no public hide API. The pane can clear pinned-tile
 
 Keep-alive is the panel plus a thin corridor from the current icon to the panel. Do not union the whole Dock strip. That swallows neighboring icons and leaves the previous preview up.
 
-Do not sample the pointer on a timer. A listen-only session `CGEvent` tap fires on real mouse moves (including over the Dock). `NSEvent` monitors stay as a backup. One short retry is allowed only after a miss while the pointer is already in the Dock strip (auto-hide frames not up yet).
+Do not sample the pointer on a timer. A listen-only session `CGEvent` tap fires on real mouse moves (including over the Dock). `NSEvent` monitors stay as a backup. One short retry is allowed only after a miss while the pointer is already in the Dock strip (auto-hide frames not up yet). Auto-hide: that strip is the 3 px reveal edge until the hover is armed; then the tilesize strip.
 
 ## What we changed
 
@@ -33,6 +35,7 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Listen-only mouse tap + local `NSEvent` monitor (panel) + Dock selected-child `AXObserver`. Moves are coalesced. Tile frames are cached. No pointer sampling.
 - Panel eases in from the Dock and slides between icons; fade out on dismiss. Do not snap `setFrame` with animations forced off.
 - One strip per display from that screen’s inset / `tilesize`; panel from the icon AX frame on that screen.
+- Auto-hide: arm only on a 3 px screen-edge hit (stock reveal). The tilesize strip is for staying on icons after that, not for the first hover.
 - Liquid Glass (`NSGlassEffectView`) on macOS 26; `NSVisualEffectView` `.hudWindow` below that. No SwiftUI material on top of the glass.
 - Place the panel above the icon from its AX frame. Help-window level. Do not pin Dock auto-hide.
 - Identify the icon by enumerating AX children of `com.apple.dock`, not hit-test.

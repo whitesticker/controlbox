@@ -12,6 +12,8 @@ Shake a window left and right (native title bar, or while Move is held) to minim
 
 If an app is already front and has a visible window, click its Dock icon to minimize that window. Native Dock clicks still fire (listen-only). No display picker on Dock click.
 
+Auto-hide: do not treat the tilesize strip or leftover AX frames as a clickable icon. Hidden Dock chrome is off-screen (full-display layer-20 window). Minimize only when that bar is on-screen **and** the click hits an AX tile (`requireHit`, no 140 px nearest fallback). Close-but-not-touching while the bar is still in must not minimize.
+
 **This display** / **All displays** is Shake only. Physical monitors, not Spaces.
 
 The listen-only tap only stashes mouse down / drag / up. Accessibility hit-testing and minimize run on the main queue. Pointer travel of ~16pt is enough to start watching a native shake so a coalesced down+drag is not dropped.

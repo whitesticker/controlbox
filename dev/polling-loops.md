@@ -17,7 +17,7 @@ HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz time
 
 | Loop | Rate | What it calls | When it runs | Do not |
 |---|---|---|---|---|
-| Night Shift curve | 20 s | `CBBlueLightClient` apply; optional external brightness | Night Shift toggle on | Re-apply on every CoreBrightness status ping (beachball). See [night-shift-hijack-hang.md](night-shift-hijack-hang.md). |
+| Night Shift curve | 20 s | `CBBlueLightClient` apply; optional external brightness; Light/Dark schedule | Night Shift toggle on | Re-apply on every CoreBrightness status ping (beachball). Do not add a second appearance timer. See [night-shift-hijack-hang.md](night-shift-hijack-hang.md), [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md). |
 | System Monitor | 1 s (sensors 3 s, battery 5 s) | CPU / GPU / memory / net / disk / SMC | System Monitor menu extra on | Sample process list on this tick (`ProcessMonitor` is on demand). |
 | Sound menu extra | 1.5 s | `SystemAudio` outputs + `AppVolumeMixer.apps()` | Only while the Sound extra menu is **open** | Rebuild process taps on an empty `!obj` list. See [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md). |
 | Caffeinate countdown | 1 s | Menu item title from `endDate` | Only while the Caffeinate extra menu is **open** and a timed session is on | Do not tick while the menu is closed. Expire with a one-shot timer, not this poll. |

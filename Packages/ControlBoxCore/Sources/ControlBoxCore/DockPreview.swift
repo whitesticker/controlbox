@@ -135,13 +135,15 @@ public enum DockPreview {
     }
 
     /// Application tile under a Quartz point. Works when Dock Previews is off.
-    public static func runningApp(atQuartz point: CGPoint) -> NSRunningApplication? {
+    /// `requireHit` skips the 140 px nearest-tile fallback and, when the Dock
+    /// is auto-hidden, also rejects collapsed tiles that are still in.
+    public static func runningApp(atQuartz point: CGPoint, requireHit: Bool = false) -> NSRunningApplication? {
         if Thread.isMainThread {
-            return Controller.shared.runningApp(atQuartz: point)
+            return Controller.shared.runningApp(atQuartz: point, requireHit: requireHit)
         }
         var app: NSRunningApplication?
         DispatchQueue.main.sync {
-            app = Controller.shared.runningApp(atQuartz: point)
+            app = Controller.shared.runningApp(atQuartz: point, requireHit: requireHit)
         }
         return app
     }
@@ -250,6 +252,10 @@ private final class Controller {
     private var runningSnapshot: [NSRunningApplication] = []
     private var menuHold = false
     private var menuHoldAt = Date.distantPast
+    /// Auto-hide only: set when the pointer hits the real screen-edge reveal
+    /// strip. The fat tilesize strip stays live after that so icons work once
+    /// the Dock is out. Close-but-not-touching does not arm.
+    private var autoHideArmed = false
 
     func configure(
         enabled: Bool,
@@ -267,6 +273,7 @@ private final class Controller {
         } else if wasEnabled {
             stopMonitors()
             cancelRevealRetry()
+            autoHideArmed = false
             clearHover()
         }
     }
@@ -279,11 +286,15 @@ private final class Controller {
         clearHover()
     }
 
-    func runningApp(atQuartz point: CGPoint) -> NSRunningApplication? {
+    func runningApp(atQuartz point: CGPoint, requireHit: Bool = false) -> NSRunningApplication? {
         let cocoa = WindowLayout.cocoaFrame(
             from: CGRect(origin: point, size: CGSize(width: 1, height: 1))
         ).origin
-        return dockIcon(at: cocoa)?.app
+        guard let icon = dockIcon(at: cocoa, allowNearest: !requireHit) else { return nil }
+        if requireHit, !DockGeometry.iconLooksRevealed(icon.frame, edge: icon.edge) {
+            return nil
+        }
+        return icon.app
     }
 
     private func startMonitors() {
@@ -643,20 +654,20 @@ private final class Controller {
         var edge: DockPreviewEdge
     }
 
-    private func dockIcon(at cocoaPoint: NSPoint) -> DockIcon? {
+    private func dockIcon(at cocoaPoint: NSPoint, allowNearest: Bool = true) -> DockIcon? {
         if let hit = hitInCache(cocoaPoint) {
             remember(hit)
             return hit
         }
         if Date().timeIntervalSince(lastAXRefresh) < 0.12 {
-            return rememberIfNeeded(nearestTile(tileCache, to: cocoaPoint))
+            return allowNearest ? rememberIfNeeded(nearestTile(tileCache, to: cocoaPoint)) : nil
         }
         refreshTileCache(at: cocoaPoint)
         if let hit = hitInCache(cocoaPoint) {
             remember(hit)
             return hit
         }
-        return rememberIfNeeded(nearestTile(tileCache, to: cocoaPoint))
+        return allowNearest ? rememberIfNeeded(nearestTile(tileCache, to: cocoaPoint)) : nil
     }
 
     private func hitInCache(_ point: NSPoint) -> DockIcon? {
@@ -791,7 +802,21 @@ private final class Controller {
     }
 
     private func isNearDock(_ point: NSPoint) -> Bool {
-        DockGeometry.isNearDock(point)
+        if !DockGeometry.isAutoHidden() {
+            autoHideArmed = false
+            return DockGeometry.isNearDock(point)
+        }
+        if DockGeometry.isOnRevealEdge(point) {
+            autoHideArmed = true
+            return true
+        }
+        if autoHideArmed, DockGeometry.isNearDock(point) {
+            return true
+        }
+        if !DockGeometry.isNearDock(point) {
+            autoHideArmed = false
+        }
+        return false
     }
 
     private func isNearKeepAlive(_ point: NSPoint) -> Bool {
@@ -856,24 +881,83 @@ enum DockGeometry {
         strips().contains { $0.frame.insetBy(dx: -16, dy: -16).contains(point) }
     }
 
-    static func revealedClearance(icon: CGRect, edge: DockPreviewEdge) -> CGFloat {
-        let iconPoint = CGPoint(x: icon.midX, y: icon.midY)
-        let screen = NSScreen.screens.first { $0.frame.contains(iconPoint) }
-            ?? NSScreen.screens.first { $0.frame.intersects(icon) }
-            ?? NSScreen.main
-        let full = screen?.frame ?? icon
-        let fromIcon: CGFloat
-        switch edge {
-        case .bottom: fromIcon = icon.maxY - full.minY
-        case .top: fromIcon = full.maxY - icon.minY
-        case .left: fromIcon = icon.maxX - full.minX
-        case .right: fromIcon = full.maxX - icon.minX
+    /// Pixel-thin hit at the display edge. Matches stock auto-hide reveal;
+    /// the tilesize strip is much taller and fires while the Dock is still in.
+    static func isOnRevealEdge(_ point: NSPoint) -> Bool {
+        revealStrips().contains { $0.frame.contains(point) }
+    }
+
+    /// Auto-hide Dock chrome is a full-display layer-20 window that is **not**
+    /// on-screen while the bar is in. AX tiles stay full-size either way, so
+    /// icon frames cannot tell hidden from shown.
+    static func isBarVisible() -> Bool {
+        if !isAutoHidden() { return true }
+        return barFrame() != nil
+    }
+
+    /// On-screen Dock bar in Cocoa coordinates. Nil while auto-hide has it in.
+    static func barFrame() -> CGRect? {
+        let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
+        let options: CGWindowListOption = [.optionOnScreenOnly]
+        guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
         }
+        var best: CGRect?
+        var bestScore: CGFloat = 0
+        for entry in info {
+            let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
+            guard owner == "Dock" else { continue }
+            let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+            guard layer == dockLevel || (layer > 0 && layer < 100) else { continue }
+            guard let quartz = windowBounds(entry) else { continue }
+            guard quartz.width >= 40, quartz.height >= 40 else { continue }
+            let score = quartz.width * quartz.height
+            if score > bestScore {
+                bestScore = score
+                best = WindowLayout.cocoaFrame(from: quartz)
+            }
+        }
+        return best
+    }
+
+    private static func windowBounds(_ entry: [String: Any]) -> CGRect? {
+        guard let bounds = entry[kCGWindowBounds as String] as? [String: Any] else { return nil }
+        func number(_ key: String) -> CGFloat? {
+            if let value = bounds[key] as? NSNumber { return CGFloat(truncating: value) }
+            return nil
+        }
+        guard let x = number("X"), let y = number("Y"),
+              let width = number("Width"), let height = number("Height") else {
+            return nil
+        }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    static func iconLooksRevealed(_ icon: CGRect, edge: DockPreviewEdge) -> Bool {
+        protrusion(of: icon, edge: edge) >= tileSize() * 0.65
+    }
+
+    static func revealedClearance(icon: CGRect, edge: DockPreviewEdge) -> CGFloat {
+        let fromIcon = protrusion(of: icon, edge: edge)
         let minimum = tileSize() + 28
         if fromIcon >= tileSize() * 0.65 {
             return fromIcon
         }
         return max(fromIcon, minimum)
+    }
+
+    private static func protrusion(of icon: CGRect, edge: DockPreviewEdge) -> CGFloat {
+        let iconPoint = CGPoint(x: icon.midX, y: icon.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(iconPoint) }
+            ?? NSScreen.screens.first { $0.frame.intersects(icon) }
+            ?? NSScreen.main
+        let full = screen?.frame ?? icon
+        switch edge {
+        case .bottom: return icon.maxY - full.minY
+        case .top: return full.maxY - icon.minY
+        case .left: return icon.maxX - full.minX
+        case .right: return full.maxX - icon.minX
+        }
     }
 
     static func strip(containing point: NSPoint) -> CGRect {
@@ -902,6 +986,28 @@ enum DockGeometry {
                 edge = preferred
             }
             return Strip(edge: edge, frame: strip(on: screen, edge: edge))
+        }
+    }
+
+    private static let revealEdgeThickness: CGFloat = 3
+
+    private static func revealStrips() -> [Strip] {
+        strips().map { item in
+            Strip(edge: item.edge, frame: revealStrip(from: item.frame, edge: item.edge))
+        }
+    }
+
+    private static func revealStrip(from fat: CGRect, edge: DockPreviewEdge) -> CGRect {
+        let thickness = revealEdgeThickness
+        switch edge {
+        case .bottom:
+            return CGRect(x: fat.minX, y: fat.minY, width: fat.width, height: thickness)
+        case .top:
+            return CGRect(x: fat.minX, y: fat.maxY - thickness, width: fat.width, height: thickness)
+        case .left:
+            return CGRect(x: fat.minX, y: fat.minY, width: thickness, height: fat.height)
+        case .right:
+            return CGRect(x: fat.maxX - thickness, y: fat.minY, width: thickness, height: fat.height)
         }
     }
 

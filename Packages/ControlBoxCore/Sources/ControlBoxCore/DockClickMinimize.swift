@@ -118,9 +118,10 @@ private final class Controller: @unchecked Sendable {
             from: CGRect(origin: down, size: CGSize(width: 1, height: 1))
         ).origin
         guard DockGeometry.isNearDock(cocoa) else { return }
+        if DockGeometry.isAutoHidden(), !DockGeometry.isBarVisible() { return }
         let frontPID = downFrontPID
         Task { @MainActor in
-            guard let app = DockPreview.runningApp(atQuartz: down) else { return }
+            guard let app = DockPreview.runningApp(atQuartz: down, requireHit: true) else { return }
             if app.bundleIdentifier == "com.apple.dock" { return }
             let pids = self.relatedPIDs(for: app)
             guard pids.contains(frontPID) else { return }

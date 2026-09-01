@@ -52,6 +52,51 @@ struct NightShiftPane: View {
                 }
 
                 Section {
+                    Toggle("Schedule Light and Dark", isOn: appearanceEnabledBinding)
+                        .disabled(!catalog.isSupported)
+                    if catalog.appearanceSchedule.enabled {
+                        Picker("When", selection: appearanceModeBinding) {
+                            Text("Sunset to sunrise").tag(AppearanceScheduleMode.sunset)
+                            Text("Custom hours").tag(AppearanceScheduleMode.custom)
+                        }
+                        .disabled(!catalog.isSupported)
+                        if catalog.appearanceSchedule.mode == .custom {
+                            DatePicker(
+                                "Dark from",
+                                selection: appearanceDarkFromBinding,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .disabled(!catalog.isSupported)
+                            DatePicker(
+                                "Until",
+                                selection: appearanceDarkToBinding,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .disabled(!catalog.isSupported)
+                        } else {
+                            TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                                let solar = SolarTimes.today(date: timeline.date)
+                                LabeledContent("Today") {
+                                    Text(
+                                        "Dark \(NightShiftCurve.timeLabel(minutes: solar.sunset)) – \(NightShiftCurve.timeLabel(minutes: solar.sunrise))"
+                                    )
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    footerBullets(
+                        "Apple Auto follows our all-day Night Shift window, so Control Box flips Light/Dark instead.",
+                        "Sunset uses this Mac’s time zone. Custom hours wrap past midnight.",
+                        "Off freezes the look that is on screen. Turning Night Shift off restores Apple Auto."
+                    )
+                }
+
+                Section {
                     Toggle("Also adjust external brightness", isOn: brightnessFollowBinding)
                         .disabled(!catalog.isSupported)
                     if catalog.adjustExternalBrightness {
@@ -88,6 +133,34 @@ struct NightShiftPane: View {
         Binding(
             get: { catalog.curve },
             set: { catalog.curve = $0 }
+        )
+    }
+
+    private var appearanceEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.appearanceSchedule.enabled },
+            set: { catalog.setAppearanceScheduleEnabled($0) }
+        )
+    }
+
+    private var appearanceModeBinding: Binding<AppearanceScheduleMode> {
+        Binding(
+            get: { catalog.appearanceSchedule.mode },
+            set: { catalog.setAppearanceScheduleMode($0) }
+        )
+    }
+
+    private var appearanceDarkFromBinding: Binding<Date> {
+        Binding(
+            get: { NightShiftCurve.date(fromMinutes: catalog.appearanceSchedule.darkFromMinutes) },
+            set: { catalog.setAppearanceDarkFrom($0) }
+        )
+    }
+
+    private var appearanceDarkToBinding: Binding<Date> {
+        Binding(
+            get: { NightShiftCurve.date(fromMinutes: catalog.appearanceSchedule.darkToMinutes) },
+            set: { catalog.setAppearanceDarkTo($0) }
         )
     }
 

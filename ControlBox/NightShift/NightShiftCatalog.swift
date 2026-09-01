@@ -15,6 +15,7 @@ final class NightShiftCatalog {
     var currentWarmth = 0.0
     var adjustExternalBrightness = false
     var brightnessSwing = NightShiftCatalog.defaultBrightnessSwing
+    var appearanceSchedule = AppearanceSchedule.factory
 
     private weak var displayCatalog: DisplayCatalog?
     private var brightnessBaselines: [String: Double] = [:]
@@ -26,6 +27,7 @@ final class NightShiftCatalog {
     private var lastBrightnessOffset: Double?
     private var ignoreSystemUntil = Date.distantPast
     private var lastLiveApply = Date.distantPast
+    private var lastAppearanceDark: Bool?
     private static let defaultsKey = "controlbox.nightShift.v1"
     private static let tickInterval: TimeInterval = 20
 
@@ -82,6 +84,32 @@ final class NightShiftCatalog {
             lastBrightnessOffset = nil
             persist()
         }
+    }
+
+    func setAppearanceScheduleEnabled(_ on: Bool) {
+        guard on != appearanceSchedule.enabled else { return }
+        appearanceSchedule.enabled = on
+        persist()
+        applyAppearanceAfterEdit(scheduling: on)
+    }
+
+    func setAppearanceScheduleMode(_ mode: AppearanceScheduleMode) {
+        guard mode != appearanceSchedule.mode else { return }
+        appearanceSchedule.mode = mode
+        persist()
+        applyAppearanceAfterEdit(scheduling: appearanceSchedule.enabled)
+    }
+
+    func setAppearanceDarkFrom(_ date: Date) {
+        appearanceSchedule.darkFromMinutes = NightShiftCurve.minutes(from: date)
+        persist()
+        applyAppearanceAfterEdit(scheduling: appearanceSchedule.enabled)
+    }
+
+    func setAppearanceDarkTo(_ date: Date) {
+        appearanceSchedule.darkToMinutes = NightShiftCurve.minutes(from: date)
+        persist()
+        applyAppearanceAfterEdit(scheduling: appearanceSchedule.enabled)
     }
 
     func setBrightnessSwing(_ value: Double) {
@@ -150,9 +178,7 @@ final class NightShiftCatalog {
             appearanceSnapshot = MacAppearance.snapshot()
         }
         persist()
-        if let appearanceSnapshot {
-            MacAppearance.pin(appearanceSnapshot)
-        }
+        syncAppearance(force: true)
         NightShift.takeOverSchedule()
         NightShift.setStatusHandler { [weak self] in
             Task { @MainActor in
@@ -163,7 +189,7 @@ final class NightShiftCatalog {
         if applyImmediately {
             apply(period: 1.6, force: true)
         }
-        pinAppearance()
+        syncAppearance(force: true)
     }
 
     private func endControl(restore: Bool) {
@@ -171,6 +197,7 @@ final class NightShiftCatalog {
         timer = nil
         lastApplied = nil
         lastBrightnessOffset = nil
+        lastAppearanceDark = nil
         NightShift.setStatusHandler(nil)
         if restore, let snapshot {
             NightShift.restore(snapshot)
@@ -199,6 +226,7 @@ final class NightShiftCatalog {
         currentWarmth = curve.warmth(at: Date())
         guard enabled, isSupported else { return }
         apply(period: 8, force: false)
+        syncAppearance(force: false)
     }
 
     private func apply(period: TimeInterval, force: Bool, restyle: Bool = true) {
@@ -220,12 +248,57 @@ final class NightShiftCatalog {
     private func handleSystemNightShiftChanged() {
         guard enabled, isSupported, Date() >= ignoreSystemUntil else { return }
         apply(period: 0, force: true)
-        pinAppearance()
+        syncAppearance(force: true)
     }
 
-    private func pinAppearance() {
+    private func applyAppearanceAfterEdit(scheduling: Bool) {
+        guard enabled, isSupported else { return }
+        if scheduling {
+            lastAppearanceDark = nil
+            syncAppearance(force: true)
+        } else {
+            let current = MacAppearance.snapshot()
+            if var stored = appearanceSnapshot {
+                stored.dark = current.dark
+                appearanceSnapshot = stored
+            } else {
+                appearanceSnapshot = current
+            }
+            persist()
+            MacAppearance.pin(appearanceSnapshot ?? current)
+        }
+    }
+
+    private func syncAppearance(force: Bool) {
+        if appearanceSchedule.enabled {
+            applyScheduledAppearance(force: force)
+            return
+        }
+        pinFrozenAppearance()
+    }
+
+    private func applyScheduledAppearance(force: Bool) {
+        let solar = SolarTimes.today()
+        let wantsDark = appearanceSchedule.wantsDark(at: Date(), solar: solar)
+        if !force, lastAppearanceDark == wantsDark, MacAppearance.isCurrentlyDark() == wantsDark {
+            return
+        }
+        MacAppearance.applyDark(wantsDark)
+        lastAppearanceDark = wantsDark
+    }
+
+    private func pinFrozenAppearance() {
+        if appearanceSnapshot?.automatic == true, lastAppearanceDark == nil {
+            MacAppearance.restore(MacAppearance.Snapshot(automatic: true, dark: false))
+            let current = MacAppearance.snapshot()
+            if var stored = appearanceSnapshot {
+                stored.dark = current.dark
+                appearanceSnapshot = stored
+            }
+        }
         guard let appearanceSnapshot else { return }
         MacAppearance.pin(appearanceSnapshot)
+        lastAppearanceDark = appearanceSnapshot.dark
     }
 
     private var brightnessOffset: Double {
@@ -297,7 +370,7 @@ final class NightShiftCatalog {
         guard enabled, isSupported else { return }
         NightShift.takeOverSchedule()
         apply(period: 1.2, force: true)
-        pinAppearance()
+        syncAppearance(force: true)
     }
 
     private func persist() {
@@ -308,7 +381,8 @@ final class NightShiftCatalog {
             appearanceSnapshot: appearanceSnapshot,
             adjustExternalBrightness: adjustExternalBrightness,
             brightnessSwing: brightnessSwing,
-            brightnessBaselines: brightnessBaselines
+            brightnessBaselines: brightnessBaselines,
+            appearanceSchedule: appearanceSchedule
         )
         if let data = try? JSONEncoder().encode(store) {
             UserDefaults.standard.set(data, forKey: Self.defaultsKey)
@@ -324,6 +398,7 @@ final class NightShiftCatalog {
         adjustExternalBrightness = store.adjustExternalBrightness ?? false
         brightnessSwing = min(max(store.brightnessSwing ?? Self.defaultBrightnessSwing, 0), 0.5)
         brightnessBaselines = store.brightnessBaselines ?? [:]
+        appearanceSchedule = store.appearanceSchedule ?? .factory
         if store.curve.matchesShape(of: .shippingV1) || store.curve.matchesShape(of: .shippingV2) {
             curve = .factory
             persist()
@@ -340,5 +415,6 @@ final class NightShiftCatalog {
         var adjustExternalBrightness: Bool?
         var brightnessSwing: Double?
         var brightnessBaselines: [String: Double]?
+        var appearanceSchedule: AppearanceSchedule?
     }
 }

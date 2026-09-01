@@ -155,6 +155,15 @@ public struct NightShiftCurve: Codable, Equatable, Sendable {
         return Double((parts.hour ?? 0) * 60 + (parts.minute ?? 0)) + seconds / 60
     }
 
+    public static func date(fromMinutes minutes: Double, calendar: Calendar = .current, on day: Date = Date()) -> Date {
+        let wrapped = Int(wrap(minutes).rounded()) % Int(minutesPerDay)
+        var parts = calendar.dateComponents([.year, .month, .day], from: day)
+        parts.hour = wrapped / 60
+        parts.minute = wrapped % 60
+        parts.second = 0
+        return calendar.date(from: parts) ?? day
+    }
+
     public static func timeLabel(minutes: Double, calendar: Calendar = .current) -> String {
         let wrapped = Int(wrap(minutes).rounded()) % Int(minutesPerDay)
         var parts = calendar.dateComponents([.year, .month, .day], from: Date())
