@@ -29,10 +29,18 @@ final class AppSettings {
         }
     }
 
+    var caffeinateMenuBarEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(caffeinateMenuBarEnabled, forKey: Keys.caffeinateExtra)
+            CaffeinateMenuBarHost.shared.apply()
+        }
+    }
+
     private enum Keys {
         static let hideDock = "controlbox.hideDockIcon"
         static let brightnessExtra = "controlbox.displays.menuBarEnabled"
         static let soundExtra = "controlbox.sound.menuBarEnabled"
+        static let caffeinateExtra = "controlbox.caffeinate.menuBarEnabled"
     }
 
     private init() {
@@ -40,6 +48,7 @@ final class AppSettings {
         hideDockIcon = defaults.bool(forKey: Keys.hideDock)
         brightnessMenuBarEnabled = defaults.bool(forKey: Keys.brightnessExtra)
         soundMenuBarEnabled = defaults.bool(forKey: Keys.soundExtra)
+        caffeinateMenuBarEnabled = defaults.bool(forKey: Keys.caffeinateExtra)
     }
 
     func applyDockPolicy() {

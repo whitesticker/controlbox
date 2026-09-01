@@ -39,6 +39,7 @@ enum ScreenshotExport {
                 (.nightShift, "night-shift"),
                 (.displayArrangement, "arrangement"),
                 (.sound, "sound"),
+                (.caffeinate, "caffeinate"),
                 (.systemMonitor, "system-monitor"),
                 (.pointerScroll, "pointer"),
                 (.windowGrab, "windows"),

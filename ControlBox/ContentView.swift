@@ -6,6 +6,7 @@ struct ContentView: View {
     @Bindable var nightShiftCatalog: NightShiftCatalog
     @Bindable var displayCatalog: DisplayCatalog
     @Bindable var soundCatalog: SoundCatalog
+    @Bindable var caffeinateCatalog: CaffeinateCatalog
     @Bindable var dockPreviewCatalog: DockPreviewCatalog
     @Bindable var capsLockCatalog: CapsLockCatalog
     @Environment(\.colorScheme) private var colorScheme
@@ -20,6 +21,7 @@ struct ContentView: View {
                     macRow(.nightShift)
                     macRow(.displayArrangement)
                     macRow(.sound)
+                    macRow(.caffeinate)
                     macRow(.systemMonitor)
                     macRow(.pointerScroll)
                     macRow(.windowGrab)
@@ -81,6 +83,8 @@ struct ContentView: View {
                 DisplayArrangementPane(catalog: arrangementCatalog, monitor: monitor)
             case .sound:
                 SoundPane(catalog: soundCatalog)
+            case .caffeinate:
+                CaffeinatePane(catalog: caffeinateCatalog)
             case .systemMonitor:
                 SystemMonitorPane()
             case .pointerScroll:

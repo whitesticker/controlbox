@@ -5,6 +5,7 @@ enum SidebarItem: Hashable, Identifiable {
     case nightShift
     case displayArrangement
     case sound
+    case caffeinate
     case systemMonitor
     case pointerScroll
     case windowGrab
@@ -20,6 +21,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .nightShift: return "mac.nightShift"
         case .displayArrangement: return "mac.displayArrangement"
         case .sound: return "mac.sound"
+        case .caffeinate: return "mac.caffeinate"
         case .systemMonitor: return "mac.systemMonitor"
         case .pointerScroll: return "mac.pointerScroll"
         case .windowGrab: return "mac.windowGrab"
@@ -37,6 +39,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .nightShift: return "Night Shift"
         case .displayArrangement: return "Display Arrangement"
         case .sound: return "Sound"
+        case .caffeinate: return "Caffeinate"
         case .systemMonitor: return "System Monitor"
         case .pointerScroll: return "Pointer & Scroll"
         case .windowGrab: return "Window Management"
@@ -54,6 +57,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .nightShift: return "night-shift-filled"
         case .displayArrangement: return "display-arrangement-filled"
         case .sound: return "sound-filled"
+        case .caffeinate: return "caffeinate-filled"
         case .systemMonitor: return "system-monitor-filled"
         case .pointerScroll: return "pointer-scroll-filled"
         case .windowGrab: return "window-management-filled"
@@ -75,6 +79,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .nightShift: return Color(red: 0.96, green: 0.48, blue: 0.18)
         case .displayArrangement: return Color(red: 0.12, green: 0.40, blue: 0.78)
         case .sound: return Color(red: 0.35, green: 0.34, blue: 0.84)
+        case .caffeinate: return Color(red: 0.62, green: 0.40, blue: 0.22)
         case .systemMonitor: return Color(red: 0.15, green: 0.58, blue: 0.72)
         case .pointerScroll: return Color(red: 0.18, green: 0.64, blue: 0.52)
         case .windowGrab: return Color(red: 0.95, green: 0.55, blue: 0.18)

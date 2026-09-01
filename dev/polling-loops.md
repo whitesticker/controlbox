@@ -20,6 +20,7 @@ HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz time
 | Night Shift curve | 20 s | `CBBlueLightClient` apply; optional external brightness | Night Shift toggle on | Re-apply on every CoreBrightness status ping (beachball). See [night-shift-hijack-hang.md](night-shift-hijack-hang.md). |
 | System Monitor | 1 s (sensors 3 s, battery 5 s) | CPU / GPU / memory / net / disk / SMC | System Monitor menu extra on | Sample process list on this tick (`ProcessMonitor` is on demand). |
 | Sound menu extra | 1.5 s | `SystemAudio` outputs + `AppVolumeMixer.apps()` | Only while the Sound extra menu is **open** | Rebuild process taps on an empty `!obj` list. See [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md). |
+| Caffeinate countdown | 1 s | Menu item title from `endDate` | Only while the Caffeinate extra menu is **open** and a timed session is on | Do not tick while the menu is closed. Expire with a one-shot timer, not this poll. |
 | App volume taps | HAL IOProc / tap clock | Per-app gain while a tap is installed | Sound mixer is live | Two mixers on the same app. See [process-tap-exclusive.md](process-tap-exclusive.md). |
 | MX Mechanical battery | 30 s | HID++ `UNIFIED_BATTERY` | Keyboard HID++ ready | Do not put on the 120 Hz path. Do not divert keys. Do not `SetReport` on the main thread from a SwiftUI toggle. |
 | MX Master battery | 30 s | HID++ `UNIFIED_BATTERY` | Mouse HID++ ready | Do not put on the 120 Hz path. |
@@ -45,7 +46,7 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 
 ## One-shot or user-driven (not loops)
 
-Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview and app-switcher thumbnail stills (only while that panel is up).
+Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview and app-switcher thumbnail stills (only while that panel is up). Caffeinate expire timer (one-shot at `endDate`).
 
 ## Rules for a new loop
 

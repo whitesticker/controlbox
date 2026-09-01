@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let nightShiftCatalog = NightShiftCatalog()
     let displayCatalog = DisplayCatalog()
     let soundCatalog = SoundCatalog()
+    let caffeinateCatalog = CaffeinateCatalog()
     let dockPreviewCatalog = DockPreviewCatalog()
     let capsLockCatalog = CapsLockCatalog()
 
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         SystemMonitorMenuBarHost.shared.start()
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
+        CaffeinateMenuBarHost.shared.start(catalog: caffeinateCatalog)
         nightShiftCatalog.attachDisplays(displayCatalog)
         dockPreviewCatalog.attachSuppress {
             WindowGrab.isBusy || WindowShake.isBusy || AppSwitcherPreview.isBusy
@@ -55,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.stop()
         SystemMonitorMenuBarHost.shared.stop()
         MenuBarExtrasHost.shared.stop()
+        CaffeinateMenuBarHost.shared.stop()
+        caffeinateCatalog.invalidate()
         ArrangementHotkey.stop()
         nightShiftCatalog.invalidate()
         DockPreview.stop()
@@ -97,6 +101,7 @@ struct ControlBoxApp: App {
                 nightShiftCatalog: appDelegate.nightShiftCatalog,
                 displayCatalog: appDelegate.displayCatalog,
                 soundCatalog: appDelegate.soundCatalog,
+                caffeinateCatalog: appDelegate.caffeinateCatalog,
                 dockPreviewCatalog: appDelegate.dockPreviewCatalog,
                 capsLockCatalog: appDelegate.capsLockCatalog
             )

@@ -28,6 +28,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **Menu bar icon.** The Control Box extra is a template ring matching the app icon annulus, not `gamecontroller.fill`.
 - [x] **Launch at login and Hide Dock.** Permissions pane: Launch at Login (`SMAppService.mainApp`). Hide Dock icon; Command-Q closes the window; quit from the Control Box menu bar extra.
 - [x] **Brightness and Sound extras.** Optional separate menu bar icons from the Display Brightness and Sound panes. Off until each toggle is on.
+- [x] **Caffeinate.** Separate Mac pane plus optional coffee-cup extra. Duration menu (1 minute through 1 day, plus forever); countdown while a session is on. IOPM idle-sleep and idle-display assertions. Off until the extra toggle is on.
 - [x] **Background permission.** Permissions pane can request Allow in the Background (`SMAppService`) and open Login Items. Still confirm it survives logout on a fresh Mac.
 - [x] **Window throw and organize.** Window Management pane: throw is hold-modifiers + pointer on a 3×3 snap map; organize is a recorded shortcut (default Control-Command-O) that tiles windows on the pointer’s screen. Off until each toggle is on. Modifier chords for move/resize/throw cannot match Display Arrangement. Organize cannot use Arrangement’s number/arrow keys with the same modifiers.
 - [x] **Window Management rename.** The Window Grab Mac pane is now **Window Management**. Move, resize, throw, organize, shake, and Dock-click minimize live there.

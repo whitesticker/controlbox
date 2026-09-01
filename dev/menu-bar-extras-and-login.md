@@ -8,9 +8,11 @@ Permissions has a **Launch at Login** toggle (`SMAppService.mainApp.register` / 
 
 **Hide Dock icon** uses `NSApp.setActivationPolicy(.accessory)`. Command-Q is **Close Window**, not Quit. **Quit Control Box** is only on the Control Box menu bar extra. Logout still quits the app. Do not cancel `applicationShouldTerminate` or shutdown will hang.
 
-## Brightness and Sound extras
+## Brightness, Sound, and Caffeinate extras
 
 Each pane has **Show in menu bar**, off until turned on. Separate `NSStatusItem` with a genuine `NSMenu` (same pattern as System Monitor: hosted slider rows, native Open / Hide items), not an `NSPopover`. Hide from the extra does not quit. Catalogs live on the app delegate so sliders keep working after the window closes.
+
+Caffeinate’s extra is a native duration menu (not sliders). While a session is on, the first row is a countdown. The cup icon is hollow when idle and hollow-with-coffee plus steam while keeping the Mac awake.
 
 Brightness writes the built-in panel immediately. External DDC writes are coalesced on a background queue. Listing displays does DDC reads off the main thread so the pane slider does not hitch.
 
