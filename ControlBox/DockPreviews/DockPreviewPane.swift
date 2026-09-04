@@ -147,7 +147,7 @@ struct DockPreviewPane: View {
         if catalog.enabled {
             return footerBullets(
                 "Hover a Dock icon that has windows to preview them. Apps with none stay native.",
-                "Click a card to focus. HUD: close, minimize/restore, quit. Other Spaces show quit.",
+                "Click a card to focus. HUD: close, minimize/restore, quit. Other Spaces always show quit.",
                 "Hides while a Dock right-click menu is open.",
                 "Accessibility must be on. Native Dock clicks still work."
             )

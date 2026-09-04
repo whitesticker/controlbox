@@ -43,7 +43,7 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Still thumbnails via ScreenCaptureKit only while the panel is up. Titles and the app icon still work if Screen Recording is off.
 - Card height is fixed (slider 80–200%, default 130%). Width follows that window’s aspect so a tall frame is not cropped. Thumbnail uses fit, not fill.
 - Click a card: unminimize if needed, AX raise, activate the app.
-- Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. Other-Space cards show quit only (close / minimize need this Space). Quit calls `NSRunningApplication.terminate()` (graceful, not force).
+- Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. Other-Space cards always show quit (close / minimize need this Space). Quit calls `NSRunningApplication.terminate()` (graceful, not force).
 - Place the panel above the revealed Dock, not the screen edge. If auto-hide is instant and AX still has a collapsed tile, use tilesize clearance and refresh the icon frame after the hover delay.
 - Hide the panel while a Dock right-click menu is up. Right-click dismisses and stays down until that menu is gone. Do not cover the native menu (our panel is above menu level).
 - Hide the panel while Window Grab is busy, Shake to focus is watching a drag, or a Window Grab modifier chord is held.

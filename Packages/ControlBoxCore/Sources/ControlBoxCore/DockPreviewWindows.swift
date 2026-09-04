@@ -11,7 +11,7 @@ enum DockPreviewWindows {
         let pids = relatedPIDs(for: app)
         let cg = cgEntries(pids: pids)
         var claimed = Set<CGWindowID>()
-        var candidates: [Candidate] = []
+        var windows: [DockPreviewWindow] = []
         var seenAX: [AXUIElement] = []
 
         for pid in pids {
@@ -29,24 +29,20 @@ enum DockPreviewWindows {
                 if let id = match?.windowID, id != 0 {
                     claimed.insert(id)
                 }
-                candidates.append(
-                    Candidate(
-                        window: DockPreviewWindow(
-                            windowID: match?.windowID ?? 0,
-                            pid: pid,
-                            title: title,
-                            bounds: match?.bounds ?? frame,
-                            isMinimized: minimized,
-                            isOnScreen: match?.onScreen ?? !minimized
-                        ),
-                        fromAX: true,
-                        subrole: DockAX.string(ax, kAXSubroleAttribute as CFString)
+                windows.append(
+                    DockPreviewWindow(
+                        windowID: match?.windowID ?? 0,
+                        pid: pid,
+                        title: title,
+                        bounds: match?.bounds ?? frame,
+                        isMinimized: minimized,
+                        isOnScreen: match?.onScreen ?? !minimized
                     )
                 )
             }
         }
 
-        var listedBounds = candidates.map { $0.window.bounds }
+        var listedBounds = windows.map(\.bounds)
         let extras = cg
             .filter { entry in
                 if entry.windowID != 0, claimed.contains(entry.windowID) { return false }
@@ -58,23 +54,19 @@ enum DockPreviewWindows {
             if isNested(entry.bounds, in: listedBounds) { continue }
             claimed.insert(entry.windowID)
             listedBounds.append(entry.bounds)
-            candidates.append(
-                Candidate(
-                    window: DockPreviewWindow(
-                        windowID: entry.windowID,
-                        pid: entry.pid,
-                        title: cleanedTitle(entry.title.isEmpty ? nil : entry.title, fallback: app.localizedName ?? ""),
-                        bounds: entry.bounds,
-                        isMinimized: false,
-                        isOnScreen: false
-                    ),
-                    fromAX: false,
-                    subrole: ""
+            windows.append(
+                DockPreviewWindow(
+                    windowID: entry.windowID,
+                    pid: entry.pid,
+                    title: cleanedTitle(entry.title.isEmpty ? nil : entry.title, fallback: app.localizedName ?? ""),
+                    bounds: entry.bounds,
+                    isMinimized: false,
+                    isOnScreen: false
                 )
             )
         }
 
-        var windows = pruneChrome(candidates)
+        windows = pruneChrome(windows)
         windows.sort { a, b in
             if a.isOnScreen != b.isOnScreen { return a.isOnScreen && !b.isOnScreen }
             if a.isMinimized != b.isMinimized { return !a.isMinimized && b.isMinimized }
@@ -209,39 +201,51 @@ enum DockPreviewWindows {
 
     private static func isStandardWindow(_ element: AXUIElement) -> Bool {
         let role = DockAX.string(element, kAXRoleAttribute as CFString)
+        if role == "AXPopover" || role == "AXUnknown" { return false }
         if !role.isEmpty, role != kAXWindowRole as String {
             return false
         }
         let sub = DockAX.string(element, kAXSubroleAttribute as CFString)
+        if rejectedSubroles.contains(sub) { return false }
         if sub.isEmpty { return true }
         return acceptedSubroles.contains(sub)
     }
 
-    private struct Candidate {
-        var window: DockPreviewWindow
-        var fromAX: Bool
-        var subrole: String
-    }
-
-    /// Inspectors, palettes, and mini widgets sit inside a real window. Keep
-    /// AXStandardWindow even when its frame nests in another Space’s window
-    /// of the same app (same display coordinates, different Space).
-    private static func pruneChrome(_ items: [Candidate]) -> [DockPreviewWindow] {
-        items.compactMap { item in
-            if item.window.isMinimized { return item.window }
-            if item.fromAX, isPrimarySubrole(item.subrole) { return item.window }
-            let hosts = items.compactMap { other -> CGRect? in
-                guard other.window.id != item.window.id else { return nil }
-                return other.window.bounds
+    /// Calendar’s event inspector and mini month are their own CG/AX windows.
+    /// They often sit beside the host (not nested) and can still be
+    /// `AXStandardWindow`. Other Spaces of the same app reuse display
+    /// coordinates, so only drop surfaces that are clearly chrome-sized
+    /// next to a real window on that display.
+    private static func pruneChrome(_ items: [DockPreviewWindow]) -> [DockPreviewWindow] {
+        let groups = Dictionary(grouping: items) { displayKey($0.bounds) }
+        var kept: [DockPreviewWindow] = []
+        for group in groups.values {
+            let maxArea = group.map { area($0.bounds) }.max() ?? 0
+            let cutoff = maxArea * 0.35
+            for item in group {
+                if item.isMinimized {
+                    kept.append(item)
+                    continue
+                }
+                if area(item.bounds) < cutoff { continue }
+                let others = group.compactMap { other -> CGRect? in
+                    guard other.id != item.id else { return nil }
+                    return other.bounds
+                }
+                if isNested(item.bounds, in: others) { continue }
+                kept.append(item)
             }
-            return isNested(item.window.bounds, in: hosts) ? nil : item.window
         }
+        return kept
     }
 
-    /// AXStandardWindow can share display coordinates across Spaces, so do not
-    /// drop it just because another window’s frame contains it.
-    private static func isPrimarySubrole(_ subrole: String) -> Bool {
-        subrole == "AXStandardWindow"
+    private static func displayKey(_ bounds: CGRect) -> String {
+        let point = CGPoint(x: bounds.midX, y: bounds.midY)
+        if let screen = WindowLayout.screen(containingQuartz: point) {
+            let frame = screen.frame
+            return "\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))"
+        }
+        return "unknown"
     }
 
     private static func isNested(_ bounds: CGRect, in hosts: [CGRect]) -> Bool {
@@ -253,7 +257,7 @@ enum DockPreviewWindows {
             if host.insetBy(dx: -12, dy: -12).contains(bounds) { return true }
             let overlap = host.intersection(bounds)
             guard !overlap.isNull, !overlap.isInfinite else { continue }
-            if area(overlap) / childArea >= 0.7 { return true }
+            if area(overlap) / childArea >= 0.55 { return true }
         }
         return false
     }
@@ -325,6 +329,13 @@ enum DockPreviewWindows {
         "AXDialog",
         "AXSystemDialog",
         "AXFloatingWindow"
+    ]
+
+    private static let rejectedSubroles: Set<String> = [
+        "AXUnknown",
+        "AXPopover",
+        "AXSheet",
+        "AXDrawer"
     ]
 
     private static let ignoredOwners: Set<String> = [

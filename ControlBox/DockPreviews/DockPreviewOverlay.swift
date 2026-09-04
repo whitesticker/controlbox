@@ -366,7 +366,7 @@ struct DockPreviewCard: View {
             }
             .buttonStyle(.plain)
 
-            if hovering, showsHUD {
+            if showsHUD {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     hud
@@ -382,7 +382,9 @@ struct DockPreviewCard: View {
     }
 
     private var showsHUD: Bool {
-        !compact
+        guard !compact else { return false }
+        if window.isOnScreen || window.isMinimized { return hovering }
+        return true
     }
 
     private var showsWindowButtons: Bool {
