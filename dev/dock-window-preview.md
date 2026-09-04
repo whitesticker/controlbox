@@ -40,7 +40,7 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Place the panel above the icon from its AX frame. Help-window level. Do not pin Dock auto-hide.
 - Identify the icon by enumerating AX children of `com.apple.dock`, not hit-test.
 - List windows from Accessibility (current Space + minimized) and add off-screen CG windows that look like real frames (other **Spaces**, not other displays). A window on another physical display of the current Space is on-screen and must stay. Drop title-bar strips, 500×500 placeholders, parked frames, and nested inspectors / palettes / mini widgets. One real window is one card. Animation duration follows Dock `autohide-time-modifier` (stock 0.25s). Chrome is always the flat panel. Optional **Show Dock icon names** writes pinned `file-label` values (snapshot / restore). Do not restart Dock.
-- Still thumbnails via ScreenCaptureKit only while the panel is up. Titles and the app icon still work if Screen Recording is off.
+- Still thumbnails via ScreenCaptureKit only while the panel is up. If an other-Space window is missing from that list (multi-display Macs), take one `CGWindowListCreateImage` of that window ID. Titles and the app icon still work if Screen Recording is off.
 - Card height is fixed (slider 80–200%, default 130%). Width follows that window’s aspect so a tall frame is not cropped. Thumbnail uses fit, not fill.
 - Click a card: unminimize if needed, AX raise, activate the app.
 - Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. Other-Space cards always show quit (close / minimize need this Space). Quit calls `NSRunningApplication.terminate()` (graceful, not force).
@@ -55,7 +55,7 @@ Screen Recording is a **separate** grant from System Audio Recording. Do not fol
 
 - Replace or seize the Dock.
 - Run Accessibility or capture inside a `CGEventTap` callback.
-- Use `CGWindowListCreateImage` as the primary path.
+- Use `CGWindowListCreateImage` as the primary path. Fallback for an other-Space window that ScreenCaptureKit omitted is allowed.
 - Call `CGRequestScreenCaptureAccess()` from Sound.
 - Gate the pane on an MX Master.
 - Poll captures when the pointer is not on a Dock icon.

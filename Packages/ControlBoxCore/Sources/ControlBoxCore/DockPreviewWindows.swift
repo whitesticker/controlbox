@@ -139,6 +139,27 @@ enum DockPreviewWindows {
         title: String,
         claimed: Set<CGWindowID>
     ) -> CGEntry? {
+        if let hit = matchCGAligned(entries, bounds: bounds, title: title, claimed: claimed) {
+            return hit
+        }
+        let cocoa = WindowLayout.cocoaFrame(from: bounds)
+        if cocoa != bounds,
+           let hit = matchCGAligned(entries, bounds: cocoa, title: title, claimed: claimed) {
+            return hit
+        }
+        let quartz = WindowLayout.quartzFrame(from: bounds)
+        if quartz != bounds {
+            return matchCGAligned(entries, bounds: quartz, title: title, claimed: claimed)
+        }
+        return nil
+    }
+
+    private static func matchCGAligned(
+        _ entries: [CGEntry],
+        bounds: CGRect,
+        title: String,
+        claimed: Set<CGWindowID>
+    ) -> CGEntry? {
         let unused = entries.filter { $0.windowID == 0 || !claimed.contains($0.windowID) }
         if !title.isEmpty {
             if let exact = unused.first(where: { !$0.title.isEmpty && $0.title == title }) {

@@ -16,19 +16,19 @@ enum DockPreviewCapture {
         maxPixelWidth: CGFloat
     ) async -> [CGWindowID: NSImage] {
         guard CGPreflightScreenCaptureAccess() else { return [:] }
-        let ordered = windows.map(\.windowID).filter { $0 != 0 }
+        let ordered = windows.filter { $0.windowID != 0 }
         let wanted = Array(ordered.prefix(maxStills))
         guard !wanted.isEmpty else { return [:] }
 
         var found: [CGWindowID: NSImage] = [:]
-        var missing: [CGWindowID] = []
+        var missing: [DockPreviewWindow] = []
         let now = Date()
         lock.lock()
-        for id in wanted {
-            if let hold = images[id], now.timeIntervalSince(hold.0) < imageTTL {
-                found[id] = hold.1
+        for window in wanted {
+            if let hold = images[window.windowID], now.timeIntervalSince(hold.0) < imageTTL {
+                found[window.windowID] = hold.1
             } else {
-                missing.append(id)
+                missing.append(window)
             }
         }
         lock.unlock()
@@ -36,13 +36,26 @@ enum DockPreviewCapture {
             return found
         }
 
-        guard let content = await shareableContent() else { return found }
-        let missingSet = Set(missing)
-        for scWindow in content.windows where missingSet.contains(scWindow.windowID) {
-            if let image = await still(window: scWindow, maxPixelWidth: maxPixelWidth) {
-                found[scWindow.windowID] = image
+        let content = await shareableContent()
+        let missingSet = Set(missing.map(\.windowID))
+        if let content {
+            for window in missing {
+                let scWindow = content.windows.first(where: { $0.windowID == window.windowID })
+                    ?? matchShareable(content.windows, to: window)
+                guard let scWindow else { continue }
+                if let image = await still(window: scWindow, maxPixelWidth: maxPixelWidth) {
+                    found[window.windowID] = image
+                    lock.lock()
+                    images[window.windowID] = (Date(), image)
+                    lock.unlock()
+                }
+            }
+        }
+        for window in missing where found[window.windowID] == nil && missingSet.contains(window.windowID) {
+            if let image = cgStill(windowID: window.windowID, bounds: window.bounds, maxPixelWidth: maxPixelWidth) {
+                found[window.windowID] = image
                 lock.lock()
-                images[scWindow.windowID] = (Date(), image)
+                images[window.windowID] = (Date(), image)
                 lock.unlock()
             }
         }
@@ -72,7 +85,66 @@ enum DockPreviewCapture {
     private static func still(window: SCWindow, maxPixelWidth: CGFloat) async -> NSImage? {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let scale = min(max(NSScreen.main?.backingScaleFactor ?? 2, 1), 2)
-        let source = window.frame
+        let size = thumbnailSize(source: window.frame, maxPixelWidth: maxPixelWidth)
+        let config = SCStreamConfiguration()
+        config.width = Int(size.width * scale)
+        config.height = Int(size.height * scale)
+        config.showsCursor = false
+        config.capturesAudio = false
+        do {
+            let cgImage = try await SCScreenshotManager.captureImage(
+                contentFilter: filter,
+                configuration: config
+            )
+            return NSImage(cgImage: cgImage, size: size)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Other-Space windows are often missing from `SCShareableContent` on a
+    /// multi-display Mac. ScreenCaptureKit stays the primary path; this is
+    /// only for IDs that path did not still.
+    private static func cgStill(
+        windowID: CGWindowID,
+        bounds: CGRect,
+        maxPixelWidth: CGFloat
+    ) -> NSImage? {
+        let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+        guard let cgImage = CGWindowListCreateImage(
+            .null,
+            [.optionIncludingWindow, .excludeDesktopElements],
+            windowID,
+            options
+        ) else { return nil }
+        guard cgImage.width >= 8, cgImage.height >= 8 else { return nil }
+        let source = bounds.width > 1 && bounds.height > 1
+            ? bounds
+            : CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
+        let size = thumbnailSize(source: source, maxPixelWidth: maxPixelWidth)
+        return NSImage(cgImage: cgImage, size: size)
+    }
+
+    private static func matchShareable(_ windows: [SCWindow], to listed: DockPreviewWindow) -> SCWindow? {
+        let listedArea = max(listed.bounds.width * listed.bounds.height, 1)
+        var best: SCWindow?
+        var bestArea: CGFloat = 0
+        for window in windows {
+            guard window.owningApplication?.processID == listed.pid else { continue }
+            let frame = window.frame
+            let overlap = frame.intersection(listed.bounds)
+            let area = overlap.width * overlap.height
+            let scArea = max(frame.width * frame.height, 1)
+            guard area / scArea >= 0.55, area / listedArea >= 0.55 else { continue }
+            if area > bestArea {
+                bestArea = area
+                best = window
+            }
+        }
+        return best
+    }
+
+    private static func thumbnailSize(source: CGRect, maxPixelWidth: CGFloat) -> NSSize {
         let ratio = source.height > 0 ? source.width / source.height : 16 / 10
         let height: CGFloat
         let width: CGFloat
@@ -83,19 +155,6 @@ enum DockPreviewCapture {
             width = max(maxPixelWidth, 120)
             height = max(width / max(ratio, 0.4), 80)
         }
-        let config = SCStreamConfiguration()
-        config.width = Int(width * scale)
-        config.height = Int(height * scale)
-        config.showsCursor = false
-        config.capturesAudio = false
-        do {
-            let cgImage = try await SCScreenshotManager.captureImage(
-                contentFilter: filter,
-                configuration: config
-            )
-            return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
-        } catch {
-            return nil
-        }
+        return NSSize(width: width, height: height)
     }
 }
