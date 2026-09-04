@@ -39,7 +39,7 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Liquid Glass (`NSGlassEffectView`) on macOS 26; `NSVisualEffectView` `.hudWindow` below that. No SwiftUI material on top of the glass.
 - Place the panel above the icon from its AX frame. Help-window level. Do not pin Dock auto-hide.
 - Identify the icon by enumerating AX children of `com.apple.dock`, not hit-test.
-- List windows from Accessibility (current Space + minimized) and add off-screen CG windows that look like real frames (other **Spaces**, not other displays). A window on another physical display of the current Space is on-screen and must stay. Drop title-bar strips, 500×500 placeholders, parked frames, and nested inspectors / palettes / mini widgets. One real window is one card. Animation duration follows Dock `autohide-time-modifier` (stock 0.25s). Chrome is always the flat panel. Optional **Show Dock icon names** writes pinned `file-label` values (snapshot / restore). Do not restart Dock.
+- List windows from Accessibility (current Space + minimized) and add off-screen CG windows that look like real frames (other **Spaces**, not other displays). A window on another physical display of the current Space is on-screen and must stay. Drop title-bar strips, 500×500 placeholders, parked frames, popovers / sheets, nested chrome, and non-minimized surfaces smaller than 35% of that app’s largest window on the same display. Calendar’s event inspector sits *beside* the host, not inside it — a nested-only filter is not enough. One real window is one card. Animation duration follows Dock `autohide-time-modifier` (stock 0.25s). Chrome is always the flat panel. Optional **Show Dock icon names** writes pinned `file-label` values (snapshot / restore). Do not restart Dock.
 - Still thumbnails via ScreenCaptureKit only while the panel is up. If an other-Space window is missing from that list (multi-display Macs), take one `CGWindowListCreateImage` of that window ID. Titles and the app icon still work if Screen Recording is off.
 - Card height is fixed (slider 80–200%, default 130%). Width follows that window’s aspect so a tall frame is not cropped. Thumbnail uses fit, not fill.
 - Click a card: unminimize if needed, AX raise, activate the app.
@@ -64,6 +64,10 @@ Screen Recording is a **separate** grant from System Audio Recording. Do not fol
 - Flip Dock autohide on/off to keep the bar visible (resizes windows).
 - `killall Dock` to apply a `file-label` change.
 - Show a “No open windows” card. Native Dock is enough.
-- Treat nested inspectors, palettes, or mini widgets as their own cards.
+- Treat nested inspectors, palettes, or mini widgets as their own cards. Also do not keep sibling chrome just because it is `AXStandardWindow` or sits beside the host.
+- Keep a nested-only prune. 0.1.31 shipped that and Calendar still showed inspector + mini month cards.
+- Drop a real second window that is ≥ 35% of the largest on that display.
 - Treat every off-screen CG window as minimized.
 - Show the preview over a Dock right-click menu.
+
+Shipped 0.1.31–0.1.33. Related: [dock-preview-lists-window-chrome.md](dock-preview-lists-window-chrome.md), [dock-preview-other-space-icon.md](dock-preview-other-space-icon.md).
