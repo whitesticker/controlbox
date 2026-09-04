@@ -234,7 +234,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.30;
+				MARKETING_VERSION = 0.1.31;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whitesticker.controlbox;
 				PRODUCT_NAME = ControlBox;
 				REGISTER_APP_GROUPS = NO;
@@ -273,7 +273,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.30;
+				MARKETING_VERSION = 0.1.31;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whitesticker.controlbox;
 				PRODUCT_NAME = ControlBox;
 				REGISTER_APP_GROUPS = NO;

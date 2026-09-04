@@ -39,11 +39,11 @@ New **Dock Previews** Mac pane, off until the toggle is on. Catalog lives on the
 - Liquid Glass (`NSGlassEffectView`) on macOS 26; `NSVisualEffectView` `.hudWindow` below that. No SwiftUI material on top of the glass.
 - Place the panel above the icon from its AX frame. Help-window level. Do not pin Dock auto-hide.
 - Identify the icon by enumerating AX children of `com.apple.dock`, not hit-test.
-- List windows from Accessibility (current Space + minimized) and add off-screen CG windows that look like real frames (other **Spaces**, not other displays). A window on another physical display of the current Space is on-screen and must stay. Drop title-bar strips, 500×500 placeholders, and parked frames. One real window is one card. Animation duration follows Dock `autohide-time-modifier` (stock 0.25s). Chrome is always the flat panel. Optional **Show Dock icon names** writes pinned `file-label` values (snapshot / restore). Do not restart Dock.
+- List windows from Accessibility (current Space + minimized) and add off-screen CG windows that look like real frames (other **Spaces**, not other displays). A window on another physical display of the current Space is on-screen and must stay. Drop title-bar strips, 500×500 placeholders, parked frames, and nested inspectors / palettes / mini widgets. One real window is one card. Animation duration follows Dock `autohide-time-modifier` (stock 0.25s). Chrome is always the flat panel. Optional **Show Dock icon names** writes pinned `file-label` values (snapshot / restore). Do not restart Dock.
 - Still thumbnails via ScreenCaptureKit only while the panel is up. Titles and the app icon still work if Screen Recording is off.
 - Card height is fixed (slider 80–200%, default 130%). Width follows that window’s aspect so a tall frame is not cropped. Thumbnail uses fit, not fill.
 - Click a card: unminimize if needed, AX raise, activate the app.
-- Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. No HUD on other-Space cards. Quit calls `NSRunningApplication.terminate()` (graceful, not force).
+- Hover a card on this Space: a tight Liquid Glass HUD — red close, yellow minimize (or green restore when minimized), purple quit. No zoom. Other-Space cards show quit only (close / minimize need this Space). Quit calls `NSRunningApplication.terminate()` (graceful, not force).
 - Place the panel above the revealed Dock, not the screen edge. If auto-hide is instant and AX still has a collapsed tile, use tilesize clearance and refresh the icon frame after the hover delay.
 - Hide the panel while a Dock right-click menu is up. Right-click dismisses and stays down until that menu is gone. Do not cover the native menu (our panel is above menu level).
 - Hide the panel while Window Grab is busy, Shake to focus is watching a drag, or a Window Grab modifier chord is held.
@@ -64,5 +64,6 @@ Screen Recording is a **separate** grant from System Audio Recording. Do not fol
 - Flip Dock autohide on/off to keep the bar visible (resizes windows).
 - `killall Dock` to apply a `file-label` change.
 - Show a “No open windows” card. Native Dock is enough.
+- Treat nested inspectors, palettes, or mini widgets as their own cards.
 - Treat every off-screen CG window as minimized.
 - Show the preview over a Dock right-click menu.

@@ -382,33 +382,39 @@ struct DockPreviewCard: View {
     }
 
     private var showsHUD: Bool {
-        !compact && (window.isOnScreen || window.isMinimized)
+        !compact
+    }
+
+    private var showsWindowButtons: Bool {
+        window.isOnScreen || window.isMinimized
     }
 
     private var hud: some View {
         HStack(spacing: 5) {
-            traffic(
-                systemName: "xmark",
-                help: "Close window",
-                color: Color(red: 1, green: 0.373, blue: 0.341)
-            ) {
-                DockPreview.close(window)
-            }
-            if window.isMinimized {
+            if showsWindowButtons {
                 traffic(
-                    systemName: "plus",
-                    help: "Show window",
-                    color: Color(red: 0.157, green: 0.784, blue: 0.251)
+                    systemName: "xmark",
+                    help: "Close window",
+                    color: Color(red: 1, green: 0.373, blue: 0.341)
                 ) {
-                    DockPreview.restore(window)
+                    DockPreview.close(window)
                 }
-            } else {
-                traffic(
-                    systemName: "minus",
-                    help: "Minimize window",
-                    color: Color(red: 1, green: 0.741, blue: 0.180)
-                ) {
-                    DockPreview.minimize(window)
+                if window.isMinimized {
+                    traffic(
+                        systemName: "plus",
+                        help: "Show window",
+                        color: Color(red: 0.157, green: 0.784, blue: 0.251)
+                    ) {
+                        DockPreview.restore(window)
+                    }
+                } else {
+                    traffic(
+                        systemName: "minus",
+                        help: "Minimize window",
+                        color: Color(red: 1, green: 0.741, blue: 0.180)
+                    ) {
+                        DockPreview.minimize(window)
+                    }
                 }
             }
             traffic(

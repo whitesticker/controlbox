@@ -11,7 +11,7 @@ enum DockPreviewWindows {
         let pids = relatedPIDs(for: app)
         let cg = cgEntries(pids: pids)
         var claimed = Set<CGWindowID>()
-        var windows: [DockPreviewWindow] = []
+        var candidates: [Candidate] = []
         var seenAX: [AXUIElement] = []
 
         for pid in pids {
@@ -29,37 +29,52 @@ enum DockPreviewWindows {
                 if let id = match?.windowID, id != 0 {
                     claimed.insert(id)
                 }
-                windows.append(
-                    DockPreviewWindow(
-                        windowID: match?.windowID ?? 0,
-                        pid: pid,
-                        title: title,
-                        bounds: match?.bounds ?? frame,
-                        isMinimized: minimized,
-                        isOnScreen: match?.onScreen ?? !minimized
+                candidates.append(
+                    Candidate(
+                        window: DockPreviewWindow(
+                            windowID: match?.windowID ?? 0,
+                            pid: pid,
+                            title: title,
+                            bounds: match?.bounds ?? frame,
+                            isMinimized: minimized,
+                            isOnScreen: match?.onScreen ?? !minimized
+                        ),
+                        fromAX: true,
+                        subrole: DockAX.string(ax, kAXSubroleAttribute as CFString)
                     )
                 )
             }
         }
 
-        let listedBounds = windows.map(\.bounds)
-        for entry in cg {
-            if entry.windowID != 0, claimed.contains(entry.windowID) { continue }
-            if entry.onScreen { continue }
-            if !isRealContentWindow(entry.bounds, listed: listedBounds) { continue }
+        var listedBounds = candidates.map { $0.window.bounds }
+        let extras = cg
+            .filter { entry in
+                if entry.windowID != 0, claimed.contains(entry.windowID) { return false }
+                if entry.onScreen { return false }
+                return isRealContentWindow(entry.bounds, listed: listedBounds)
+            }
+            .sorted { area($0.bounds) > area($1.bounds) }
+        for entry in extras {
+            if isNested(entry.bounds, in: listedBounds) { continue }
             claimed.insert(entry.windowID)
-            windows.append(
-                DockPreviewWindow(
-                    windowID: entry.windowID,
-                    pid: entry.pid,
-                    title: cleanedTitle(entry.title.isEmpty ? nil : entry.title, fallback: app.localizedName ?? ""),
-                    bounds: entry.bounds,
-                    isMinimized: false,
-                    isOnScreen: false
+            listedBounds.append(entry.bounds)
+            candidates.append(
+                Candidate(
+                    window: DockPreviewWindow(
+                        windowID: entry.windowID,
+                        pid: entry.pid,
+                        title: cleanedTitle(entry.title.isEmpty ? nil : entry.title, fallback: app.localizedName ?? ""),
+                        bounds: entry.bounds,
+                        isMinimized: false,
+                        isOnScreen: false
+                    ),
+                    fromAX: false,
+                    subrole: ""
                 )
             )
         }
 
+        var windows = pruneChrome(candidates)
         windows.sort { a, b in
             if a.isOnScreen != b.isOnScreen { return a.isOnScreen && !b.isOnScreen }
             if a.isMinimized != b.isMinimized { return !a.isMinimized && b.isMinimized }
@@ -100,6 +115,8 @@ enum DockPreviewWindows {
             }
             let layer = entry[kCGWindowLayer as String] as? Int ?? 0
             guard layer == 0 else { continue }
+            let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
+            guard alpha > 0.05 else { continue }
             let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
             if ignoredOwners.contains(owner) { continue }
             let name = entry[kCGWindowName as String] as? String ?? ""
@@ -200,6 +217,51 @@ enum DockPreviewWindows {
         return acceptedSubroles.contains(sub)
     }
 
+    private struct Candidate {
+        var window: DockPreviewWindow
+        var fromAX: Bool
+        var subrole: String
+    }
+
+    /// Inspectors, palettes, and mini widgets sit inside a real window. Keep
+    /// AXStandardWindow even when its frame nests in another Space’s window
+    /// of the same app (same display coordinates, different Space).
+    private static func pruneChrome(_ items: [Candidate]) -> [DockPreviewWindow] {
+        items.compactMap { item in
+            if item.window.isMinimized { return item.window }
+            if item.fromAX, isPrimarySubrole(item.subrole) { return item.window }
+            let hosts = items.compactMap { other -> CGRect? in
+                guard other.window.id != item.window.id else { return nil }
+                return other.window.bounds
+            }
+            return isNested(item.window.bounds, in: hosts) ? nil : item.window
+        }
+    }
+
+    /// AXStandardWindow can share display coordinates across Spaces, so do not
+    /// drop it just because another window’s frame contains it.
+    private static func isPrimarySubrole(_ subrole: String) -> Bool {
+        subrole == "AXStandardWindow"
+    }
+
+    private static func isNested(_ bounds: CGRect, in hosts: [CGRect]) -> Bool {
+        let childArea = area(bounds)
+        guard childArea > 0 else { return true }
+        for host in hosts {
+            let hostArea = area(host)
+            guard hostArea >= childArea * 1.35 else { continue }
+            if host.insetBy(dx: -12, dy: -12).contains(bounds) { return true }
+            let overlap = host.intersection(bounds)
+            guard !overlap.isNull, !overlap.isInfinite else { continue }
+            if area(overlap) / childArea >= 0.7 { return true }
+        }
+        return false
+    }
+
+    private static func area(_ rect: CGRect) -> CGFloat {
+        max(rect.width, 0) * max(rect.height, 0)
+    }
+
     /// Off-screen CG windows on another Space still have a real frame on a display.
     /// Menu-bar clones (~30pt) and Mail’s 500×500 placeholder are not windows.
     private static func isRealContentWindow(_ bounds: CGRect, listed: [CGRect]) -> Bool {
@@ -207,12 +269,7 @@ enum DockPreviewWindows {
         if isTitleBarStrip(bounds) { return false }
         if bounds.width < minWidth || bounds.height < minHeight { return false }
         if abs(bounds.width - 500) < 8, abs(bounds.height - 500) < 8 { return false }
-        if listed.contains(where: { host in
-            host.width * host.height > bounds.width * bounds.height * 2
-                && host.insetBy(dx: -4, dy: -4).contains(bounds)
-        }) {
-            return false
-        }
+        if isNested(bounds, in: listed) { return false }
         return true
     }
 
