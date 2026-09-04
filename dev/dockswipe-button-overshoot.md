@@ -14,4 +14,4 @@ High exit speed (`lastDelta * 100`) on that synthetic burst made the fling worse
 
 DualSense only (`ControlEngine.isDualSense` → `DockSwipe.playOneSpace`). Lands at **±1.0** with a modest exit speed.
 
-Apple TV and MX buttons still use `DockSwipe.play(±1.5)`. Live haptic / touchpad hold-to-swipe is unchanged (`setAbsolute` + `end()`).
+Apple TV and MX buttons still use `DockSwipe.play(±1.5)` and end as posted (`snapToNearestPage: false`). Live haptic / touchpad hold-to-swipe snaps to the nearest page on release. See [dockswipe-commit-nearest.md](dockswipe-commit-nearest.md).

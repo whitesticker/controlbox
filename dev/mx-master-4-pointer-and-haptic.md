@@ -130,7 +130,7 @@ Progress is **absolute**, not incremental. A dropped or reset sample that looks 
 
 Horizontal and vertical live spans are the same (`screen width`) so one haptic-speed slider maps both. A ~48 px Mission Control span made up/down finish in a flick.
 
-There is **no** 180 ms haptic-release debounce. Release ends the DockSwipe session immediately so Spaces commits.
+There is **no** 180 ms haptic-release debounce. Each full Space locks in during the hold (macOS only commits one desktop per DockSwipe session); release rounds the leftover page. See [dockswipe-commit-nearest.md](dockswipe-commit-nearest.md).
 
 Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26.5). That direction fires the system App Exposé action instead. See [dockswipe-down-skips-app-expose.md](dockswipe-down-skips-app-expose.md).
 

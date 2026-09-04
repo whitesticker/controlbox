@@ -27,7 +27,9 @@ public struct HoldGesture {
         case vertical
     }
 
-    public init() {}
+    public init() {
+        space.locksFullPages = true
+    }
 
     public mutating func begin(owner: DeviceButton, set: GestureSet) {
         cancel()

@@ -21,6 +21,7 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Media gesture left/right fires previous/next track (see `media-gesture-skip-dead.md`)
 - [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `haptic-vs-back-gesture.md`)
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
+- [x] Live Space swipe commits the nearest desktop, not a reverse-tick cancel (see [dockswipe-commit-nearest.md](dockswipe-commit-nearest.md))
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 - [x] MX Master 3 / 3S reader (same CID table; BLE `0xB034` measured). Separate module from MX4.
 - [x] MX4 Side button CID `0x00C3` (not the 3S gesture; divert `0x03`). See [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md).

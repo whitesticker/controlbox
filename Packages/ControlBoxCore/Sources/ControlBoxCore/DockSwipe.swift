@@ -18,12 +18,18 @@ enum DockSwipe {
     }
 
     final class Session {
+        /// Live Spaces follow: macOS commits at most one desktop per gesture
+        /// session, so each full page is ended and a new session starts.
+        var locksFullPages = false
+
         private var origin = 0.0
         private var lastDelta = 0.0
         private var pending = 0.0
         private var lastPost = Date.distantPast
         private var started = false
         private var axis: Axis = .horizontal
+        private var committedPages = 0.0
+        private var lastAbsolute = 0.0
 
         var isActive: Bool { started }
         var offset: Double { origin }
@@ -37,47 +43,129 @@ enum DockSwipe {
         /// delta that can jump backward if one sample is missing or reset.
         func setAbsolute(_ offset: Double, axis: Axis) {
             self.axis = axis
-            if !started {
-                started = true
-                origin = offset
-                lastDelta = offset
-                pending = 0
-                lastPost = Date()
-                postAbsolute(offset, phase: .began)
+            lastAbsolute = offset
+            if locksFullPages, axis == .horizontal {
+                consumeFullPages(total: offset)
+                postRemaining(offset - committedPages)
                 return
             }
-            pending = offset
-            let now = Date()
-            guard now.timeIntervalSince(lastPost) >= 1.0 / 90.0 || abs(offset - origin) >= 0.008 else {
-                return
-            }
-            let delta = offset - origin
-            guard abs(delta) > 0.00005 else { return }
-            lastPost = now
-            lastDelta = delta
-            origin = offset
-            postAbsolute(offset, phase: .changed)
+            postRemaining(offset)
         }
 
         @discardableResult
-        func end(exitSpeed: Double? = nil) -> Bool {
+        func end(exitSpeed: Double? = nil, snapToNearestPage: Bool = true) -> Bool {
+            if locksFullPages, axis == .horizontal {
+                consumeFullPages(total: lastAbsolute)
+                postRemaining(lastAbsolute - committedPages, force: true)
+                let locked = abs(committedPages) >= 0.5
+                let did = started ? finishNearestPage(exitSpeed: exitSpeed) : false
+                committedPages = 0
+                lastAbsolute = 0
+                return did || locked
+            }
             guard started else { return false }
             if abs(pending - origin) > 0.00005 {
                 origin = pending
                 postAbsolute(origin, phase: .changed)
             }
+            if snapToNearestPage {
+                return finishNearestPage(exitSpeed: exitSpeed)
+            }
             let commit = abs(origin) >= 0.28
             postAbsolute(origin, phase: commit ? .ended : .cancelled, exitSpeed: exitSpeed)
-            started = false
-            origin = 0
-            lastDelta = 0
-            pending = 0
+            resetLiveState()
             return commit
         }
 
         func cancel() {
-            guard started else { return }
-            postAbsolute(origin, phase: .cancelled)
+            if started {
+                postAbsolute(origin, phase: .cancelled)
+            }
+            resetLiveState()
+            committedPages = 0
+            lastAbsolute = 0
+        }
+
+        /// Space (or Mission Control page) whose center is closest to the
+        /// current preview. Halfway rounds away from the start.
+        static func landingPage(offset: Double, axis: Axis) -> Double {
+            let page = offset.rounded()
+            switch axis {
+            case .horizontal:
+                return page
+            case .vertical:
+                return min(max(page, -1), 1)
+            }
+        }
+
+        /// macOS `.ended` keeps one Space and rubber-bands the rest, even at
+        /// offset 2.0. End the current session at ±1 and keep going.
+        private func consumeFullPages(total: Double) {
+            while abs(total - committedPages) >= 1.0 {
+                let sign = (total - committedPages) > 0 ? 1.0 : -1.0
+                if !started {
+                    started = true
+                    origin = 0
+                    lastDelta = 0
+                    pending = 0
+                    lastPost = Date()
+                    postAbsolute(0, phase: .began)
+                }
+                origin = sign
+                pending = sign
+                lastDelta = sign
+                lastPost = Date()
+                postAbsolute(origin, phase: .changed)
+                postAbsolute(origin, phase: .ended, exitSpeed: 6 * sign)
+                resetLiveState()
+                committedPages += sign
+            }
+        }
+
+        private func postRemaining(_ remaining: Double, force: Bool = false) {
+            if !started {
+                guard abs(remaining) > 0.00005 else { return }
+                started = true
+                origin = remaining
+                lastDelta = remaining
+                pending = remaining
+                lastPost = Date()
+                postAbsolute(remaining, phase: .began)
+                return
+            }
+            pending = remaining
+            let now = Date()
+            if !force {
+                guard now.timeIntervalSince(lastPost) >= 1.0 / 90.0 || abs(remaining - origin) >= 0.008 else {
+                    return
+                }
+            }
+            let delta = remaining - origin
+            guard abs(delta) > 0.00005 else { return }
+            lastPost = now
+            lastDelta = delta
+            origin = remaining
+            postAbsolute(remaining, phase: .changed)
+        }
+
+        private func finishNearestPage(exitSpeed: Double?) -> Bool {
+            let page = Self.landingPage(offset: origin, axis: axis)
+            if abs(page) < 0.5 {
+                postAbsolute(origin, phase: .cancelled, exitSpeed: exitSpeed ?? 0)
+                resetLiveState()
+                return false
+            }
+            if abs(page - origin) > 0.00005 {
+                origin = page
+                postAbsolute(origin, phase: .changed)
+            }
+            let sign = page > 0 ? 1.0 : -1.0
+            postAbsolute(origin, phase: .ended, exitSpeed: exitSpeed ?? 6 * sign)
+            resetLiveState()
+            return true
+        }
+
+        private func resetLiveState() {
             started = false
             origin = 0
             lastDelta = 0
@@ -85,21 +173,15 @@ enum DockSwipe {
         }
 
         private func postAbsolute(_ offset: Double, phase: Phase, exitSpeed: Double? = nil) {
-            var resolved = phase
-            if phase == .ended {
-                let lastSign = (lastDelta > 0 ? 1 : 0) - (lastDelta < 0 ? 1 : 0)
-                let originSign = (offset > 0 ? 1 : 0) - (offset < 0 ? 1 : 0)
-                if lastSign != 0, originSign != 0, lastSign != originSign {
-                    resolved = .cancelled
-                }
-            }
             let speed: Double
             if let exitSpeed {
                 speed = exitSpeed
+            } else if phase == .ended || phase == .cancelled {
+                speed = lastDelta * 100
             } else {
-                speed = (resolved == .ended || resolved == .cancelled) ? lastDelta * 100 : 0
+                speed = 0
             }
-            postPair(offset: offset, axis: axis, phase: resolved, exitSpeed: speed)
+            postPair(offset: offset, axis: axis, phase: phase, exitSpeed: speed)
         }
     }
 
@@ -111,7 +193,7 @@ enum DockSwipe {
         for _ in 1..<steps {
             session.add(step, axis: axis)
         }
-        session.end()
+        session.end(snapToNearestPage: false)
     }
 
     /// DualSense button desktop switch only. One Space; 1.5 peeks into the next.
