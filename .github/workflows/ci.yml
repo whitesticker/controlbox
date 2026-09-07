@@ -1,0 +1,63 @@
+# Compile check plus a few hard-constraint greps.
+# Reproduce locally:
+#   xcodebuild -project ControlBox.xcodeproj -scheme ControlBox \
+#     -configuration Debug -destination 'generic/platform=macOS' \
+#     -derivedDataPath .derived CODE_SIGNING_ALLOWED=NO build
+# CI never signs, never uploads the .app, never publishes.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  constraints:
+    name: Hard constraints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Never call pairedDevices
+        run: |
+          if git grep -n 'pairedDevices()' -- '*.swift'; then
+            echo '::error::Never call IOBluetoothDevice.pairedDevices()'
+            exit 1
+          fi
+      - name: Keep Apple Development signing in the project
+        run: |
+          if git grep -n 'CODE_SIGN_IDENTITY = "-"' -- '*.pbxproj'; then
+            echo '::error::Do not switch Debug/Release back to ad-hoc signing'
+            exit 1
+          fi
+      - name: Do not seize Logitech HID
+        run: |
+          hits="$(git grep -n 'kIOHIDOptionsTypeSeizeDevice' -- '*.swift' \
+            | grep -v 'ControlBox/Devices/AppleTVRemoteHIDReader.swift' || true)"
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo '::error::Seize is only allowed on the Apple TV remote reader'
+            exit 1
+          fi
+
+  build:
+    name: Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Build Control Box (unsigned)
+        run: |
+          xcodebuild \
+            -project ControlBox.xcodeproj \
+            -scheme ControlBox \
+            -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath .derived \
+            CODE_SIGNING_ALLOWED=NO \
+            build

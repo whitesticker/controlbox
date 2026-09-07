@@ -13,6 +13,8 @@
 
 <p align="center">
   <a href="https://whitesticker.github.io/controlbox/">Product page</a>
+  ·
+  <a href="https://github.com/whitesticker/controlbox/actions/workflows/ci.yml"><img src="https://github.com/whitesticker/controlbox/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 Displays, sound, pointer, windows, and a system monitor — plus DualSense, Siri Remote, MX Master, and MX Mechanical when you want them.
@@ -76,6 +78,8 @@ open .derived/Build/Products/Release/ControlBox.app
 ```
 
 Debug builds are signed with the Apple Development identity so Accessibility and Input Monitoring persist across rebuilds.
+
+GitHub Actions compiles the same scheme unsigned (`CODE_SIGNING_ALLOWED=NO`) and does not upload the app. There is no test target yet; CI is a compile check plus greps for `pairedDevices()`, ad-hoc signing, and Logitech HID seize.
 
 ## Privacy
 

@@ -1,6 +1,6 @@
 # Fix list
 
-Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separate HID++ readers).
+Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separate HID++ readers).
 
 ## Done
 
@@ -29,6 +29,8 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Focused Control Box does not inject (including system-nav gestures). See [focused-host-still-injects.md](focused-host-still-injects.md).
 - [x] Wheel / thumb remappable per direction; `.scroll` keeps native.
 
+
+
 ## Do not regress
 
 - [ ] Never call `IOBluetoothDevice.pairedDevices()`
@@ -38,12 +40,44 @@ Open items for MX Master / HID++ work. 3S and 4 can stay attached at once (separ
 - [x] Displays pane lists one row per `NSScreen` (no leftover DDC ghost). Apple-silicon DDC matching follows MonitorControl (MIT); credit is on the Displays page (see [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md)).
 - [x] Sound pane: system output + per-app volume via Apple process tap (no FineTune / Background Music code). Two tap mixers cannot own the same app; Sound warns if FineTune / SoundSource / etc. is already running (see [process-tap-exclusive.md](process-tap-exclusive.md)). Tahoe: tap-only + HALOutput. Sequoia 15: stacked speaker clock + IOProc gain, and do not rebuild taps on `!obj` (see [macbook-app-volume-binary.md](macbook-app-volume-binary.md), [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md)).
 
+
+
 ## Later
 
-- [ ] Logi Bolt (`0xC548`): HID++ slot walk, no mouse collection. Capture when the dongle is plugged in. See [logi-bolt-receiver.md](logi-bolt-receiver.md) / [roadmap.md](roadmap.md).
+- [ ] Logi Bolt (`0xC548`): HID++ slot walk so an already-paired MX / Mechanical attaches. Pairing lives on **Add Device → Logi Bolt** (own tab), not a sidebar row. See [logi-bolt-receiver.md](logi-bolt-receiver.md) / [roadmap.md](roadmap.md).
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
+
+
+
+## Logitech-related improvements
+
+Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as a device.
+
+- [ ] **More Logitech devices** — probe HID++ features; not only MX 3/3S/4 / Mechanical product IDs.
+- [ ] **Logi Bolt — talk** — one session owns `C548` vendor HID++only; walk slots 1–6; prefer BLE if both radios are up; MX4 haptic from HID++ (not report `0x02`).
+- [ ] **Logi Bolt — pair** — **Add Device** sheet, separate **Logi Bolt** tab (discover / passkey / unpair). Occupied slots still appear under Mouse or Keyboard. Not Other. Not a Devices sidebar row.
+- [ ] **Unifying / Lightspeed** — same slot walk as Bolt; Unifying pairing can be another Add Device tab later.
+- [ ] **Restore original divert** — read flags before divert; put those back on quit / failed start (not a blanket `0x22`).
+- [ ] **One HID++ pipe, two addresses** — BLE = nested `0xFF43` on the mouse; Bolt = slot on `C548`.
+- [ ] **Detect Options+ / LogiPluginService** — say so up front, not only after HID++ timeout.
+- [ ] **Software-ID lease on a shared dongle** — required when two sessions share `C548`.
+- [ ] **Per-app mouse profiles** — already on the roadmap.
+- [ ] **SmartShift as a wheel setting** — firmware `0x2111`, not only remapping the Mode Shift button.
+- [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
+- [ ] **Smooth-scroll animation** — keep hi-res firmware; add a short pixel ease off the tap callback so notches feel closer to a trackpad.
+- [ ] **Devices sidebar by type, then brand** — sections Mouse / Gamepad / Remote / Keyboard / Other. Brand is a row caption until a type has two brands. Hide empty types. Bolt is a connection label (`Logitech · Bolt`), not a type.
+
+## CI
+
+Unsigned Debug compile on GitHub Actions plus hard-constraint greps. One job is better than none. Do not upload the `.app`.
+
+- [x] **Compile check** — `xcodebuild` Debug, `CODE_SIGNING_ALLOWED=NO` (local Debug stays Apple Development).
+- [x] **Constraint greps** — `pairedDevices()`, ad-hoc `CODE_SIGN_IDENTITY`, Logitech HID seize (Apple TV seize is still allowed).
+- [ ] **Unit tests** — XCTest on ControlBoxCore first (gesture math, HID++ flags, arrangement identity). Run them in CI once they exist.
+- [ ] **Release configuration** — CI is Debug-only today; add a Release build so shipping flags get compiled too.
+- [ ] **Pin Xcode** — lock the runner image / Xcode version so a silent GitHub image bump does not fail `main` overnight.
 
 Product-facing work (mic, live gesture HUD, MX Keys remapping, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles, product page) lives in [roadmap.md](roadmap.md). MX Mechanical settings and MX4 Side are shipped. Media skip / play / mute already show an action HUD.
