@@ -1237,7 +1237,8 @@ final class DualSenseMonitor {
                 naturalScrolling: macMouseProfile.resolvedNaturalScrolling,
                 scrollSpeed: deviceLevel.resolvedMXThumbWheelSensitivity,
                 nativeResolution: reader.current.thumbNativeResolution,
-                divertedResolution: reader.current.thumbDivertedResolution
+                divertedResolution: reader.current.thumbDivertedResolution,
+                smoothScrolling: macMouseProfile.resolvedSmoothScrolling
             )
         } else {
             wheelEngine.idle(force: !canInject)

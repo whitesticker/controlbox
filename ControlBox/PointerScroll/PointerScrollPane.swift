@@ -35,7 +35,7 @@ struct PointerScrollPane: View {
                         "Wheel speed scales vertical and horizontal mouse-wheel events.",
                         "An MX thumb wheel in a scroll mode uses the Thumb wheel slider on Calibration.",
                         "Trackpad and Magic Mouse gestures stay native.",
-                        "Smooth scrolling also turns on the MX high-res wheel.",
+                        "Smooth scrolling eases MX thumb-wheel travel in every thumb mode, and turns on the MX high-res main wheel.",
                         "Accessibility is required for wheel speed.",
                         "DPI is on Calibration."
                     )

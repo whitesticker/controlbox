@@ -50,6 +50,8 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [x] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+- [ ] **Delete device does not leave the sidebar.** Removing a device must drop that **sidebar** row (and its remembered record). Today it stays.
+- [ ] **Device management and onboarding.** A clearer path to add a device, see what’s attached vs disconnected, forget one, and first-run attach. Product shape is in [roadmap.md](roadmap.md).
 
 
 
@@ -69,7 +71,8 @@ Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as
 - [x] **Per-app mouse profiles** — MX device page **profile tiles**; live mapping follows the frontmost app. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 - [x] **SmartShift as a wheel setting** — firmware `0x2111` (fallback `0x2110`) on Calibration: Free Spin / Ratchet plus sensitivity. See [mx-smartshift.md](mx-smartshift.md). Mode Shift stays a mappable button.
 - [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
-- [ ] **Smooth-scroll animation** — keep hi-res firmware; add a short pixel ease off the tap callback so notches feel closer to a trackpad.
+- [x] **Thumb-wheel smooth travel** — Pointer & Scroll Smooth scrolling eases diverted thumb HID++ for every thumb mode (100 ms cubic, pixel-continuous scroll). Main-wheel intercept is still open; see [roadmap.md](roadmap.md).
+- [ ] **Smooth-scroll animation (main wheel)** — keep hi-res firmware; intercept native line ticks (not trackpad) and feed the same interpolator.
 - [x] **Devices sidebar by type, then brand** — sections Mouse / Gamepad / Remote / Keyboard / Other. Brand is a row caption until a type has two brands. Hide empty types. Connection is a caption (`Logitech · Bluetooth` / `Logitech · Bolt`), not a type.
 
 ## CI

@@ -151,6 +151,57 @@ enum EventPoster {
         event.post(tap: .cghidEventTap)
     }
 
+    /// OpenLogi smooth-scroll frame: pixel-continuous, IOHID phases, line =
+    /// pixels/10 with no forced leftover ±1. Points are already in CG’s sign
+    /// (positive scrolls up / right).
+    static func smoothScroll(
+        pixelY: Int32,
+        pixelX: Int32,
+        phase: MXThumbSmoother.Phase
+    ) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: source,
+            units: .pixel,
+            wheelCount: 2,
+            wheel1: 0,
+            wheel2: 0,
+            wheel3: 0
+        ) else { return }
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase.rawValue)
+        event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 0)
+        setSmoothAxis(
+            event,
+            points: pixelY,
+            line: .scrollWheelEventDeltaAxis1,
+            point: .scrollWheelEventPointDeltaAxis1,
+            fixed: .scrollWheelEventFixedPtDeltaAxis1
+        )
+        setSmoothAxis(
+            event,
+            points: pixelX,
+            line: .scrollWheelEventDeltaAxis2,
+            point: .scrollWheelEventPointDeltaAxis2,
+            fixed: .scrollWheelEventFixedPtDeltaAxis2
+        )
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
+        event.post(tap: .cghidEventTap)
+    }
+
+    private static func setSmoothAxis(
+        _ event: CGEvent,
+        points: Int32,
+        line: CGEventField,
+        point: CGEventField,
+        fixed: CGEventField
+    ) {
+        let points = Int64(points)
+        event.setIntegerValueField(point, value: points)
+        event.setIntegerValueField(line, value: points / 10)
+        event.setIntegerValueField(fixed, value: points * (1 << 16) / 10)
+    }
+
     /// Firefox often ignores continuous pixel scroll when the line field is 0.
     private static func lineDelta(_ pixels: Double) -> Int64 {
         let rounded = Int64((pixels / 10).rounded())

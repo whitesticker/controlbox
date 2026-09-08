@@ -41,11 +41,18 @@ pass through.
 
 The thumb wheel stays diverted through HID++ `0x2150`. Its accumulated delta
 goes directly to `MXWheelActionEngine`; `ControlEngine` no longer interprets
-thumb directions as buttons. Thumb **scroll** posts OpenLogi-style line ticks
-(not continuous pixels) scaled by `getThumbwheelInfo` native/diverted
-resolution, and the Pointer & Scroll tap skips those injected events.
-Discrete modes use the Calibration **Thumb wheel** sensitivity the same way
-OpenLogi does (14 = 1×). Pointer & Scroll **Wheel speed** does not scale thumb.
+thumb directions as buttons. Pointer & Scroll **Smooth scrolling** (default
+on) runs OpenLogi’s 100 ms cubic interpolator on **every** thumb mode, not
+only scroll: diverted increments are eased, then mapped to the live mode.
+Scroll modes post pixel-continuous events with Began/Changed/Ended phases
+(10 points per native tick, line = pixels/10, no forced ±1). Volume follows
+the eased travel analog-style. Tabs, zoom, and apps fire from fractional
+distance with no extra cooldown. Desktops keep live DockSwipe, filled in
+between HID++ packets. Smooth **off** keeps OpenLogi line ticks for scroll
+and the discrete increment threshold + cooldown for the other modes.
+`getThumbwheelInfo` native/diverted still scales scroll. The Pointer & Scroll
+tap skips injected events. Calibration **Thumb wheel** sensitivity is 14 = 1×.
+Pointer & Scroll **Wheel speed** does not scale thumb.
 
 **Invert thumb wheel** is a Calibration toggle on this mouse. HID++ `0x2150`
 `setThumbwheelReporting` byte 1 (same packet as divert). OpenLogi uses that

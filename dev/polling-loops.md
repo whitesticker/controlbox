@@ -8,7 +8,7 @@ When something is “always on” and the Mac feels busy, start with this list. 
 
 | Loop | Rate | What it calls | When it runs | Do not |
 |---|---|---|---|---|
-| Device poll | 120 Hz | HID DualSense / Apple TV / MX gesture pointer, `ControlEngine.process`, window-grab configure, scroll-tap apply | `DualSenseMonitor` timer from `start()` | IORegistry walks, AX prompts, snapshot assigns when nothing changed. See [poll-timer-cpu.md](poll-timer-cpu.md), [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md). |
+| Device poll | 120 Hz | HID DualSense / Apple TV / MX gesture pointer, `ControlEngine.process`, MX thumb interpolator tick (`MXThumbSmoother` ~8 ms frames while a 100 ms ease is live), window-grab configure, scroll-tap apply | `DualSenseMonitor` timer from `start()` | IORegistry walks, AX prompts, snapshot assigns when nothing changed. See [poll-timer-cpu.md](poll-timer-cpu.md), [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md). Do not add a second timer for thumb easing. |
 | Window Grab tick | 120 Hz | Reads the last `CGEvent` point; AX / `SLSMoveWindow` only while a grab or throw is active | While any Window Grab move/resize/throw toggle is on | AX inside the event-tap callback. See [window-grab-only-own-app.md](window-grab-only-own-app.md). |
 
 HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz timer is what turns analog sticks and hold-to-swipe into pointer / DockSwipe.
