@@ -8,14 +8,23 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **Microphone.** Capture and use the DualSense and Apple TV remote mics on macOS (Bluetooth HID-only today; USB DualSense jack is untested).
 - [x] **MX Master 4 extra button.** MX4 Side is CID `0x00C3` (frontmost thumb button under the roller). Calibration and mappings show it; default is Mission Control.
 - [x] **MX Mechanical settings.** Device family for MX Mechanical (`0xB366`) and Mini (`0xB367`): backlight, lighting effect, battery saving, battery %. See [mx-mechanical-hid.md](mx-mechanical-hid.md). Key remapping and MX Keys are still open.
-- [ ] **MX keyboard remapping.** Map MX Keys / Mechanical extra keys the same way as the mice. Settings panel for Mechanical is shipped.
+- [ ] **Keyboard key remap pane.** A device-page remap UI for MX Keys / Mechanical (and later other keyboards). Divert only bound keys; Mechanical settings (backlight) are already shipped. See also [todo.md](todo.md).
 - [x] **Caps Lock as modifier.** Separate Mac pane: Caps Lock is a hold key that synthesizes a chosen modifier chord (default Control) for Control Box only, not a caps toggle. Off until the toggle is on. See [caps-lock-modifier.md](caps-lock-modifier.md).
 - [ ] **Smoother wheel scrolling.** Improve the existing Pointer & Scroll smooth-scrolling path so MX and generic mice feel closer to the trackpad (less stepped, less lag). See also [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md).
 - [ ] **MX4 gesture feel.** Haptic-pad swipes on MX4 are less smooth than the 3S gesture button. Measure HID++ XY vs CG fallback and match 3S feel without seizing the pointer.
 - [x] **Logi Bolt talk.** MX 3S / 4 / Mechanical connected only through the USB receiver (`0xC548`) attach over vendor-HID++ slots. Pairing / unpair is **Add Device → Logi Bolt**. Do not open the mouse collection. MX4 haptic XY cannot use nested report `0x02` on Bolt. BLE and Bolt for the same unit are one device. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - [ ] **Devices sidebar grouping.** Group by type (Mouse, Gamepad, Remote, Keyboard, Other), then by brand when a type has more than one. Hide empty types. See [todo.md](todo.md) Logitech-related improvements.
-- [ ] **Generic mouse / Xbox / other TV remotes.** Not this version. Family sessions are the add path.
+- [ ] **Generic mouse and gamepad mapper.** A settings pane that maps a generic USB/Bluetooth mouse or gamepad (Xbox, etc.) the same way as a known family: buttons, sticks, wheel. Family sessions are still the add path. Not this version’s HID stack.
 - [x] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, thumb-wheel mode) when the frontmost app changes. MX device page **profile tiles**; known browsers and editors start from a preset. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+- [x] **MX thumb-wheel sensitivity.** Calibration **On this mouse**: per-mouse scale of diverted HID++ `0x2150` thumb travel. Independent of Pointer & Scroll wheel speed. See [mx-smartshift.md](mx-smartshift.md).
+- [x] **MX Free Spin / Ratchet.** Calibration **On this mouse**: segmented **Free Spin** / **Ratchet** plus a SmartShift sensitivity slider. Firmware `0x2111`, fallback `0x2110`. See [mx-smartshift.md](mx-smartshift.md).
+- [ ] **MX4 Side as a Gestures owner.** On MX Master 4, **Side** is the thumb gesture button (CID `0x00C3`, same family as 3S). **Haptic** stays the force-sensing pad. Both should be allowed to own Gestures (hold-to-swipe). Today only haptic can. Do not put Gestures back on Back / Forward. Related: [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+- [ ] **DualSense per-app profiles.** Same **profile tiles** treatment as MX mice: Default plus per-app mappings that follow the frontmost app. DualSense still uses the named Profile picker today. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+
+## App settings
+
+- [ ] **Export / import JSON.** Settings pane: export the whole Control Box configuration as JSON, and import a file to apply it quickly.
+- [ ] **Pointer & Scroll vs System Settings.** Reconcile Control Box pointer and wheel sliders with macOS mouse tracking and scroll so they are not two competing controls.
 
 ## Feedback and UI
 
@@ -40,6 +49,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **Temp shelf.** A Dropover-style floating shelf: drop files onto a parked pane, keep them while you switch apps, drag them out later. Off until a pane toggle is on. Not a full Finder replacement.
 - [ ] **Selection popup.** A PopClip-style bar when text is selected: copy, search, and a short list of actions. Accessibility required. Do not steal the selection or replace the system Services menu wholesale.
 - [x] **Dock window previews.** Separate Mac pane: hover a Dock icon to see that app’s windows and click one to focus it. Off until the pane toggle is on. Live thumbnails need Screen Recording; titles work without it. Not gated on an MX Master.
+- [ ] **Sound per-app icons.** Show each app’s icon on the Sound pane per-app volume rows.
 
 ## Site
 

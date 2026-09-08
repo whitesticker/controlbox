@@ -465,12 +465,10 @@ public final class ControlEngine: @unchecked Sendable {
             }
             wheelRemainder += degrees
             if wheelRemainder > 18 {
-                EventPoster.media(MediaKey.soundUp, down: true)
-                EventPoster.media(MediaKey.soundUp, down: false)
+                SystemVolume.nudge(up: true)
                 wheelRemainder = 0
             } else if wheelRemainder < -18 {
-                EventPoster.media(MediaKey.soundDown, down: true)
-                EventPoster.media(MediaKey.soundDown, down: false)
+                SystemVolume.nudge(up: false)
                 wheelRemainder = 0
             }
         }
@@ -596,11 +594,9 @@ public final class ControlEngine: @unchecked Sendable {
         }
         let value = sample.y
         if value > 0.55 {
-            EventPoster.media(MediaKey.soundUp, down: true)
-            EventPoster.media(MediaKey.soundUp, down: false)
+            SystemVolume.nudge(up: true)
         } else if value < -0.55 {
-            EventPoster.media(MediaKey.soundDown, down: true)
-            EventPoster.media(MediaKey.soundDown, down: false)
+            SystemVolume.nudge(up: false)
         }
     }
 
@@ -622,9 +618,9 @@ public final class ControlEngine: @unchecked Sendable {
         case .mediaPlayPause:
             EventPoster.media(MediaKey.play, down: down)
         case .mediaVolumeUp:
-            EventPoster.media(MediaKey.soundUp, down: down)
+            if down { SystemVolume.nudge(up: true) }
         case .mediaVolumeDown:
-            EventPoster.media(MediaKey.soundDown, down: down)
+            if down { SystemVolume.nudge(up: false) }
         case .mediaMute:
             EventPoster.media(MediaKey.mute, down: down)
         case .mediaNext:
@@ -674,9 +670,9 @@ public final class ControlEngine: @unchecked Sendable {
         case .browserForward:
             EventPoster.key(30, flags: .maskCommand, down: down)
         case .tabPrevious:
-            EventPoster.key(33, flags: [.maskCommand, .maskShift], down: down)
+            EventPoster.tab(forward: false, down: down)
         case .tabNext:
-            EventPoster.key(30, flags: [.maskCommand, .maskShift], down: down)
+            EventPoster.tab(forward: true, down: down)
         case .switchApplication:
             if down { EventPoster.system(.switchApplication) }
         case .switchApplicationBack:

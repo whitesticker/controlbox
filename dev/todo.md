@@ -67,7 +67,7 @@ Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as
 - [ ] **Detect Options+ / LogiPluginService** — say so up front, not only after HID++ timeout.
 - [ ] **Software-ID lease on a shared dongle** — required when two sessions share `C548`.
 - [x] **Per-app mouse profiles** — MX device page **profile tiles**; live mapping follows the frontmost app. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
-- [ ] **SmartShift as a wheel setting** — firmware `0x2111`, not only remapping the Mode Shift button.
+- [x] **SmartShift as a wheel setting** — firmware `0x2111` (fallback `0x2110`) on Calibration: Free Spin / Ratchet plus sensitivity. See [mx-smartshift.md](mx-smartshift.md). Mode Shift stays a mappable button.
 - [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
 - [ ] **Smooth-scroll animation** — keep hi-res firmware; add a short pixel ease off the tap callback so notches feel closer to a trackpad.
 - [x] **Devices sidebar by type, then brand** — sections Mouse / Gamepad / Remote / Keyboard / Other. Brand is a row caption until a type has two brands. Hide empty types. Connection is a caption (`Logitech · Bluetooth` / `Logitech · Bolt`), not a type.
@@ -82,4 +82,4 @@ Unsigned Debug compile on GitHub Actions plus hard-constraint greps. One job is 
 - [ ] **Release configuration** — CI is Debug-only today; add a Release build so shipping flags get compiled too.
 - [ ] **Pin Xcode** — lock the runner image / Xcode version so a silent GitHub image bump does not fail `main` overnight.
 
-Product-facing work (mic, live gesture HUD, MX Keys remapping, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, product page) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, and per-app mouse profiles are shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys remapping, DualSense per-app profiles, generic mouse/gamepad mapper, MX4 Side-as-Gestures, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, product page, settings export, Pointer & Scroll vs System Settings, Sound per-app icons) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, per-app mouse profiles, SmartShift, and thumb-wheel sensitivity are shipped. Media skip / play / mute already show an action HUD.

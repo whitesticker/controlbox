@@ -4,6 +4,10 @@ import CoreGraphics
 import Foundation
 
 enum EventPoster {
+    /// Stamped on every synthesised HID event so `MouseScrollTap` skips it.
+    /// Same idea as OpenLogi's `SYNTHETIC_EVENT_USER_DATA`.
+    static let syntheticUserData: Int64 = 0x4342_4F58
+
     private static var fractionalCursor = CGPoint.zero
     private static var hasFractionalCursor = false
     private static var cachedTrusted = false
@@ -34,7 +38,15 @@ enum EventPoster {
         } else {
             event.flags = flags
         }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
         event.post(tap: .cghidEventTap)
+    }
+
+    /// Control-Tab / Control-Shift-Tab. Safari, Chrome, and Firefox all honor this;
+    /// Command-Shift-bracket is Safari/Chrome-only.
+    static func tab(forward: Bool, down: Bool) {
+        let flags: CGEventFlags = forward ? .maskControl : [.maskControl, .maskShift]
+        key(48, flags: flags, down: down)
     }
 
     static func mouseClick(right: Bool, down: Bool) {
@@ -59,6 +71,7 @@ enum EventPoster {
             mouseButton: button
         ) else { return }
         event.setIntegerValueField(.mouseEventClickState, value: MouseClickState.count)
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
         event.post(tap: .cghidEventTap)
     }
 
@@ -87,13 +100,15 @@ enum EventPoster {
             mouseCursorPosition: fractionalCursor,
             mouseButton: .left
         ) else { return }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
         event.post(tap: .cghidEventTap)
     }
 
     static func scroll(deltaY: Double, deltaX: Double = 0, continuous: Bool = false) {
         guard abs(deltaY) > 0.0001 || abs(deltaX) > 0.0001 else { return }
+        let source = CGEventSource(stateID: .hidSystemState)
         guard let event = CGEvent(
-            scrollWheelEvent2Source: nil,
+            scrollWheelEvent2Source: source,
             units: .pixel,
             wheelCount: 2,
             wheel1: 0,
@@ -109,13 +124,40 @@ enum EventPoster {
             event.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: pixelX)
             event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: pixelY)
             event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: pixelX)
-            event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: Int64((pixelY / 10).rounded()))
-            event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: Int64((pixelX / 10).rounded()))
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: lineDelta(pixelY))
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: lineDelta(pixelX))
         } else {
             event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: Int64((pixelY * 3).rounded()))
             event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: Int64((pixelX * 3).rounded()))
         }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
         event.post(tap: .cghidEventTap)
+    }
+
+    /// OpenLogi posts remapped thumb-wheel motion as `ScrollEventUnit::LINE`
+    /// ticks. Firefox ignores continuous pixel-only horizontal scroll.
+    static func scrollTicks(deltaY: Int32, deltaX: Int32) {
+        guard deltaY != 0 || deltaX != 0 else { return }
+        let source = CGEventSource(stateID: .hidSystemState)
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: source,
+            units: .line,
+            wheelCount: 2,
+            wheel1: -deltaY,
+            wheel2: -deltaX,
+            wheel3: 0
+        ) else { return }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticUserData)
+        event.post(tap: .cghidEventTap)
+    }
+
+    /// Firefox often ignores continuous pixel scroll when the line field is 0.
+    private static func lineDelta(_ pixels: Double) -> Int64 {
+        let rounded = Int64((pixels / 10).rounded())
+        if rounded != 0 { return rounded }
+        if pixels > 0 { return 1 }
+        if pixels < 0 { return -1 }
+        return 0
     }
 
     static func media(_ key: Int32, down: Bool) {

@@ -163,12 +163,9 @@ public struct HoldGesture {
         guard set.up.isLiveVolume || set.down.isLiveVolume else { return }
         let target = (-y / 36.0).rounded(.towardZero)
         guard target != volumeCursor else { return }
-        let step = target > volumeCursor ? 0.04 : -0.04
         let count = Int(abs(target - volumeCursor))
         for _ in 0..<count {
-            if let level = SystemVolume.adjust(by: step) {
-                VolumeHUD.show(level: level)
-            }
+            SystemVolume.nudge(up: target > volumeCursor)
         }
         volumeCursor = target
         didSwipe = true

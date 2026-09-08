@@ -15,6 +15,7 @@ public enum MouseAppCatalog: Sendable {
         "com.google.Chrome.canary",
         "org.mozilla.firefox",
         "org.mozilla.firefoxdeveloperedition",
+        "org.mozilla.nightly",
         "com.microsoft.edgemac",
         "com.brave.Browser",
         "company.thebrowser.Browser",

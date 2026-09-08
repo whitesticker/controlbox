@@ -9,7 +9,7 @@ Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). Th
 | Input | Behavior |
 |---|---|
 | Laser pointer | Cursor. **Pointer speed** slider + DPI compensation. |
-| Wheel / thumb wheel | Main wheel always scrolls vertically and is not remapped. Thumb wheel has one per-profile mode, default Horizontal Scroll. Delta-driven navigation / volume modes can repeat without turning directions into buttons. Smooth scrolling + one wheel speed slider for mouse scroll. |
+| Wheel / thumb wheel | Main wheel always scrolls vertically. Free Spin / Ratchet and SmartShift sensitivity are on Calibration (`0x2111`). Thumb wheel has one per-profile mode, default Horizontal Scroll; travel uses Calibration thumb-wheel sensitivity. Smooth scrolling + one wheel speed slider for native mouse scroll. |
 | Haptic pad tap | The Gestures **Click** action (window preset: Mission Control). |
 | Haptic pad hold 100ms + move | Hold-to-swipe. Left/right and up are live DockSwipe. Down is discrete App Exposé. |
 

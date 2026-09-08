@@ -40,9 +40,15 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var liveGestureOwner: DeviceButton?
     var pendingScrollY: Double = 0
     var pendingScrollX: Double = 0
+    /// HID++ `0x2150` `getThumbwheelInfo`: native ratchets and diverted increments per revolution.
+    var thumbNativeResolution = 0
+    var thumbDivertedResolution = 0
     var availableDPI: [Int] = []
     var appliedDPI = 0
     var smoothScrolling = true
+    var smartShiftSupported = false
+    var ratchetMode = MXRatchetMode.ratchet
+    var smartShiftSensitivity = MappingProfile.smartShiftSensitivityDefault
     var extras: [MXMasterControl] = []
     var events: [InputLogEvent] = []
     var lastHIDEvent = "—"
@@ -149,21 +155,28 @@ final class LogitechMXMasterReader {
     private var hidppBuffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
     private var hiresWheelIndex: UInt8?
     private var thumbWheelIndex: UInt8?
+    private var didReadThumbWheelInfo = false
     private var forceSensingIndex: UInt8?
     private var pointerScaleIndex: UInt8?
     private var dpiIndex: UInt8?
     private var batteryIndex: UInt8?
+    private var smartShiftEnhancedIndex: UInt8?
+    private var smartShiftIndex: UInt8?
     private var hostsInfoIndex: UInt8?
     private var changeHostIndex: UInt8?
     private var batteryTimer: Timer?
     private var dpiValues: [Int] = []
     private var lastSentDPI = -1
     private var lastSentPointerScale = -1
+    private var lastSentSmartShift: (mode: MXRatchetMode, sensitivity: Int)?
     private var lastAppliedOSDPI = -1
     private var lastAppliedOSPointerSpeed = -1.0
     private var desiredDPI = MappingProfile.defaultSensorDPI
     private var desiredPointerSpeed = 0.5
     private var desiredSmoothScrolling = true
+    private var desiredThumbInvert = false
+    private var desiredRatchetMode = MXRatchetMode.ratchet
+    private var desiredSmartShiftSensitivity = MappingProfile.smartShiftSensitivityDefault
     private var lastWheelConfig: (divert: Bool, invert: Bool, highRes: Bool)?
     private var consecutiveTimeouts = 0
     private var easySwitchLoadAttempts = 0
@@ -253,16 +266,20 @@ final class LogitechMXMasterReader {
         pending = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
+        didReadThumbWheelInfo = false
         forceSensingIndex = nil
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        smartShiftEnhancedIndex = nil
+        smartShiftIndex = nil
         hostsInfoIndex = nil
         changeHostIndex = nil
         easySwitchLoadAttempts = 0
         dpiValues = []
         lastSentDPI = -1
         lastSentPointerScale = -1
+        lastSentSmartShift = nil
         lastAppliedOSDPI = -1
         lastAppliedOSPointerSpeed = -1.0
         lastWheelConfig = nil
@@ -272,6 +289,9 @@ final class LogitechMXMasterReader {
         desiredPointerSpeed = 0.5
         lastHapticBit = false
         desiredSmoothScrolling = true
+        desiredThumbInvert = false
+        desiredRatchetMode = .ratchet
+        desiredSmartShiftSensitivity = MappingProfile.smartShiftSensitivityDefault
         naturalScrolling = true
         injectEnabled = false
         wheelsEnabled = false
@@ -342,9 +362,12 @@ final class LogitechMXMasterReader {
         forceSensingIndex = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
+        didReadThumbWheelInfo = false
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        smartShiftEnhancedIndex = nil
+        smartShiftIndex = nil
         hostsInfoIndex = nil
         changeHostIndex = nil
         easySwitchLoadAttempts = 0
@@ -454,11 +477,30 @@ final class LogitechMXMasterReader {
         applyOSPointerSettingsIfNeeded()
     }
 
+    func applyThumbWheelInvert(_ inverted: Bool) {
+        guard desiredThumbInvert != inverted else { return }
+        desiredThumbInvert = inverted
+        lastWheelConfig = nil
+        applyWheelRouting()
+    }
+
     func applySmoothScrolling(_ enabled: Bool) {
         guard desiredSmoothScrolling != enabled else { return }
         desiredSmoothScrolling = enabled
         lastWheelConfig = nil
         applyWheelRouting()
+        publishMotionSettings()
+    }
+
+    func applySmartShift(mode: MXRatchetMode, sensitivity: Int) {
+        let nextSensitivity = MappingProfile.clampSmartShiftSensitivity(sensitivity)
+        if mode == desiredRatchetMode, nextSensitivity == desiredSmartShiftSensitivity {
+            sendSmartShiftIfNeeded()
+            return
+        }
+        desiredRatchetMode = mode
+        desiredSmartShiftSensitivity = nextSensitivity
+        sendSmartShiftIfNeeded()
         publishMotionSettings()
     }
 
@@ -492,6 +534,36 @@ final class LogitechMXMasterReader {
         }
     }
 
+    private func sendSmartShiftIfNeeded() {
+        guard ready else { return }
+        guard let featureIndex = smartShiftEnhancedIndex ?? smartShiftIndex else { return }
+        let mode = desiredRatchetMode
+        let sensitivity = MappingProfile.clampSmartShiftSensitivity(desiredSmartShiftSensitivity)
+        if lastSentSmartShift?.mode == mode, lastSentSmartShift?.sensitivity == sensitivity {
+            return
+        }
+        let function: UInt8 = smartShiftEnhancedIndex != nil ? 2 : 1
+        request(
+            featureIndex: featureIndex,
+            function: function,
+            params: [
+                mode.hidppByte,
+                UInt8(sensitivity),
+                0
+            ],
+            countsTowardTimeouts: false,
+            dropsPipeOnError: false
+        ) { [weak self] _ in
+            guard let self else { return }
+            // MagSpeed writes can clear diverted reporting. Put the thumb
+            // wheel back on HID++ without tearing the pipe down.
+            self.lastWheelConfig = nil
+            self.applyWheelRouting()
+        }
+        lastSentSmartShift = (mode, sensitivity)
+        publishMotionSettings()
+    }
+
     private func applyOSPointerSettingsIfNeeded() {
         guard boltLink == nil, let hidppDevice else { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
@@ -506,6 +578,9 @@ final class LogitechMXMasterReader {
         snapshot.availableDPI = dpiValues
         snapshot.appliedDPI = lastSentDPI > 0 ? lastSentDPI : desiredDPI
         snapshot.smoothScrolling = desiredSmoothScrolling
+        snapshot.smartShiftSupported = smartShiftEnhancedIndex != nil || smartShiftIndex != nil
+        snapshot.ratchetMode = desiredRatchetMode
+        snapshot.smartShiftSensitivity = desiredSmartShiftSensitivity
         lock.unlock()
     }
 
@@ -860,9 +935,12 @@ final class LogitechMXMasterReader {
         forceSensingIndex = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
+        didReadThumbWheelInfo = false
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        smartShiftEnhancedIndex = nil
+        smartShiftIndex = nil
         hostsInfoIndex = nil
         changeHostIndex = nil
         easySwitchLoadAttempts = 0
@@ -1187,9 +1265,12 @@ final class LogitechMXMasterReader {
                 self.lastWheelConfig = nil
                 self.lastSentDPI = -1
                 self.lastSentPointerScale = -1
+                self.lastSentSmartShift = nil
                 self.sendSensorSettingsIfNeeded()
+                self.sendSmartShiftIfNeeded()
                 self.applyWheelRouting()
                 self.startBatteryPolling()
+                self.publishMotionSettings()
             }
             return
         }
@@ -1305,9 +1386,12 @@ final class LogitechMXMasterReader {
                 self.lastWheelConfig = nil
                 self.lastSentDPI = -1
                 self.lastSentPointerScale = -1
+                self.lastSentSmartShift = nil
                 self.sendSensorSettingsIfNeeded()
+                self.sendSmartShiftIfNeeded()
                 self.applyWheelRouting()
                 self.startBatteryPolling()
+                self.publishMotionSettings()
             }
         }
     }
@@ -1405,6 +1489,8 @@ final class LogitechMXMasterReader {
                 case 0x2205: self.pointerScaleIndex = index
                 case 0x2201: self.dpiIndex = index
                 case 0x1004: self.batteryIndex = index
+                case 0x2111: self.smartShiftEnhancedIndex = index
+                case 0x2110: self.smartShiftIndex = index
                 case 0x1814: self.changeHostIndex = index
                 case 0x1815: self.hostsInfoIndex = index
                 default: break
@@ -1430,7 +1516,17 @@ final class LogitechMXMasterReader {
                         self.lookupFeature(0x1004) { [weak self] battery in
                             guard let self else { return }
                             if self.batteryIndex == nil { self.batteryIndex = battery }
-                            self.readDPIList(then: completion)
+                            self.lookupFeature(0x2111) { [weak self] enhanced in
+                                guard let self else { return }
+                                if self.smartShiftEnhancedIndex == nil {
+                                    self.smartShiftEnhancedIndex = enhanced
+                                }
+                                self.lookupFeature(0x2110) { [weak self] legacy in
+                                    guard let self else { return }
+                                    if self.smartShiftIndex == nil { self.smartShiftIndex = legacy }
+                                    self.readDPIList(then: completion)
+                                }
+                            }
                         }
                     }
                 }
@@ -1632,27 +1728,66 @@ final class LogitechMXMasterReader {
         // High-res bit is Logitech “smooth scrolling”: many small steps per notch.
         let divertThumb = wheelsEnabled
         let highRes = desiredSmoothScrolling
+        let invertThumb = desiredThumbInvert
         if lastWheelConfig?.divert == divertThumb,
-           lastWheelConfig?.invert == false,
+           lastWheelConfig?.invert == invertThumb,
            lastWheelConfig?.highRes == highRes {
+            readThumbWheelInfoIfNeeded()
             return
         }
-        lastWheelConfig = (divertThumb, false, highRes)
+        lastWheelConfig = (divertThumb, invertThumb, highRes)
         if let hiresWheelIndex {
             let flags: UInt8 = highRes ? 0b0000_0010 : 0
-            request(featureIndex: hiresWheelIndex, function: 2, params: [flags]) { [weak self] _ in
-                self?.applyThumbRouting(divert: divertThumb, invert: false)
+            request(
+                featureIndex: hiresWheelIndex,
+                function: 2,
+                params: [flags],
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { [weak self] _ in
+                self?.applyThumbRouting(divert: divertThumb, invert: invertThumb)
+                self?.readThumbWheelInfoIfNeeded()
             }
             publishMotionSettings()
             return
         }
-        applyThumbRouting(divert: divertThumb, invert: false)
+        applyThumbRouting(divert: divertThumb, invert: invertThumb)
+        readThumbWheelInfoIfNeeded()
         publishMotionSettings()
     }
 
     private func applyThumbRouting(divert: Bool, invert: Bool) {
         guard let thumbWheelIndex else { return }
-        request(featureIndex: thumbWheelIndex, function: 2, params: [divert ? 1 : 0, invert ? 1 : 0]) { _ in }
+        request(
+            featureIndex: thumbWheelIndex,
+            function: 2,
+            params: [divert ? 1 : 0, invert ? 1 : 0],
+            countsTowardTimeouts: false,
+            dropsPipeOnError: false
+        ) { _ in }
+    }
+
+    /// OpenLogi `getThumbwheelInfo`: native ratchets vs diverted increments per
+    /// revolution. Diverted scroll has to scale by that ratio or one physical
+    /// notch is six line ticks on MX4 (20 / 120).
+    private func readThumbWheelInfoIfNeeded() {
+        guard let thumbWheelIndex, !didReadThumbWheelInfo else { return }
+        didReadThumbWheelInfo = true
+        request(
+            featureIndex: thumbWheelIndex,
+            function: 0,
+            params: [],
+            countsTowardTimeouts: false,
+            dropsPipeOnError: false
+        ) { [weak self] data in
+            guard let self, let data, data.count >= 4 else { return }
+            let native = Int(Self.be16(data, 0))
+            let diverted = Int(Self.be16(data, 2))
+            self.lock.lock()
+            self.snapshot.thumbNativeResolution = native
+            self.snapshot.thumbDivertedResolution = diverted
+            self.lock.unlock()
+        }
     }
 
     private func restoreNativeReporting() {

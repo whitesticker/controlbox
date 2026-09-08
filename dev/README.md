@@ -10,7 +10,7 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page). MX Mechanical settings, System Monitor (top), Dock Previews, and per-app mouse profiles are shipped. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page, settings export, Pointer & Scroll vs System Settings). MX Mechanical settings, System Monitor (top), Dock Previews, per-app mouse profiles, SmartShift, and thumb-wheel sensitivity are shipped. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md), [mx-smartshift.md](mx-smartshift.md).
 
 HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list. Repeating timers and system-API polls are listed in [polling-loops.md](polling-loops.md).
 
@@ -52,10 +52,12 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [mac-panes-gated-on-mx.md](mac-panes-gated-on-mx.md) | Window Grab and Pointer & Scroll stay off until an MX Master is attached |
 | [per-app-mouse-profiles.md](per-app-mouse-profiles.md) | One MX mouse uses a different Control mapping per frontmost app |
 | [mx-wheel-modes.md](mx-wheel-modes.md) | Thumb wheel uses one continuous mode; main wheel stays native |
+| [mx-smartshift.md](mx-smartshift.md) | Free Spin / Ratchet + SmartShift sensitivity; Calibration thumb-wheel gain |
 | [mx-wheel-fires-thumb.md](mx-wheel-fires-thumb.md) | Main-wheel CGEvents pulse the thumb mapping |
 | [window-grab-only-own-app.md](window-grab-only-own-app.md) | Window grab moves Control Box but not Finder, Safari, or other apps |
 | [night-shift-hijack-hang.md](night-shift-hijack-hang.md) | App beachballs on launch while Night Shift take-over is on |
 | [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md) | Relaunch forces Dark while Night Shift take-over is on |
+| [space-switch-wallpaper-black.md](space-switch-wallpaper-black.md) | MacBook wallpaper goes black when switching Spaces |
 | [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md) | MacBook trackpad scroll stutters once an MX Master is attached |
 | [system-monitor-reorder.md](system-monitor-reorder.md) | System Monitor dashboard rows cannot be dragged in settings |
 | [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |

@@ -3,6 +3,16 @@ import Foundation
 
 enum SystemVolume {
     private static let virtualMainVolume: AudioObjectPropertySelector = 0x766D7663 // 'vmvc'
+    /// Same step as the haptic / touchpad volume gesture.
+    static let step = 0.04
+
+    /// Every volume change shows the volume HUD. Media-key volume does not.
+    @discardableResult
+    static func nudge(up: Bool) -> Double? {
+        guard let level = adjust(by: up ? step : -step) else { return nil }
+        VolumeHUD.show(level: level)
+        return level
+    }
 
     @discardableResult
     static func adjust(by delta: Double) -> Double? {

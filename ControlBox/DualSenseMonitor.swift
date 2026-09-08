@@ -597,6 +597,22 @@ final class DualSenseMonitor {
         updateMXDeviceLevelProfile { $0.sensorDPI = MappingProfile.clampDisplayedDPI(dpi) }
     }
 
+    func setMXThumbWheelSensitivity(_ speed: Double) {
+        updateMXDeviceLevelProfile { $0.mxThumbWheelSensitivity = min(max(speed, 0), 1) }
+    }
+
+    func setMXThumbWheelInvert(_ inverted: Bool) {
+        updateMXDeviceLevelProfile { $0.mxThumbWheelInvert = inverted }
+    }
+
+    func setMXRatchetMode(_ mode: MXRatchetMode) {
+        updateMXDeviceLevelProfile { $0.mxRatchetMode = mode }
+    }
+
+    func setMXSmartShiftSensitivity(_ value: Int) {
+        updateMXDeviceLevelProfile { $0.mxSmartShiftSensitivity = MappingProfile.clampSmartShiftSensitivity(value) }
+    }
+
     func setSmoothScrolling(_ enabled: Bool) {
         updateSharedMouseScroll { $0.smoothScrolling = enabled }
     }
@@ -1205,16 +1221,26 @@ final class DualSenseMonitor {
         reader.setGestureOwners(live.mxGestureOwners)
         reader.applySensorDPI(deviceLevel.resolvedSensorDPI)
         reader.applyPointerSpeed(deviceLevel.resolvedPointerSpeed)
+        reader.applySmartShift(
+            mode: deviceLevel.resolvedMXRatchetMode,
+            sensitivity: deviceLevel.resolvedMXSmartShiftSensitivity
+        )
+        reader.applyThumbWheelInvert(deviceLevel.resolvedMXThumbWheelInvert)
         let canInject = record.controlEnabled
             && !ShortcutCapture.isActive
             && (!NSApp.isActive || record.controlWhileFocused)
+        let wheelEngine = mxWheelEngine(for: record.id)
         if canInject, frame.scrollX != 0 {
-            mxWheelEngine(for: record.id).process(
+            wheelEngine.process(
                 delta: frame.scrollX,
                 mode: live.resolvedMXThumbWheelMode,
                 naturalScrolling: macMouseProfile.resolvedNaturalScrolling,
-                scrollSpeed: macMouseProfile.resolvedWheelScrollSpeed
+                scrollSpeed: deviceLevel.resolvedMXThumbWheelSensitivity,
+                nativeResolution: reader.current.thumbNativeResolution,
+                divertedResolution: reader.current.thumbDivertedResolution
             )
+        } else {
+            wheelEngine.idle(force: !canInject)
         }
         var buttonFrame = frame
         buttonFrame.scrollX = 0

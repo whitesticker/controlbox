@@ -128,6 +128,9 @@ public final class MouseScrollTap: @unchecked Sendable {
         if pid != 0 {
             return Unmanaged.passUnretained(event)
         }
+        if event.getIntegerValueField(.eventSourceUserData) == EventPoster.syntheticUserData {
+            return Unmanaged.passUnretained(event)
+        }
 
         let continuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
         if let nsEvent = NSEvent(cgEvent: event),

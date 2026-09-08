@@ -16,6 +16,10 @@ struct DeviceProfilePane: View {
         NavigationStack {
             if let record = monitor.selectedRecord, let device = sidebarDevice {
                 Form {
+                    if !record.isMXKeyboard {
+                        controlThisMacSection
+                    }
+
                     Section {
                         LabeledContent("Status") {
                             HStack(spacing: 8) {
@@ -65,15 +69,6 @@ struct DeviceProfilePane: View {
                                 noun: "mouse",
                                 canRefresh: monitor.mxMasterSnapshot.connected,
                                 onRefresh: { monitor.reloadEasySwitch(isKeyboard: false) }
-                            )
-                        }
-                        Section {
-                            Toggle("Control this Mac", isOn: controlEnabledBinding)
-                            Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
-                        } footer: {
-                            bullets(
-                                "Sends this device’s inputs to the Mac.",
-                                "Skipped while Control Box is frontmost, unless the second switch is on."
                             )
                         }
 
@@ -216,7 +211,7 @@ struct DeviceProfilePane: View {
                             openWindow(id: "calibration")
                         }
                     } footer: {
-                        Text("Live capture of this device’s buttons and motion. DPI is in that window.")
+                        Text("Live capture of this device’s buttons and motion. DPI, Free Spin / Ratchet, and thumb-wheel sensitivity are in that window.")
                     }
                     }
 
@@ -530,6 +525,19 @@ struct DeviceProfilePane: View {
                     shortcutRecorder(for: button, current: current)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var controlThisMacSection: some View {
+        Section {
+            Toggle("Control this Mac", isOn: controlEnabledBinding)
+            Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
+        } footer: {
+            bullets(
+                "Sends this device’s inputs to the Mac.",
+                "Skipped while Control Box is frontmost, unless the second switch is on."
+            )
         }
     }
 

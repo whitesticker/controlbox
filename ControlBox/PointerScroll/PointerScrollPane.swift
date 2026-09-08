@@ -32,7 +32,8 @@ struct PointerScrollPane: View {
                     Text("Scroll")
                 } footer: {
                     footerBullets(
-                        "Wheel speed scales vertical and horizontal mouse-wheel events, including an MX thumb wheel when it is scrolling.",
+                        "Wheel speed scales vertical and horizontal mouse-wheel events.",
+                        "An MX thumb wheel in a scroll mode uses the Thumb wheel slider on Calibration.",
                         "Trackpad and Magic Mouse gestures stay native.",
                         "Smooth scrolling also turns on the MX high-res wheel.",
                         "Accessibility is required for wheel speed.",

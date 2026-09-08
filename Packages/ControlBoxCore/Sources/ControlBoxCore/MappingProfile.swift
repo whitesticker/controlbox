@@ -45,6 +45,14 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var isMXDefault: Bool? = nil
     /// One behavior for the physical thumb wheel. Nil migrates old direction bindings.
     public var mxThumbWheelMode: MXWheelMode? = nil
+    /// Device-level HID++ thumb-wheel gain (Calibration). Nil is 50% = 1×.
+    public var mxThumbWheelSensitivity: Double? = nil
+    /// Device-level HID++ thumb invert (`0x2150` setThumbwheelReporting byte 1). Calibration; nil is off.
+    public var mxThumbWheelInvert: Bool? = nil
+    /// MagSpeed SmartShift requested mode. Device-level; nil is Ratchet.
+    public var mxRatchetMode: MXRatchetMode? = nil
+    /// SmartShift auto-disengage threshold (`8…50`). Device-level; nil is 16.
+    public var mxSmartShiftSensitivity: Int? = nil
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -82,6 +90,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedMXThumbWheelMode: MXWheelMode {
         mxThumbWheelMode ?? inferredMXThumbWheelMode()
     }
+    public var resolvedMXThumbWheelSensitivity: Double { Self.clampSpeed(mxThumbWheelSensitivity) }
+    public var resolvedMXThumbWheelInvert: Bool { mxThumbWheelInvert ?? false }
+    public var resolvedMXRatchetMode: MXRatchetMode { mxRatchetMode ?? .ratchet }
+    public var resolvedMXSmartShiftSensitivity: Int {
+        Self.clampSmartShiftSensitivity(mxSmartShiftSensitivity)
+    }
 
     public static let defaultWindowMoveFlags = CGEventFlags.maskControl.rawValue
     public static let defaultWindowResizeFlags = CGEventFlags.maskControl.union(.maskShift).rawValue
@@ -91,6 +105,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
+    /// OpenLogi slider floor: below this the ratchet free-spins on everyday scrolling.
+    public static let smartShiftSensitivityMin = 8
+    public static let smartShiftSensitivityMax = 50
+    public static let smartShiftSensitivityDefault = 16
 
     public init(
         id: String = UUID().uuidString,
@@ -131,7 +149,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         frontmostAppBundleID: String? = nil,
         appCategory: MouseAppCategory? = nil,
         isMXDefault: Bool? = nil,
-        mxThumbWheelMode: MXWheelMode? = nil
+        mxThumbWheelMode: MXWheelMode? = nil,
+        mxThumbWheelSensitivity: Double? = nil,
+        mxThumbWheelInvert: Bool? = nil,
+        mxRatchetMode: MXRatchetMode? = nil,
+        mxSmartShiftSensitivity: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -172,6 +194,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.appCategory = appCategory
         self.isMXDefault = isMXDefault
         self.mxThumbWheelMode = mxThumbWheelMode
+        self.mxThumbWheelSensitivity = mxThumbWheelSensitivity
+        self.mxThumbWheelInvert = mxThumbWheelInvert
+        self.mxRatchetMode = mxRatchetMode
+        self.mxSmartShiftSensitivity = mxSmartShiftSensitivity
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -180,6 +206,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
     public static func clampDisplayedDPI(_ value: Int) -> Int {
         clampDPI(value)
+    }
+
+    public static func clampSmartShiftSensitivity(_ value: Int?) -> Int {
+        min(
+            max(value ?? smartShiftSensitivityDefault, smartShiftSensitivityMin),
+            smartShiftSensitivityMax
+        )
     }
 
     private static func clampDPI(_ value: Int?) -> Int {
@@ -427,7 +460,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             frontmostAppBundleID: frontmostAppBundleID,
             appCategory: appCategory,
             isMXDefault: isMXDefault,
-            mxThumbWheelMode: mxThumbWheelMode
+            mxThumbWheelMode: mxThumbWheelMode,
+            mxThumbWheelSensitivity: mxThumbWheelSensitivity,
+            mxThumbWheelInvert: mxThumbWheelInvert,
+            mxRatchetMode: mxRatchetMode,
+            mxSmartShiftSensitivity: mxSmartShiftSensitivity
         )
     }
 

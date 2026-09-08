@@ -34,7 +34,7 @@ Add App is a sheet: search, Recent, running regular apps, Other… (`NSOpenPanel
 
 Applied when you add that app, not as a shared category:
 
-- Known browsers: thumb wheel = Switch Between Tabs; haptic left / right = Previous / Next tab.
+- Known browsers: thumb wheel = Navigate Between Tabs; haptic left / right = Previous / Next tab.
 - Known editors: Back / Forward = Previous / Next tab.
 
 ## Watcher

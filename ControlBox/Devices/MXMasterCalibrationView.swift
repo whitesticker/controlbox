@@ -469,6 +469,20 @@ private struct MXMasterSidebar: View {
                     Text("Written to the sensor over HID++. Pointer speed stays the same.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
+                    ratchetPicker
+                    ratchetSensitivitySlider
+                    Text("Free Spin and Ratchet are written to this mouse. Sensitivity only applies in Ratchet.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                    thumbWheelSlider
+                    Text("Scales HID++ thumb-wheel travel. Pointer & Scroll wheel speed stays on the main wheel.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                    Toggle("Invert thumb wheel", isOn: thumbInvertBinding)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                    Text("Written to this mouse. Does not change the main wheel or the trackpad.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
                 }
                 MXPanel(title: "Clicks") {
                     MXValueRow(label: "Left", value: down(snapshot.left))
@@ -582,7 +596,73 @@ private struct MXMasterSidebar: View {
             in: 0...Double(max(levels.count - 1, 1)),
             step: 1,
             valueText: "\(current)",
-            labelWidth: 44
+            labelWidth: 92
+        )
+    }
+
+    private var thumbWheelBinding: Binding<Double> {
+        Binding(
+            get: { dpiProfile.resolvedMXThumbWheelSensitivity },
+            set: { monitor.setMXThumbWheelSensitivity($0) }
+        )
+    }
+
+    private var thumbInvertBinding: Binding<Bool> {
+        Binding(
+            get: { dpiProfile.resolvedMXThumbWheelInvert },
+            set: { monitor.setMXThumbWheelInvert($0) }
+        )
+    }
+
+    private var ratchetModeBinding: Binding<MXRatchetMode> {
+        Binding(
+            get: { dpiProfile.resolvedMXRatchetMode },
+            set: { monitor.setMXRatchetMode($0) }
+        )
+    }
+
+    private var ratchetSensitivityBinding: Binding<Double> {
+        Binding(
+            get: { Double(dpiProfile.resolvedMXSmartShiftSensitivity) },
+            set: { monitor.setMXSmartShiftSensitivity(Int($0.rounded())) }
+        )
+    }
+
+    @ViewBuilder
+    private var thumbWheelSlider: some View {
+        SettingsSlider(
+            "Thumb wheel",
+            value: thumbWheelBinding,
+            labelWidth: 92
+        )
+    }
+
+    @ViewBuilder
+    private var ratchetPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Main wheel")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+            Picker("Main wheel", selection: ratchetModeBinding) {
+                Text("Free Spin").tag(MXRatchetMode.freeSpin)
+                Text("Ratchet").tag(MXRatchetMode.ratchet)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var ratchetSensitivitySlider: some View {
+        SettingsSlider(
+            "Sensitivity",
+            description: "Higher keeps the ratchet longer before Free Spin.",
+            value: ratchetSensitivityBinding,
+            in: Double(MappingProfile.smartShiftSensitivityMin)...Double(MappingProfile.smartShiftSensitivityMax),
+            step: 1,
+            enabled: dpiProfile.resolvedMXRatchetMode == .ratchet,
+            valueText: "\(dpiProfile.resolvedMXSmartShiftSensitivity)",
+            labelWidth: 92
         )
     }
 }
