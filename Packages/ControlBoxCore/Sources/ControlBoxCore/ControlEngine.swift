@@ -513,9 +513,11 @@ public final class ControlEngine: @unchecked Sendable {
 
     private func processGesture(_ frame: ControlFrame, injectAll: Bool) {
         let resolved = resolveGesture(frame)
+        let mappedAsGestures = profile.bindings[resolved.owner] == .gestures
+            || (resolved.owner == .mxHaptic && profile.mxGestureOwners.contains(.mxHaptic))
         let holding = resolved.active
             && resolved.owner.canOwnGestures
-            && profile.bindings[resolved.owner] == .gestures
+            && mappedAsGestures
 
         if !injectAll {
             padGesture.cancel()
@@ -543,7 +545,6 @@ public final class ControlEngine: @unchecked Sendable {
         if profile.bindings[.touchpadOneFinger] == .gestures
             || profile.bindings[.touchpadTwoFinger] == .gestures {
             let scale = MappingProfile.gestureSpeedFactor(
-                slider: profile.resolvedHapticGestureSpeed,
                 dpi: MappingProfile.defaultSensorDPI
             ) * DualSenseTouchGesture.pixelsPerUnit
             touchGesture.update(
@@ -567,6 +568,9 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func resolvedAction(for button: DeviceButton) -> ControlAction {
+        // Main-wheel scroll stays native; thumb-wheel behavior is delta-driven
+        // by MXWheelActionEngine. Direction bindings are decode-only migration.
+        if button.isMXScrollDirection { return .scroll }
         if let action = profile.bindings[button] {
             return action
         }
@@ -581,7 +585,7 @@ public final class ControlEngine: @unchecked Sendable {
         if dx > 0, !profile.keepsNativeScroll(for: .mxThumbRight) { dx = 0 }
         if dx < 0, !profile.keepsNativeScroll(for: .mxThumbLeft) { dx = 0 }
         dy *= (0.35 + profile.appliedWheelScrollSpeed * 4.2) * scrollSign
-        dx *= (0.35 + profile.appliedThumbScrollSpeed * 4.2) * scrollSign
+        dx *= (0.35 + profile.appliedWheelScrollSpeed * 4.2) * scrollSign
         EventPoster.scroll(deltaY: dy, deltaX: dx, continuous: true)
     }
 

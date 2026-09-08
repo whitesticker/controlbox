@@ -9,6 +9,7 @@ struct SettingsSlider: View {
     private var step: Double?
     private var enabled: Bool
     private var valueText: String?
+    private var labelWidth: CGFloat
 
     init(
         _ title: String,
@@ -17,7 +18,8 @@ struct SettingsSlider: View {
         in range: ClosedRange<Double> = 0...1,
         step: Double? = nil,
         enabled: Bool = true,
-        valueText: String? = nil
+        valueText: String? = nil,
+        labelWidth: CGFloat = 156
     ) {
         self.title = title
         self.detail = description
@@ -26,6 +28,7 @@ struct SettingsSlider: View {
         self.step = step
         self.enabled = enabled
         self.valueText = valueText
+        self.labelWidth = labelWidth
     }
 
     var body: some View {
@@ -69,7 +72,7 @@ struct SettingsSlider: View {
             }
         }
         .multilineTextAlignment(.leading)
-        .frame(width: 156, alignment: .leading)
+        .frame(width: labelWidth, alignment: .leading)
     }
 
     private var accessibilityName: String {

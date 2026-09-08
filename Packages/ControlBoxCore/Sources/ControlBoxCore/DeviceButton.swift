@@ -109,12 +109,7 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         DeviceButtonGroup(
             id: "buttons",
             title: "Buttons",
-            buttons: [.mxHaptic, .mxSide, .mxBack, .mxForward, .mxSmartShift, .mxModeShift, .mxMiddle, .mxLeft, .mxRight]
-        ),
-        DeviceButtonGroup(
-            id: "wheel",
-            title: "Scroll wheel",
-            buttons: [.mxWheelUp, .mxWheelDown]
+            buttons: [.mxHaptic, .mxSide, .mxMiddle, .mxBack, .mxForward, .mxSmartShift]
         ),
         DeviceButtonGroup(
             id: "thumb-wheel",

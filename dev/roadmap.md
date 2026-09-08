@@ -15,7 +15,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **Logi Bolt talk.** MX 3S / 4 / Mechanical connected only through the USB receiver (`0xC548`) attach over vendor-HID++ slots. Pairing / unpair is **Add Device → Logi Bolt**. Do not open the mouse collection. MX4 haptic XY cannot use nested report `0x02` on Bolt. BLE and Bolt for the same unit are one device. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - [ ] **Devices sidebar grouping.** Group by type (Mouse, Gamepad, Remote, Keyboard, Other), then by brand when a type has more than one. Hide empty types. See [todo.md](todo.md) Logitech-related improvements.
 - [ ] **Generic mouse / Xbox / other TV remotes.** Not this version. Family sessions are the add path.
-- [ ] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, scroll) when the frontmost app changes, so one MX mouse can have a different profile in each app. Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md). Skill: `.cursor/skills/per-app-mouse-profiles/`.
+- [x] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, thumb-wheel mode) when the frontmost app changes. MX device page **profile tiles**; known browsers and editors start from a preset. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 
 ## Feedback and UI
 

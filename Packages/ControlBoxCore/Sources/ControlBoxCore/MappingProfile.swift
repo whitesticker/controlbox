@@ -37,6 +37,14 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var windowShakeEnabled: Bool?
     public var windowShakeScope: WindowShakeScope?
     public var windowDockClickMinimizeEnabled: Bool?
+    /// Exact-app row on an MX mouse. Nil on Default, category, and leftover profiles.
+    public var frontmostAppBundleID: String? = nil
+    /// Unused on current MX rows; kept so older saves that stored a category still decode.
+    public var appCategory: MouseAppCategory? = nil
+    /// Distinguished Default mapping on an MX mouse. Leftover named profiles stay false.
+    public var isMXDefault: Bool? = nil
+    /// One behavior for the physical thumb wheel. Nil migrates old direction bindings.
+    public var mxThumbWheelMode: MXWheelMode? = nil
 
     public var resolvedPointerSpeed: Double { Self.clampSpeed(pointerSpeed) }
     public var resolvedHapticGestureSpeed: Double { Self.clampSpeed(hapticGestureSpeed) }
@@ -71,6 +79,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedWindowShakeEnabled: Bool { windowShakeEnabled ?? false }
     public var resolvedWindowShakeScope: WindowShakeScope { windowShakeScope ?? .thisDisplay }
     public var resolvedWindowDockClickMinimizeEnabled: Bool { windowDockClickMinimizeEnabled ?? false }
+    public var resolvedMXThumbWheelMode: MXWheelMode {
+        mxThumbWheelMode ?? inferredMXThumbWheelMode()
+    }
 
     public static let defaultWindowMoveFlags = CGEventFlags.maskControl.rawValue
     public static let defaultWindowResizeFlags = CGEventFlags.maskControl.union(.maskShift).rawValue
@@ -116,7 +127,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         windowOrganizeKey: UInt16? = nil,
         windowShakeEnabled: Bool? = nil,
         windowShakeScope: WindowShakeScope? = nil,
-        windowDockClickMinimizeEnabled: Bool? = nil
+        windowDockClickMinimizeEnabled: Bool? = nil,
+        frontmostAppBundleID: String? = nil,
+        appCategory: MouseAppCategory? = nil,
+        isMXDefault: Bool? = nil,
+        mxThumbWheelMode: MXWheelMode? = nil
     ) {
         self.id = id
         self.name = name
@@ -153,6 +168,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.windowShakeEnabled = windowShakeEnabled
         self.windowShakeScope = windowShakeScope
         self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
+        self.frontmostAppBundleID = frontmostAppBundleID
+        self.appCategory = appCategory
+        self.isMXDefault = isMXDefault
+        self.mxThumbWheelMode = mxThumbWheelMode
     }
 
     private static func clampSpeed(_ value: Double?) -> Double {
@@ -165,6 +184,26 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
     private static func clampDPI(_ value: Int?) -> Int {
         min(max(value ?? defaultSensorDPI, 200), 8000)
+    }
+
+    private func inferredMXThumbWheelMode() -> MXWheelMode {
+        let backward = bindings[.mxThumbLeft]
+        let forward = bindings[.mxThumbRight]
+        if (backward == nil || backward == .scroll), (forward == nil || forward == .scroll) {
+            return .horizontalScroll
+        }
+        switch (backward, forward) {
+        case (.tabPrevious?, .tabNext?):
+            return .switchTabs
+        case (.mediaVolumeDown?, .mediaVolumeUp?), (.mediaVolumeUp?, .mediaVolumeDown?):
+            return .volume
+        case (.spaceLeft?, .spaceRight?):
+            return .switchDesktops
+        case (.switchApplicationBack?, .switchApplication?):
+            return .switchApplications
+        default:
+            return .horizontalScroll
+        }
     }
 
     public static func nearestDPI(_ value: Int, in levels: [Int]) -> Int {
@@ -186,12 +225,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         return min(max(fromSlider * dpiRatio, 0.002), 8)
     }
 
-    /// Haptic swipe bar. 50% is 1× of native HID travel at 1000 DPI.
-    /// Sensor DPI is divided out so the same physical swipe stays the same.
-    public static func gestureSpeedFactor(slider: Double, dpi: Int) -> Double {
-        let fromSlider = pow(2.0, (clampSpeed(slider) - 0.5) * 2)
+    /// Hold-to-swipe vs a 1000 DPI mouse. Sensor DPI is divided out so the
+    /// same physical swipe stays the same. There is no user speed slider.
+    public static func gestureSpeedFactor(dpi: Int) -> Double {
         let dpiRatio = Double(defaultSensorDPI) / Double(max(dpi, 1))
-        return min(max(fromSlider * dpiRatio, 0.002), 8)
+        return min(max(dpiRatio, 0.002), 8)
     }
 
     /// HID++ 0x2205 8.8 scale. 50% at 1000 DPI is 1×.
@@ -239,12 +277,21 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
     /// Hold-to-swipe is the haptic pad only. Click-as-gesture on Back / etc. is parked.
     public mutating func restrictGesturesToHapticPad() {
+        let hasLegacyHapticGesture = bindings[.mxGesture] != nil
+            || bindings[.mxGestureUp] != nil
+            || bindings[.mxGestureDown] != nil
+            || bindings[.mxGestureLeft] != nil
+            || bindings[.mxGestureRight] != nil
         for button in bindings.keys where button != .mxHaptic && bindings[button] == .gestures {
             bindings[button] = Self.fallbackMXClickAction(for: button)
         }
         if let sets = gestureSets {
             let kept = sets.filter { $0.key == .mxHaptic }
             gestureSets = kept.isEmpty ? nil : kept
+        }
+        if bindings[.mxHaptic] == nil,
+           hasLegacyHapticGesture || gestureSets?[.mxHaptic] != nil {
+            bindings[.mxHaptic] = .gestures
         }
     }
 
@@ -376,7 +423,11 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             windowOrganizeKey: windowOrganizeKey,
             windowShakeEnabled: windowShakeEnabled,
             windowShakeScope: windowShakeScope,
-            windowDockClickMinimizeEnabled: windowDockClickMinimizeEnabled
+            windowDockClickMinimizeEnabled: windowDockClickMinimizeEnabled,
+            frontmostAppBundleID: frontmostAppBundleID,
+            appCategory: appCategory,
+            isMXDefault: isMXDefault,
+            mxThumbWheelMode: mxThumbWheelMode
         )
     }
 
@@ -409,7 +460,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 windowMoveEnabled: true,
                 windowResizeEnabled: true,
                 windowMoveFlags: defaultWindowMoveFlags,
-                windowResizeFlags: defaultWindowResizeFlags
+                windowResizeFlags: defaultWindowResizeFlags,
+                isMXDefault: true,
+                mxThumbWheelMode: .horizontalScroll
             )
         }
         if isAppleTVRemote {

@@ -9,20 +9,34 @@ struct PointerScrollPane: View {
             Form {
                 Section {
                     SettingsSlider("Pointer speed", value: pointerSpeedBinding)
+                } header: {
+                    Text("Pointer")
+                } footer: {
+                    footerBullets(
+                        "Scales cursor motion from every USB and Bluetooth mouse.",
+                        "Trackpads stay on System Settings.",
+                        "MX also gets a HID++ pointer scale so a DPI change does not change cursor feel.",
+                        "DualSense and Siri Remote keep their own sliders on the device page."
+                    )
+                }
+
+                Section {
                     Toggle("Smooth scrolling", isOn: smoothScrollingBinding)
                     SettingsSlider("Wheel speed", value: wheelSpeedBinding)
-                    SettingsSlider("Thumb wheel speed", value: thumbSpeedBinding)
                     Picker("Scroll direction", selection: scrollDirectionBinding) {
                         Text("Natural").tag("natural")
                         Text("Standard").tag("standard")
                     }
                     .pickerStyle(.radioGroup)
+                } header: {
+                    Text("Scroll")
                 } footer: {
                     footerBullets(
-                        "Pointer speed: USB and Bluetooth mice, including every MX Master.",
-                        "Wheel speed, smooth scrolling, and direction are shared once a mouse is attached.",
+                        "Wheel speed scales vertical and horizontal mouse-wheel events, including an MX thumb wheel when it is scrolling.",
+                        "Trackpad and Magic Mouse gestures stay native.",
+                        "Smooth scrolling also turns on the MX high-res wheel.",
                         "Accessibility is required for wheel speed.",
-                        "DualSense and Siri Remote keep their own sliders on the device page."
+                        "DPI is on Calibration."
                     )
                 }
             }
@@ -49,13 +63,6 @@ struct PointerScrollPane: View {
         Binding(
             get: { monitor.macMouseProfile.resolvedWheelScrollSpeed },
             set: { monitor.setMacWheelScrollSpeed($0) }
-        )
-    }
-
-    private var thumbSpeedBinding: Binding<Double> {
-        Binding(
-            get: { monitor.macMouseProfile.resolvedThumbScrollSpeed },
-            set: { monitor.setMacThumbScrollSpeed($0) }
         )
     }
 

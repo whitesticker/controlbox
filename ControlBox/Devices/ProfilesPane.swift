@@ -5,9 +5,12 @@ import SwiftUI
 struct DeviceProfilePane: View {
     @Bindable var monitor: DualSenseMonitor
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.colorScheme) private var colorScheme
     @State private var customizingButton: DeviceButton?
     @State private var customizingGestureButton: DeviceButton?
     @State private var customizingGestureSlot: GestureSlot?
+    @State private var showAddApp = false
+    @State private var pendingMXProfileRemoval: MappingProfile?
 
     var body: some View {
         NavigationStack {
@@ -74,6 +77,16 @@ struct DeviceProfilePane: View {
                             )
                         }
 
+                        if record.isMXMaster {
+                            Section {
+                                mxProfilesCard(for: record)
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            } header: {
+                                Text("Profiles")
+                            }
+                        } else {
                         Section("Profile") {
                         if record.profiles.count > 1 {
                             Picker("Active profile", selection: profileSelection) {
@@ -108,24 +121,8 @@ struct DeviceProfilePane: View {
                         dualSenseTouchpadGesturesSection(for: record)
                     }
 
-                    if record.isMXMaster {
-                        Section {
-                            dpiSlider
-                            SettingsSlider(
-                                record.kind.isMXMaster3Family ? "Gesture speed" : "Haptic gesture speed",
-                                value: hapticGestureSpeedBinding
-                            )
-                        } header: {
-                            Text("This mouse")
-                        } footer: {
-                            mxPointerScrollFooter(for: record)
-                        }
-                    } else {
                         Section {
                             SettingsSlider("Pointer speed", value: pointerSpeedBinding)
-                            if dualSenseShowsGestureSpeed(record) {
-                                SettingsSlider("Gesture speed", value: hapticGestureSpeedBinding)
-                            }
                             SettingsSlider("Scroll speed", value: wheelSpeedBinding)
                             if !record.isAppleTVRemote {
                                 Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
@@ -152,13 +149,11 @@ struct DeviceProfilePane: View {
                             } else {
                                 bullets(
                                     "Pointer speed: stick and touchpad.",
-                                    "Gesture speed: 1-finger and 2-finger hold-to-swipe.",
                                     "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
                                     "Natural matches the Mac."
                                 )
                             }
                         }
-                    }
 
                     ForEach(buttonGroups(for: record)) { group in
                         Section {
@@ -214,13 +209,14 @@ struct DeviceProfilePane: View {
                             }
                         }
                     }
+                        }
 
                     Section {
                         Button("Calibration…") {
                             openWindow(id: "calibration")
                         }
                     } footer: {
-                        Text("Live capture of this device’s buttons and motion.")
+                        Text("Live capture of this device’s buttons and motion. DPI is in that window.")
                     }
                     }
 
@@ -240,6 +236,29 @@ struct DeviceProfilePane: View {
                 }
                 .formStyle(.grouped)
                 .navigationTitle(record.displayName)
+                .sheet(isPresented: $showAddApp) {
+                    AddAppSheet(monitor: monitor)
+                }
+                .confirmationDialog(
+                    "Remove \(pendingMXProfileRemoval?.mxScopeTitle ?? "this mapping")?",
+                    isPresented: Binding(
+                        get: { pendingMXProfileRemoval != nil },
+                        set: { if !$0 { pendingMXProfileRemoval = nil } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    Button("Remove", role: .destructive) {
+                        if let id = pendingMXProfileRemoval?.id {
+                            monitor.removeMXProfile(id)
+                        }
+                        pendingMXProfileRemoval = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingMXProfileRemoval = nil
+                    }
+                } message: {
+                    Text("The mouse will use Default in that app.")
+                }
                 .onChange(of: monitor.selectedDeviceID) { _, _ in
                     customizingButton = nil
                     customizingGestureButton = nil
@@ -570,12 +589,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private func dualSenseShowsGestureSpeed(_ record: DeviceRecord) -> Bool {
-        let profile = record.selectedProfile
-        return profile.bindings[.touchpadOneFinger] == .gestures
-            || profile.bindings[.touchpadTwoFinger] == .gestures
-    }
-
     private func dualSenseUsesTriggerTabs(_ record: DeviceRecord) -> Bool {
         let profile = record.selectedProfile
         return profile.bindings[.l2]?.isTabSwitch == true
@@ -656,46 +669,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private var hapticGestureSpeedBinding: Binding<Double> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedHapticGestureSpeed },
-            set: { monitor.setHapticGestureSpeed($0) }
-        )
-    }
-
-    private var dpiLevels: [Int] {
-        let fromMouse = monitor.mxMasterSnapshot.availableDPI
-        return fromMouse.count >= 2 ? fromMouse : MappingProfile.fallbackDPILevels
-    }
-
-    private var dpiIndexBinding: Binding<Double> {
-        Binding(
-            get: {
-                let levels = dpiLevels
-                let current = MappingProfile.nearestDPI(monitor.selectedProfile.resolvedSensorDPI, in: levels)
-                return Double(levels.firstIndex(of: current) ?? 0)
-            },
-            set: { index in
-                let levels = dpiLevels
-                let clamped = min(max(Int(index.rounded()), 0), levels.count - 1)
-                monitor.setSensorDPI(levels[clamped])
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var dpiSlider: some View {
-        let levels = dpiLevels
-        let current = MappingProfile.nearestDPI(monitor.selectedProfile.resolvedSensorDPI, in: levels)
-        SettingsSlider(
-            "DPI",
-            value: dpiIndexBinding,
-            in: 0...Double(max(levels.count - 1, 1)),
-            step: 1,
-            valueText: "\(current)"
-        )
-    }
-
     private var wheelSpeedBinding: Binding<Double> {
         Binding(
             get: { monitor.selectedProfile.resolvedWheelScrollSpeed },
@@ -721,21 +694,6 @@ struct DeviceProfilePane: View {
         footerBullets(Array(lines))
     }
 
-    private func mxPointerScrollFooter(for record: DeviceRecord) -> Text {
-        if record.kind.isMXMaster3Family {
-            return footerBullets(
-                "DPI is this mouse’s sensor.",
-                "Gesture speed is hold-to-swipe on the thumb button.",
-                "Pointer, scroll, and wheel speed are under Mac → Pointer & Scroll."
-            )
-        }
-        return footerBullets(
-            "DPI is this mouse’s sensor.",
-            "Haptic gesture speed is the thumb pad.",
-            "Pointer, scroll, and wheel speed are under Mac → Pointer & Scroll."
-        )
-    }
-
     private func mxButtonsFooter(for record: DeviceRecord) -> Text {
         if record.kind.isMXMaster3Family {
             return footerBullets(
@@ -746,6 +704,276 @@ struct DeviceProfilePane: View {
             "Haptic is the only Gestures button: hold and move, or tap to Click.",
             "Side is the extra thumb button (default: Mission Control)."
         )
+    }
+
+    private func mxProfilesCard(for record: DeviceRecord) -> some View {
+        let groups = buttonGroups(for: record)
+        let buttonGroup = groups.first(where: { $0.id == "buttons" })
+        let gestureButtons = buttonGroup?.buttons.filter(\.canOwnGestures) ?? []
+        let availableButtons = Set(buttonGroup?.buttons ?? [])
+        let mainButtonOrder: [DeviceButton] = [.mxMiddle, .mxBack, .mxForward, .mxSmartShift]
+        let mainButtons = mainButtonOrder.filter { availableButtons.contains($0) }
+        let otherButtons = buttonGroup?.buttons.filter {
+            !$0.canOwnGestures && !mainButtonOrder.contains($0)
+        } ?? []
+
+        return VStack(spacing: 7) {
+            mxProfileSelectorCard(for: record)
+                .padding(10)
+                .background(
+                    Palette.fill(colorScheme).opacity(0.42),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+                }
+
+            if !gestureButtons.isEmpty {
+                mxProfileMappingBox("Gesture button", buttons: gestureButtons, record: record)
+            }
+            if !mainButtons.isEmpty {
+                mxProfileMappingBox("Buttons", buttons: mainButtons, record: record)
+            }
+            if !otherButtons.isEmpty {
+                mxProfileMappingBox("Other buttons", buttons: otherButtons, record: record)
+            }
+            if groups.contains(where: { $0.id == "thumb-wheel" }) {
+                mxThumbWheelModeBox()
+            }
+        }
+        .padding(10)
+        .background(
+            Palette.surface(colorScheme),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
+    }
+
+    private func mxProfileMappingBox(
+        _ title: String,
+        buttons: [DeviceButton],
+        record: DeviceRecord
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.45)
+                .padding(.horizontal, 12)
+                .padding(.top, 9)
+                .padding(.bottom, 3)
+
+            ForEach(buttons, id: \.self) { button in
+                VStack(spacing: 0) {
+                    if button.canOwnGestures {
+                        mxActionRow(
+                            label(for: button, kind: record.kind),
+                            button: button,
+                            record: record
+                        )
+                    } else {
+                        let mapped = record.selectedProfile.bindings[button]
+                            ?? (button.isMXScrollDirection ? .scroll : .none)
+                        actionRow(
+                            label(for: button, kind: record.kind),
+                            button: button,
+                            current: mapped
+                        )
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+
+                if button != buttons.last {
+                    Divider()
+                        .padding(.leading, 12)
+                }
+            }
+
+            Color.clear.frame(height: 2)
+        }
+        .background(
+            Palette.fill(colorScheme).opacity(0.34),
+            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+    }
+
+    private func mxThumbWheelModeBox() -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Thumb wheel")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.45)
+                .padding(.horizontal, 12)
+                .padding(.top, 9)
+                .padding(.bottom, 3)
+
+            LabeledContent("Action") {
+                Picker("Action", selection: mxThumbWheelModeBinding) {
+                    ForEach(MXWheelMode.thumbWheelOptions, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .labeledContentStyle(CenteredLabeledContentStyle())
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+
+            Color.clear.frame(height: 2)
+        }
+        .background(
+            Palette.fill(colorScheme).opacity(0.34),
+            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+        .help("One action for both directions of the thumb wheel.")
+    }
+
+    private func mxProfileSelectorCard(for record: DeviceRecord) -> some View {
+        let selected = record.selectedProfile
+        return VStack(spacing: 8) {
+            mxProfileTileGrid(for: record)
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Palette.good)
+                    .frame(width: 7, height: 7)
+                Text(monitor.liveMXCaption(for: record))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if !selected.treatsAsMXDefault {
+                    Menu {
+                        Button("Remove \(selected.mxScopeTitle)", role: .destructive) {
+                            pendingMXProfileRemoval = selected
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Profile actions")
+                }
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func mxProfileTileGrid(for record: DeviceRecord) -> some View {
+        let columns = [
+            GridItem(.adaptive(minimum: 96, maximum: 132), spacing: 8)
+        ]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(record.mxScopeProfiles()) { profile in
+                mxProfileTile(profile, record: record)
+            }
+            Button {
+                showAddApp = true
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 25, height: 25)
+                    Text("Add App")
+                        .font(.caption.weight(.medium))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 58)
+                .foregroundStyle(.secondary)
+                .background(
+                    .thinMaterial,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            Palette.hairline(colorScheme),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        )
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityLabel("Add App")
+                .help("Add App")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func mxProfileTile(_ profile: MappingProfile, record: DeviceRecord) -> some View {
+        let selected = profile.id == record.selectedProfileID
+        let live = monitor.liveMXProfile(for: record).id == profile.id
+        return Button {
+            monitor.selectProfile(profile.id)
+        } label: {
+            VStack(spacing: 6) {
+                if let bundle = profile.frontmostAppBundleID, !bundle.isEmpty {
+                    AppBundleIcon(bundleID: bundle)
+                        .frame(width: 25, height: 25)
+                } else {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 25, height: 25)
+                }
+                Text(profile.mxScopeTitle)
+                    .font(.caption.weight(selected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .foregroundStyle(
+                selected ? Palette.primaryText(colorScheme) : Palette.secondaryText(colorScheme)
+            )
+            .background(
+                selected
+                    ? AnyShapeStyle(Palette.accent.opacity(0.16))
+                    : AnyShapeStyle(.thinMaterial),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        selected ? Palette.accent.opacity(0.72) : Palette.hairline(colorScheme),
+                        lineWidth: selected ? 1.5 : 1
+                    )
+            }
+            .overlay(alignment: .topTrailing) {
+                if live {
+                    Circle()
+                        .fill(Palette.good)
+                        .frame(width: 7, height: 7)
+                        .padding(7)
+                        .accessibilityLabel("In use")
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(profile.mxScopeTitle)
+        .contextMenu {
+            if !profile.treatsAsMXDefault {
+                Button("Remove", role: .destructive) {
+                    pendingMXProfileRemoval = profile
+                }
+            }
+        }
     }
 
     private func mxHIDPPStatus(for record: DeviceRecord) -> String {
@@ -814,9 +1042,9 @@ struct DeviceProfilePane: View {
         }
         let pending = columns.allSatisfy(\.isPending)
         Section {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
                 ForEach(columns) { host in
-                    easySwitchColumn(host)
+                    easySwitchTile(host)
                 }
             }
         } header: {
@@ -838,27 +1066,71 @@ struct DeviceProfilePane: View {
         }
     }
 
-    private func easySwitchColumn(_ host: MXEasySwitchHost) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(host.title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(host.primary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-            if host.isCurrent {
-                Text("This Mac")
-                    .font(.caption)
+    private func easySwitchTile(_ host: MXEasySwitchHost) -> some View {
+        VStack(spacing: 5) {
+            HStack {
+                Text(host.title)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if host.isCurrent {
+                    Circle()
+                        .fill(Palette.good)
+                        .frame(width: 7, height: 7)
+                        .accessibilityLabel("Current channel")
+                }
             }
-            if let secondary = host.secondary {
-                Text(secondary)
-                    .font(.caption)
+
+            if host.isPending {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 24, height: 24)
+            } else {
+                Image(systemName: host.isPaired ? "display" : "rectangle.dashed")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(host.isCurrent ? Palette.accent : .secondary)
+                    .frame(width: 24, height: 24)
+            }
+
+            Text(host.primary)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            if let detail = easySwitchTileDetail(host) {
+                Text(detail)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
+        .padding(9)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .top)
+        .background(
+            host.isCurrent
+                ? AnyShapeStyle(Palette.accent.opacity(0.14))
+                : AnyShapeStyle(.thinMaterial),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    host.isCurrent ? Palette.accent.opacity(0.70) : Palette.hairline(colorScheme),
+                    lineWidth: host.isCurrent ? 1.5 : 1
+                )
+        }
         .accessibilityElement(children: .combine)
+    }
+
+    private func easySwitchTileDetail(_ host: MXEasySwitchHost) -> String? {
+        if host.isPending { return "Reading…" }
+        if host.isCurrent {
+            if let secondary = host.secondary, !secondary.isEmpty {
+                return host.primary == "This Mac" ? secondary : "This Mac · \(secondary)"
+            }
+            return host.primary == "This Mac" ? "Current" : "This Mac"
+        }
+        return host.secondary
     }
 
     @ViewBuilder
@@ -972,6 +1244,13 @@ struct DeviceProfilePane: View {
                 }
                 monitor.setButtonAction(ControlAction.fromCatalogID(id), for: button)
             }
+        )
+    }
+
+    private var mxThumbWheelModeBinding: Binding<MXWheelMode> {
+        Binding(
+            get: { monitor.selectedProfile.resolvedMXThumbWheelMode },
+            set: { monitor.setMXThumbWheelMode($0) }
         )
     }
 

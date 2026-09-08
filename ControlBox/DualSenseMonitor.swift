@@ -26,6 +26,8 @@ final class DualSenseMonitor {
     var backgroundNeedsApproval = false
     var screenCaptureTrusted = false
     var screenRecordingTrusted = false
+    var frontmostBundleID: String?
+    var recentFrontmostApps: [RecentFrontmostApp] = []
     let controlEngine = ControlEngine()
 
     var allPermissionsGranted: Bool {
@@ -171,6 +173,7 @@ final class DualSenseMonitor {
     private var pollTimer: Timer?
     private var controlActivity: NSObjectProtocol?
     private var observers: [NSObjectProtocol] = []
+    private var workspaceObserver: NSObjectProtocol?
     private var lastAudioProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
     private var lastDeviceProbe = Date.distantPast
@@ -180,6 +183,8 @@ final class DualSenseMonitor {
     private var lastAppliedSystemPointerSpeed = -1.0
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
+    private var mxWheelEngines: [String: MXWheelActionEngine] = [:]
+    private var lastLiveMXProfileID: [String: String] = [:]
     private let dualSense = DualSenseSession()
     private let appleTV = AppleTVRemoteSession()
     private let keyboard = MXKeyboardSession()
@@ -262,6 +267,8 @@ final class DualSenseMonitor {
 
         attachPreferredController()
 
+        startFrontmostAppWatcher()
+
         let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.capture()
@@ -272,17 +279,89 @@ final class DualSenseMonitor {
         pollTimer = timer
     }
 
+    private func startFrontmostAppWatcher() {
+        if workspaceObserver != nil { return }
+        handleFrontmostApp(NSWorkspace.shared.frontmostApplication)
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            Task { @MainActor in
+                self?.handleFrontmostApp(app)
+            }
+        }
+    }
+
+    private func handleFrontmostApp(_ app: NSRunningApplication?) {
+        let bundle = app?.bundleIdentifier
+        if bundle == frontmostBundleID { return }
+        frontmostBundleID = bundle
+        if let bundle, let app, bundle != MouseAppCatalog.controlBoxBundleID {
+            let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = (name?.isEmpty == false) ? name! : bundle
+            recentFrontmostApps.removeAll { $0.bundleID == bundle }
+            recentFrontmostApps.insert(RecentFrontmostApp(bundleID: bundle, name: title), at: 0)
+            if recentFrontmostApps.count > 24 {
+                recentFrontmostApps = Array(recentFrontmostApps.prefix(24))
+            }
+        }
+        applyLiveMXProfiles()
+    }
+
+    func liveMXProfile(for record: DeviceRecord) -> MappingProfile {
+        MouseAppCatalog.liveProfile(
+            profiles: record.profiles,
+            defaultProfile: record.mxDefaultProfile,
+            frontmostBundleID: frontmostBundleID,
+            lastLiveID: lastLiveMXProfileID[record.id]
+        )
+    }
+
+    func liveMXCaption(for record: DeviceRecord) -> String {
+        "Mouse is using \(liveMXProfile(for: record).mxScopeTitle)"
+    }
+
+    private func applyLiveMXProfiles() {
+        var nextIDs = lastLiveMXProfileID
+        for record in deviceRecords where record.isMXMaster {
+            let live = liveMXProfile(for: record)
+            let previous = lastLiveMXProfileID[record.id]
+            if previous != live.id {
+                engine(for: record.id).reset()
+                mxWheelEngine(for: record.id).reset()
+                lastScrollTapSignature = ""
+            }
+            let bundle = frontmostBundleID ?? ""
+            if bundle != MouseAppCatalog.controlBoxBundleID
+                || record.profiles.contains(where: { $0.frontmostAppBundleID == bundle }) {
+                nextIDs[record.id] = live.id
+            } else if previous == nil {
+                nextIDs[record.id] = live.id
+            }
+        }
+        if nextIDs != lastLiveMXProfileID {
+            lastLiveMXProfileID = nextIDs
+        }
+    }
+
     func stop() {
         pollTimer?.invalidate()
         pollTimer = nil
         endControlActivity()
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+            self.workspaceObserver = nil
+        }
         familySessions.forEach { $0.stop() }
         mx3Reader.stop()
         mx4Reader.stop()
         keyboard.detachBolt()
         mouseScrollTap.stop()
+        mxWheelEngines.values.forEach { $0.reset() }
         WindowGrab.stop()
         WindowOrganizeHotkey.stop()
         WindowShake.stop()
@@ -502,16 +581,12 @@ final class DualSenseMonitor {
         updateSharedMouseScroll { $0.pointerSpeed = min(max(speed, 0), 1) }
     }
 
-    func setHapticGestureSpeed(_ speed: Double) {
-        updateSelectedProfile { $0.hapticGestureSpeed = min(max(speed, 0), 1) }
-    }
-
     func setWheelScrollSpeed(_ speed: Double) {
-        updateSharedMouseScroll { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
-    }
-
-    func setThumbScrollSpeed(_ speed: Double) {
-        updateSharedMouseScroll { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+        let clamped = min(max(speed, 0), 1)
+        updateSharedMouseScroll {
+            $0.wheelScrollSpeed = clamped
+            $0.thumbScrollSpeed = clamped
+        }
     }
 
     func setNaturalScrolling(_ enabled: Bool) {
@@ -519,7 +594,7 @@ final class DualSenseMonitor {
     }
 
     func setSensorDPI(_ dpi: Int) {
-        updateSelectedProfile { $0.sensorDPI = MappingProfile.clampDisplayedDPI(dpi) }
+        updateMXDeviceLevelProfile { $0.sensorDPI = MappingProfile.clampDisplayedDPI(dpi) }
     }
 
     func setSmoothScrolling(_ enabled: Bool) {
@@ -572,6 +647,18 @@ final class DualSenseMonitor {
         }
     }
 
+    private func updateMXDeviceLevelProfile(_ mutate: (inout MappingProfile) -> Void) {
+        updateSelectedRecord { record in
+            guard record.isMXMaster else { return }
+            let defaultID = record.mxDefaultProfile.id
+            guard var profile = record.profiles.first(where: { $0.id == defaultID }) else { return }
+            mutate(&profile)
+            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
+                record.profiles[index] = profile
+            }
+        }
+    }
+
     /// Scroll invert / wheel speed / pointer speed for every system mouse
     /// (MX now; generic mouse later). Gamepads stay on their own profile.
     private func updateSharedMouseScroll(_ mutate: (inout MappingProfile) -> Void) {
@@ -585,11 +672,11 @@ final class DualSenseMonitor {
     }
 
     func setMacWheelScrollSpeed(_ speed: Double) {
-        updateMacMouse { $0.wheelScrollSpeed = min(max(speed, 0), 1) }
-    }
-
-    func setMacThumbScrollSpeed(_ speed: Double) {
-        updateMacMouse { $0.thumbScrollSpeed = min(max(speed, 0), 1) }
+        let clamped = min(max(speed, 0), 1)
+        updateMacMouse {
+            $0.wheelScrollSpeed = clamped
+            $0.thumbScrollSpeed = clamped
+        }
     }
 
     func setMacNaturalScrolling(_ enabled: Bool) {
@@ -613,8 +700,8 @@ final class DualSenseMonitor {
     private func updateAllMXProfiles(_ mutate: (inout MappingProfile) -> Void) {
         var changed = false
         for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
-            let selectedID = deviceRecords[index].selectedProfileID
-            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == selectedID }) else {
+            let defaultID = deviceRecords[index].mxDefaultProfile.id
+            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == defaultID }) else {
                 continue
             }
             var profile = deviceRecords[index].profiles[profileIndex]
@@ -630,8 +717,8 @@ final class DualSenseMonitor {
     private func propagateSharedMouseScroll(from source: MappingProfile) {
         var changed = false
         for index in deviceRecords.indices where deviceRecords[index].isMXMaster {
-            let selectedID = deviceRecords[index].selectedProfileID
-            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == selectedID }) else {
+            let defaultID = deviceRecords[index].mxDefaultProfile.id
+            guard let profileIndex = deviceRecords[index].profiles.firstIndex(where: { $0.id == defaultID }) else {
                 continue
             }
             var profile = deviceRecords[index].profiles[profileIndex]
@@ -671,12 +758,25 @@ final class DualSenseMonitor {
         }
     }
 
+    func setMXThumbWheelMode(_ mode: MXWheelMode) {
+        updateSelectedProfile { profile in
+            profile.mxThumbWheelMode = mode
+            profile.bindings[.mxThumbLeft] = nil
+            profile.bindings[.mxThumbRight] = nil
+        }
+        if let id = selectedDeviceID {
+            mxWheelEngine(for: id).reset()
+        }
+        lastScrollTapSignature = ""
+    }
+
     func selectProfile(_ id: String) {
+        let isMX = selectedRecord?.isMXMaster == true
         updateSelectedRecord { record in
             guard record.profiles.contains(where: { $0.id == id }) else { return }
             record.selectedProfileID = id
         }
-        if let deviceID = selectedDeviceID {
+        if !isMX, let deviceID = selectedDeviceID {
             engine(for: deviceID).reset()
         }
     }
@@ -717,6 +817,38 @@ final class DualSenseMonitor {
         if let deviceID = selectedDeviceID {
             engine(for: deviceID).reset()
         }
+    }
+
+    func addMXApp(bundleID: String, name: String) {
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updateSelectedRecord { record in
+            guard record.isMXMaster else { return }
+            if let existing = record.profiles.first(where: { $0.frontmostAppBundleID == trimmed }) {
+                record.selectedProfileID = existing.id
+                return
+            }
+            let copy = MouseAppCatalog.profileForAddedApp(
+                from: record.mxDefaultProfile,
+                bundleID: trimmed,
+                name: name
+            )
+            record.profiles.append(copy)
+            record.selectedProfileID = copy.id
+        }
+    }
+
+    func removeMXProfile(_ id: String) {
+        updateSelectedRecord { record in
+            guard record.isMXMaster else { return }
+            guard let profile = record.profiles.first(where: { $0.id == id }) else { return }
+            guard !profile.treatsAsMXDefault else { return }
+            record.profiles.removeAll { $0.id == id }
+            if record.selectedProfileID == id {
+                record.selectedProfileID = record.mxDefaultProfile.id
+            }
+        }
+        applyLiveMXProfiles()
     }
 
     func renameSelectedProfile(_ name: String) {
@@ -1062,17 +1194,32 @@ final class DualSenseMonitor {
 
     private func ingestMX(_ reader: LogitechMXMasterReader, _ record: DeviceRecord, _ frame: ControlFrame) {
         let engine = engine(for: record.id)
-        engine.profile = record.selectedProfile
+        let live = liveMXProfile(for: record)
+        let deviceLevel = record.mxDefaultProfile
+        engine.profile = live
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = false
         reader.injectEnabled = record.controlEnabled && !ShortcutCapture.isActive
         reader.wheelsEnabled = accessibilityTrusted
-        reader.setGestureOwners(record.selectedProfile.mxGestureOwners)
-        reader.applySensorDPI(record.selectedProfile.resolvedSensorDPI)
-        reader.applyPointerSpeed(record.selectedProfile.resolvedPointerSpeed)
-        reader.applyHapticGestureSpeed(record.selectedProfile.resolvedHapticGestureSpeed)
-        engine.process(frame, hostIsActive: NSApp.isActive)
+        reader.setGestureOwners(live.mxGestureOwners)
+        reader.applySensorDPI(deviceLevel.resolvedSensorDPI)
+        reader.applyPointerSpeed(deviceLevel.resolvedPointerSpeed)
+        let canInject = record.controlEnabled
+            && !ShortcutCapture.isActive
+            && (!NSApp.isActive || record.controlWhileFocused)
+        if canInject, frame.scrollX != 0 {
+            mxWheelEngine(for: record.id).process(
+                delta: frame.scrollX,
+                mode: live.resolvedMXThumbWheelMode,
+                naturalScrolling: macMouseProfile.resolvedNaturalScrolling,
+                scrollSpeed: macMouseProfile.resolvedWheelScrollSpeed
+            )
+        }
+        var buttonFrame = frame
+        buttonFrame.scrollX = 0
+        buttonFrame.scrollY = 0
+        engine.process(buttonFrame, hostIsActive: NSApp.isActive)
     }
 
     var controllingMXRecords: [DeviceRecord] {
@@ -1093,33 +1240,27 @@ final class DualSenseMonitor {
             lastAppliedSystemPointerSpeed = profile.resolvedPointerSpeed
         }
         let mxConnected = mxReaders.contains { $0.current.connected }
-        guard accessibilityTrusted, mxConnected else {
+        guard accessibilityTrusted else {
             if lastScrollTapSignature != "off" {
                 mouseScrollTap.setActive(false)
                 lastScrollTapSignature = "off"
             }
             return
         }
-        let mx = sharedMXScrollRecord?.selectedProfile
         let natural = profile.resolvedNaturalScrolling
         let smooth = profile.resolvedSmoothScrolling
-        let vertical = 0.05 + profile.appliedWheelScrollSpeed * 0.55
-        let horizontal = 0.05 + profile.appliedThumbScrollSpeed * 0.55
-        let passUp = mx?.keepsNativeScroll(for: .mxWheelUp) ?? true
-        let passDown = mx?.keepsNativeScroll(for: .mxWheelDown) ?? true
-        let passLeft = mx?.keepsNativeScroll(for: .mxThumbLeft) ?? true
-        let passRight = mx?.keepsNativeScroll(for: .mxThumbRight) ?? true
-        let signature = "mac|\(natural)|\(smooth)|\(vertical)|\(horizontal)|\(passUp)|\(passDown)|\(passLeft)|\(passRight)"
+        let scale = 0.05 + profile.appliedWheelScrollSpeed * 0.55
+        let signature = "mac|\(natural)|\(smooth)|\(scale)|\(mxConnected)"
         guard signature != lastScrollTapSignature else { return }
         lastScrollTapSignature = signature
         mouseScrollTap.wantNatural = natural
         mouseScrollTap.smoothScrolling = smooth
-        mouseScrollTap.verticalScale = vertical
-        mouseScrollTap.horizontalScale = horizontal
-        mouseScrollTap.passVerticalPositive = passUp
-        mouseScrollTap.passVerticalNegative = passDown
-        mouseScrollTap.passHorizontalPositive = passRight
-        mouseScrollTap.passHorizontalNegative = passLeft
+        mouseScrollTap.verticalScale = scale
+        mouseScrollTap.horizontalScale = scale
+        mouseScrollTap.passVerticalPositive = true
+        mouseScrollTap.passVerticalNegative = true
+        mouseScrollTap.passHorizontalPositive = true
+        mouseScrollTap.passHorizontalNegative = true
         mouseScrollTap.setActive(true)
         for reader in mxReaders where reader.current.connected {
             reader.applySmoothScrolling(smooth)
@@ -1260,6 +1401,13 @@ final class DualSenseMonitor {
         if let existing = engines[deviceID] { return existing }
         let created = ControlEngine(profile: selectedProfile)
         engines[deviceID] = created
+        return created
+    }
+
+    private func mxWheelEngine(for deviceID: String) -> MXWheelActionEngine {
+        if let existing = mxWheelEngines[deviceID] { return existing }
+        let created = MXWheelActionEngine()
+        mxWheelEngines[deviceID] = created
         return created
     }
 
@@ -1514,6 +1662,7 @@ final class DualSenseMonitor {
                             next.profiles[index].ensureMX4SideButton()
                         }
                     }
+                    next.ensureMXMouseProfiles()
                 }
                 if DeviceSupport.isMXMechanicalName(next.name), !next.kind.isMXKeyboard {
                     next.kind = MXMechanicalSupport.kind(from: next.name)
@@ -1802,4 +1951,10 @@ final class DualSenseMonitor {
                 || lowered.contains("sony")
         }
     }
+}
+
+struct RecentFrontmostApp: Identifiable, Equatable, Sendable {
+    var bundleID: String
+    var name: String
+    var id: String { bundleID }
 }

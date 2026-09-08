@@ -163,7 +163,6 @@ final class LogitechMXMasterReader {
     private var lastAppliedOSPointerSpeed = -1.0
     private var desiredDPI = MappingProfile.defaultSensorDPI
     private var desiredPointerSpeed = 0.5
-    private var desiredHapticGestureSpeed = 0.5
     private var desiredSmoothScrolling = true
     private var lastWheelConfig: (divert: Bool, invert: Bool, highRes: Bool)?
     private var consecutiveTimeouts = 0
@@ -271,7 +270,6 @@ final class LogitechMXMasterReader {
         hidppQueue.removeAll()
         desiredDPI = MappingProfile.defaultSensorDPI
         desiredPointerSpeed = 0.5
-        desiredHapticGestureSpeed = 0.5
         lastHapticBit = false
         desiredSmoothScrolling = true
         naturalScrolling = true
@@ -454,12 +452,6 @@ final class LogitechMXMasterReader {
         desiredPointerSpeed = next
         sendSensorSettingsIfNeeded()
         applyOSPointerSettingsIfNeeded()
-    }
-
-    func applyHapticGestureSpeed(_ speed: Double) {
-        let next = min(max(speed, 0), 1)
-        guard next != desiredHapticGestureSpeed else { return }
-        desiredHapticGestureSpeed = next
     }
 
     func applySmoothScrolling(_ enabled: Bool) {
@@ -709,30 +701,16 @@ final class LogitechMXMasterReader {
                 }
             }
         case .scrollWheel:
-            let dy = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
-            let dx = event.getDoubleValueField(.scrollWheelEventDeltaAxis2)
-            if dy > 0 {
-                snapshot.wheelUp = true
-                snapshot.wheelDown = false
-                wheelPulseUntil = now.addingTimeInterval(0.18)
-                logs.append(("Wheel up", true))
-            } else if dy < 0 {
-                snapshot.wheelDown = true
-                snapshot.wheelUp = false
-                wheelPulseUntil = now.addingTimeInterval(0.18)
-                logs.append(("Wheel down", true))
-            }
-            if dx > 0 {
-                snapshot.thumbRight = true
-                snapshot.thumbLeft = false
-                thumbPulseUntil = now.addingTimeInterval(0.18)
-                logs.append(("Thumb wheel right", true))
-            } else if dx < 0 {
-                snapshot.thumbLeft = true
-                snapshot.thumbRight = false
-                thumbPulseUntil = now.addingTimeInterval(0.18)
-                logs.append(("Thumb wheel left", true))
-            }
+            let dy = Self.scrollAxis(event, line: .scrollWheelEventDeltaAxis1, point: .scrollWheelEventPointDeltaAxis1, fixed: .scrollWheelEventFixedPtDeltaAxis1)
+            let dx = Self.scrollAxis(event, line: .scrollWheelEventDeltaAxis2, point: .scrollWheelEventPointDeltaAxis2, fixed: .scrollWheelEventFixedPtDeltaAxis2)
+            applyExclusiveScrollPulses(
+                vertical: dy,
+                horizontal: dx,
+                now: now,
+                allowThumb: !thumbComesFromHIDPP,
+                invertVertical: false,
+                logs: &logs
+            )
         default:
             break
         }
@@ -1915,17 +1893,16 @@ final class LogitechMXMasterReader {
             }
         }
         let xyOffset = 1 + model.nativeMouseButtonBytes
+        var nativeVertical = 0
+        var nativeHorizontal = 0
         if length > xyOffset + 3 {
-            let wheel = Int8(bitPattern: report[xyOffset + 3])
-            if wheel != 0 {
-                applyNativeScroll(vertical: Int(wheel), horizontal: 0)
-            }
+            nativeVertical = Int(Int8(bitPattern: report[xyOffset + 3]))
         }
         if length > xyOffset + 4 {
-            let pan = Int8(bitPattern: report[xyOffset + 4])
-            if pan != 0 {
-                applyNativeScroll(vertical: 0, horizontal: Int(pan))
-            }
+            nativeHorizontal = Int(Int8(bitPattern: report[xyOffset + 4]))
+        }
+        if nativeVertical != 0 || nativeHorizontal != 0 {
+            applyNativeScroll(vertical: nativeVertical, horizontal: nativeHorizontal)
         }
         guard activeGestureCID != nil, length >= xyOffset + 3 else { return }
         let dx = Self.signExtend12(Int(report[xyOffset]) | (Int(report[xyOffset + 1] & 0x0F) << 8))
@@ -1972,36 +1949,75 @@ final class LogitechMXMasterReader {
 
     private func applyNativeScroll(vertical: Int, horizontal: Int) {
         let now = Date()
+        var logs: [(String, Bool)] = []
         lock.lock()
-        if vertical > 0 {
-            snapshot.wheelDown = true
-            snapshot.wheelUp = false
-            wheelPulseUntil = now.addingTimeInterval(0.18)
-        } else if vertical < 0 {
-            snapshot.wheelUp = true
-            snapshot.wheelDown = false
-            wheelPulseUntil = now.addingTimeInterval(0.18)
+        applyExclusiveScrollPulses(
+            vertical: Double(vertical),
+            horizontal: Double(horizontal),
+            now: now,
+            allowThumb: !thumbComesFromHIDPP,
+            invertVertical: true,
+            logs: &logs
+        )
+        lock.unlock()
+        for (label, pressed) in logs {
+            logEvent(label, pressed: pressed)
         }
-        if horizontal > 0 {
+    }
+
+    /// Thumb ticks come from HID++ `0x2150` once that feature is diverted.
+    /// CG / native pan on the same report as the main wheel is not the thumb.
+    private var thumbComesFromHIDPP: Bool { wheelsEnabled && thumbWheelIndex != nil }
+
+    /// Wheel and thumb must not pulse together. MX high-res / smooth reports
+    /// often carry a leftover axis-2 delta on a vertical notch.
+    private func applyExclusiveScrollPulses(
+        vertical: Double,
+        horizontal: Double,
+        now: Date,
+        allowThumb: Bool,
+        invertVertical: Bool,
+        logs: inout [(String, Bool)]
+    ) {
+        let dx = allowThumb ? horizontal : 0
+        let dy = vertical
+        if dy == 0, dx == 0 { return }
+        if abs(dy) >= abs(dx) {
+            let wheelDown = invertVertical ? dy > 0 : dy < 0
+            if wheelDown {
+                snapshot.wheelDown = true
+                snapshot.wheelUp = false
+                logs.append(("Wheel down", true))
+            } else {
+                snapshot.wheelUp = true
+                snapshot.wheelDown = false
+                logs.append(("Wheel up", true))
+            }
+            wheelPulseUntil = now.addingTimeInterval(0.18)
+            return
+        }
+        if dx > 0 {
             snapshot.thumbRight = true
             snapshot.thumbLeft = false
-            thumbPulseUntil = now.addingTimeInterval(0.18)
-        } else         if horizontal < 0 {
+            logs.append(("Thumb wheel right", true))
+        } else {
             snapshot.thumbLeft = true
             snapshot.thumbRight = false
-            thumbPulseUntil = now.addingTimeInterval(0.18)
+            logs.append(("Thumb wheel left", true))
         }
-        lock.unlock()
-        if vertical > 0 {
-            logEvent("Wheel down", pressed: true)
-        } else if vertical < 0 {
-            logEvent("Wheel up", pressed: true)
-        }
-        if horizontal > 0 {
-            logEvent("Thumb wheel right", pressed: true)
-        } else if horizontal < 0 {
-            logEvent("Thumb wheel left", pressed: true)
-        }
+        thumbPulseUntil = now.addingTimeInterval(0.18)
+    }
+
+    private static func scrollAxis(
+        _ event: CGEvent,
+        line: CGEventField,
+        point: CGEventField,
+        fixed: CGEventField
+    ) -> Double {
+        let lineDelta = event.getDoubleValueField(line)
+        let pointDelta = Double(event.getIntegerValueField(point))
+        let fixedDelta = event.getDoubleValueField(fixed)
+        return [lineDelta, pointDelta, fixedDelta].max(by: { abs($0) < abs($1) }) ?? 0
     }
 
     private func handleDivertedButtons(_ payload: Data) {
@@ -2249,14 +2265,16 @@ final class LogitechMXMasterReader {
                 wheelPulseUntil = now.addingTimeInterval(0.18)
             }
         case (0x0C, 0x238):
-            if integer > 0 {
-                snapshot.thumbRight = true
-                snapshot.thumbLeft = false
-                thumbPulseUntil = now.addingTimeInterval(0.18)
-            } else if integer < 0 {
-                snapshot.thumbLeft = true
-                snapshot.thumbRight = false
-                thumbPulseUntil = now.addingTimeInterval(0.18)
+            if !thumbComesFromHIDPP {
+                if integer > 0 {
+                    snapshot.thumbRight = true
+                    snapshot.thumbLeft = false
+                    thumbPulseUntil = now.addingTimeInterval(0.18)
+                } else if integer < 0 {
+                    snapshot.thumbLeft = true
+                    snapshot.thumbRight = false
+                    thumbPulseUntil = now.addingTimeInterval(0.18)
+                }
             }
         default:
             lock.unlock()
@@ -2324,7 +2342,7 @@ final class LogitechMXMasterReader {
 
     private func addGestureHID(dx: Double, dy: Double) {
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
-        let factor = MappingProfile.gestureSpeedFactor(slider: desiredHapticGestureSpeed, dpi: dpi)
+        let factor = MappingProfile.gestureSpeedFactor(dpi: dpi)
         gestureDelta.width += CGFloat(dx * factor)
         gestureDelta.height += CGFloat(dy * factor)
     }

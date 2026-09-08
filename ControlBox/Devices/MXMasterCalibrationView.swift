@@ -2,8 +2,10 @@ import ControlBoxCore
 import SwiftUI
 
 struct MXMasterCalibrationView: View {
-    let snapshot: MXMasterSnapshot
+    @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
+
+    private var snapshot: MXMasterSnapshot { monitor.mxMasterSnapshot }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -53,7 +55,7 @@ struct MXMasterCalibrationView: View {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
                         .fill(Palette.surface(colorScheme))
                 )
-                MXMasterSidebar(snapshot: snapshot)
+                MXMasterSidebar(monitor: monitor)
                     .frame(width: 360)
             }
         }
@@ -454,12 +456,20 @@ private struct GestureSwipeStage: View {
 }
 
 private struct MXMasterSidebar: View {
-    let snapshot: MXMasterSnapshot
+    @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
+
+    private var snapshot: MXMasterSnapshot { monitor.mxMasterSnapshot }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                MXPanel(title: "On this mouse") {
+                    dpiSlider
+                    Text("Written to the sensor over HID++. Pointer speed stays the same.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
                 MXPanel(title: "Clicks") {
                     MXValueRow(label: "Left", value: down(snapshot.left))
                     MXValueRow(label: "Right", value: down(snapshot.right))
@@ -536,6 +546,44 @@ private struct MXMasterSidebar: View {
 
     private func down(_ pressed: Bool) -> String {
         pressed ? "down" : "up"
+    }
+
+    private var dpiLevels: [Int] {
+        let fromMouse = snapshot.availableDPI
+        return fromMouse.count >= 2 ? fromMouse : MappingProfile.fallbackDPILevels
+    }
+
+    private var dpiProfile: MappingProfile {
+        monitor.selectedRecord?.mxDefaultProfile ?? monitor.selectedProfile
+    }
+
+    private var dpiIndexBinding: Binding<Double> {
+        Binding(
+            get: {
+                let levels = dpiLevels
+                let current = MappingProfile.nearestDPI(dpiProfile.resolvedSensorDPI, in: levels)
+                return Double(levels.firstIndex(of: current) ?? 0)
+            },
+            set: { index in
+                let levels = dpiLevels
+                let clamped = min(max(Int(index.rounded()), 0), levels.count - 1)
+                monitor.setSensorDPI(levels[clamped])
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var dpiSlider: some View {
+        let levels = dpiLevels
+        let current = MappingProfile.nearestDPI(dpiProfile.resolvedSensorDPI, in: levels)
+        SettingsSlider(
+            "DPI",
+            value: dpiIndexBinding,
+            in: 0...Double(max(levels.count - 1, 1)),
+            step: 1,
+            valueText: "\(current)",
+            labelWidth: 44
+        )
     }
 }
 

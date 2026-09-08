@@ -35,7 +35,7 @@ Control Box stays on your Mac. Nothing is uploaded.
 | **Sound** | Output volume, then a per-app mixer. Optional menu bar extra with the same sliders. Needs System Audio Recording for per-app volume. |
 | **Caffeinate** | Keep this Mac awake for a set time or forever. Optional menu bar extra: pick a duration; while it is on, the menu shows a countdown. Off until you turn the extra on. Hide does not quit Control Box. |
 | **System Monitor** | Optional second menu bar extra from [top](https://github.com/whitesticker/top): live network speed plus CPU, GPU, memory, disk, sensors, and battery. Off until you turn the pane on. Hide or quit that extra without quitting Control Box. |
-| **Pointer & Scroll** | Pointer speed for USB and Bluetooth mice, wheel and thumb-wheel speed, smooth scrolling, natural vs standard direction. DualSense and Siri Remote keep their own sliders on the device page. |
+| **Pointer & Scroll** | Pointer speed and wheel speed for every USB and Bluetooth mouse, plus smooth scrolling and natural vs standard direction. DualSense and Siri Remote keep their own sliders on the device page. Trackpads stay on System Settings. |
 | **Window Management** | Hold a modifier chord and move to drag a window from anywhere; add Shift (by default) to resize with the top-left anchored. Optional throw snaps to a 3×3 map of the screen; optional organize (default Control-Command-O) tiles windows. Optional shake-to-focus hides every other window on this display or all displays; optional Dock-click minimize hides an already-visible app. Trackpad, any mouse, or DualSense. Accessibility must be on. |
 | **Caps Lock** | Hold Caps Lock as the modifiers you pick on that pane (default Control) for Window Management and Display Arrangement. It no longer toggles capital letters. Off until you turn the pane on. Other apps do not see Caps Lock or a Hyper key. |
 | **Dock Previews** | Hover a Dock icon to see that app’s open windows and click one to bring it forward. Optional app-switcher cards (no title, no HUD) while Command-Tab is up. Off until you turn each toggle on. Live thumbnails need Screen Recording; titles work without it on Dock hover. |
@@ -46,8 +46,8 @@ Control Box stays on your Mac. Nothing is uploaded.
 |---|---|
 | **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
-| **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
-| **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
+| **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Per-app **profile tiles** follow the frontmost app. Thumb wheel is one mode (scroll, tabs, volume, …). Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. DPI is on Calibration. |
+| **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Same per-app profiles and thumb-wheel modes as 3 / 3S. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. DPI is on Calibration. |
 | **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
 | **Logi Bolt** | Add Device → Logi Bolt: pair, unpair, and talk on the USB receiver. Do not list the dongle itself. |
 

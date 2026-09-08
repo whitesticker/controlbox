@@ -43,7 +43,7 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 | Display Brightness / Arrangement | Screen connect, pane appear | CoreDisplay / DDC / `NSScreen` | DDC is queued, not polled. Brightness extra does not poll while the menu is open. |
 | Permissions / device list | Launch, wake, HID attach | TCC, `SMAppService`, IOHID | Not on the 120 Hz path. |
 | Logi Bolt pair / list / talk | HID++ reports on `C548` vendor `0xFF00`; one-shot slot list + arrive/ping; HID++ 2.0 slot writes while a Bolt-only MX / keyboard is attached | `IOHID` SetReport, no seize | Always on while Control Box is running (catalog `keepAlive`). Pairing pauses slot talk on that receiver. Do not open the mouse/keyboard collections. Do not poll slots on the 120 Hz path. Do not apply pointer HID properties to `C548`. |
-| Apple TV battery | Cached; not on 120 Hz | IORegistry | See [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md). |
+| Frontmost app → profile | `NSWorkspace.didActivateApplicationNotification` | `NSWorkspace` | Compare bundle ID; ignore Control Box unless an MX app row exists for it; no idle timer. MX live mapping only. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md). |
 
 ## One-shot or user-driven (not loops)
 

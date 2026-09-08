@@ -40,6 +40,47 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             )
     }
 
+    var mxDefaultProfile: MappingProfile {
+        profiles.first(where: \.treatsAsMXDefault)
+            ?? profiles.first { $0.appCategory == nil && ($0.frontmostAppBundleID ?? "").isEmpty }
+            ?? selectedProfile
+    }
+
+    mutating func ensureMXMouseProfiles() {
+        guard isMXMaster else { return }
+        if !profiles.contains(where: \.treatsAsMXDefault) {
+            if let index = profiles.firstIndex(where: { $0.id == selectedProfileID }) {
+                profiles[index].isMXDefault = true
+                profiles[index].appCategory = nil
+                profiles[index].frontmostAppBundleID = nil
+                profiles[index].name = "Default"
+            } else if var first = profiles.first {
+                first.isMXDefault = true
+                first.appCategory = nil
+                first.frontmostAppBundleID = nil
+                first.name = "Default"
+                profiles[0] = first
+                selectedProfileID = first.id
+            }
+        }
+        let removedIDs = Set(profiles.filter { $0.appCategory != nil && ($0.frontmostAppBundleID ?? "").isEmpty }.map(\.id))
+        profiles.removeAll { removedIDs.contains($0.id) }
+        if removedIDs.contains(selectedProfileID) {
+            selectedProfileID = mxDefaultProfile.id
+        }
+    }
+
+    func mxScopeProfiles() -> [MappingProfile] {
+        let defaultProfile = mxDefaultProfile
+        var ordered: [MappingProfile] = [defaultProfile]
+        ordered.append(contentsOf: profiles.filter { ($0.frontmostAppBundleID ?? "").isEmpty == false }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+        ordered.append(contentsOf: profiles.filter(\.isMXLeftoverNamedProfile)
+            .filter { $0.id != defaultProfile.id }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+        return ordered
+    }
+
     var logitechKey: LogitechDeviceKey {
         LogitechDeviceKey(
             name: name,
@@ -63,10 +104,9 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             profile.summary = "Gesture button is Gestures. Back and Forward are browser buttons."
         }
         if device.deviceKind == .logitechMXMaster4 {
-            profile.hapticGestureSpeed = 0.61
             profile.sensorDPI = 4000
         }
-        return DeviceRecord(
+        var record = DeviceRecord(
             id: device.id,
             name: device.name,
             address: device.address,
@@ -80,6 +120,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             unitID: device.unitID,
             wirelessProductID: device.wirelessProductID
         )
+        record.ensureMXMouseProfiles()
+        return record
     }
 }
 

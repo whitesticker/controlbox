@@ -9,25 +9,26 @@ Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). Th
 | Input | Behavior |
 |---|---|
 | Laser pointer | Cursor. **Pointer speed** slider + DPI compensation. |
-| Wheel / thumb wheel | Native scroll unless that direction is remapped (`mxWheelUp/Down`, `mxThumbLeft/Right`). `.scroll` or a missing binding keeps native. Smooth scrolling + separate wheel / thumb speed sliders. |
+| Wheel / thumb wheel | Main wheel always scrolls vertically and is not remapped. Thumb wheel has one per-profile mode, default Horizontal Scroll. Delta-driven navigation / volume modes can repeat without turning directions into buttons. Smooth scrolling + one wheel speed slider for mouse scroll. |
 | Haptic pad tap | The Gestures **Click** action (window preset: Mission Control). |
 | Haptic pad hold 100ms + move | Hold-to-swipe. Left/right and up are live DockSwipe. Down is discrete App Exposé. |
 
 **Gestures is haptic-pad only.** Click-as-gesture on Back / Forward / etc. is parked. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
 
-## Two sliders, plus DPI
+## Pointer speed plus DPI
 
-Do not merge these. The user wants them independent.
+Do not fold DPI into pointer speed. The user wants them independent.
 
 | Control | What it changes | What it must not change |
 |---|---|---|
 | **DPI** | Sensor resolution. Higher = smoother tracking, more HID counts per inch. | Cursor feel. Haptic swipe feel. |
 | **Pointer speed** | On-screen cursor only. | Hold-to-swipe Spaces / Mission Control / App Exposé. |
-| **Haptic gesture speed** | Hold-to-swipe only. 50% = 1× native HID travel at 1000 DPI. 0% is a comfortable Spaces swipe on this Mac. | Cursor. |
+
+Hold-to-swipe uses native HID travel at 1000 DPI. Higher sensor DPI is divided out (`1000 / dpi`) so the same physical pad move stays the same. There is no gesture-speed slider.
 
 There is **no** separate Acceleration slider. macOS tracking speed is how pointer speed is implemented. There is **no** Button gesture speed slider (that was for the parked click-as-gesture path).
 
-Settings copy lives under Profiles → Pointer & scroll.
+Pointer and wheel speed live under Mac → Pointer & Scroll (Control Box intercepts every USB/Bluetooth mouse). DPI is written to the mouse from Calibration.
 
 ## Default MX profile
 
@@ -68,7 +69,7 @@ While the haptic pad is held (HID button 7 / `0x40` on report `0x02`):
 
 1. Freeze the cursor (`CGAssociateMouseAndMouseCursorPosition(0)`) and swallow mouse-move events so pointer motion does not cancel DockSwipe.
 2. Accumulate 12-bit X then 12-bit Y from that same report (`handleNativeMouseReport`).
-3. Scale each sample with `MappingProfile.gestureSpeedFactor(slider, dpi)` — slider curve **and** `1000 / dpi`.
+3. Scale each sample with `MappingProfile.gestureSpeedFactor(dpi)` — `1000 / dpi` only.
 4. Publish `gestureOwner = .mxHaptic`, `gestureActive`, `gestureX` / `gestureY` on the control frame.
 5. `ControlEngine.processGesture` runs `HoldGesture` only when the owner is haptic **and** that binding is Gestures.
 
@@ -155,7 +156,8 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 |---|---|
 | `ControlBox/LogitechMXMasterReader.swift` | HID++, report `0x02` buttons + wheel + haptic XY, shared click probe, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
 | `ControlBox/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
-| `ControlBox/ProfilesPane.swift` | DPI, Pointer speed, Haptic gesture speed. Gestures picker only on Haptic. |
+| `ControlBox/ProfilesPane.swift` | Gestures picker only on Haptic. |
+| `ControlBox/MXMasterCalibrationView.swift` | Calibration sidebar: On this mouse = DPI. |
 | `ControlBox/DualSenseMonitor.swift` | Pushes sliders + DPI into the reader. Sanitizes saved profiles on load. |
 | `ControlBox/ControlFrameBuilder.swift` | `gestureOwner` / `gestureActive` / `gestureX` / `gestureY` from the MX snapshot |
 | `Packages/ControlBoxCore/.../MappingProfile.swift` | `pointerSpeedFactor`, `gestureSpeedFactor`, haptic-only `mxGestureOwners` |

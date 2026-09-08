@@ -275,7 +275,7 @@ struct CalibrationWindow: View {
                         .frame(width: 360)
                 }
             } else if monitor.selectedKind.isMXMaster {
-                MXMasterCalibrationView(snapshot: monitor.mxMasterSnapshot)
+                MXMasterCalibrationView(monitor: monitor)
             } else if monitor.selectedKind.isMXKeyboard {
                 ContentUnavailableView(
                     "No calibration for this keyboard",

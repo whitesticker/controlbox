@@ -27,7 +27,8 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [x] MX4 Side button CID `0x00C3` (not the 3S gesture; divert `0x03`). See [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md).
 - [x] MX4 left / right / wheel in Calibration (report `0x02` + one shared click tap). See [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md).
 - [x] Focused Control Box does not inject (including system-nav gestures). See [focused-host-still-injects.md](focused-host-still-injects.md).
-- [x] Wheel / thumb remappable per direction; `.scroll` keeps native.
+- [x] Main wheel stays native vertical scroll; thumb wheel uses one delta-driven mode and old direction bindings migrate. See [mx-wheel-modes.md](mx-wheel-modes.md).
+- [x] Main wheel must not pulse the thumb mapping (dominant axis + HID++ thumb). See [mx-wheel-fires-thumb.md](mx-wheel-fires-thumb.md).
 
 
 
@@ -48,7 +49,7 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
-- [ ] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md). Product item in [roadmap.md](roadmap.md).
+- [x] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 
 
 
@@ -65,7 +66,7 @@ Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as
 - [x] **One HID++ pipe, two addresses** — BLE = nested `0xFF43` on the mouse; Bolt = slot on `C548`. Same catalog pipe; readers do not open the dongle.
 - [ ] **Detect Options+ / LogiPluginService** — say so up front, not only after HID++ timeout.
 - [ ] **Software-ID lease on a shared dongle** — required when two sessions share `C548`.
-- [ ] **Per-app mouse profiles** — design in [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+- [x] **Per-app mouse profiles** — MX device page **profile tiles**; live mapping follows the frontmost app. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 - [ ] **SmartShift as a wheel setting** — firmware `0x2111`, not only remapping the Mode Shift button.
 - [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
 - [ ] **Smooth-scroll animation** — keep hi-res firmware; add a short pixel ease off the tap callback so notches feel closer to a trackpad.
@@ -81,4 +82,4 @@ Unsigned Debug compile on GitHub Actions plus hard-constraint greps. One job is 
 - [ ] **Release configuration** — CI is Debug-only today; add a Release build so shipping flags get compiled too.
 - [ ] **Pin Xcode** — lock the runner image / Xcode version so a silent GitHub image bump does not fail `main` overnight.
 
-Product-facing work (mic, live gesture HUD, MX Keys remapping, Caps Lock modifier, window management, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, per-app mouse profiles, product page) lives in [roadmap.md](roadmap.md). MX Mechanical settings and MX4 Side are shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys remapping, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, product page) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, and per-app mouse profiles are shipped. Media skip / play / mute already show an action HUD.
