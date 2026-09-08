@@ -178,7 +178,118 @@ private struct RemoteKey: View {
     }
 }
 
-struct AppleTVSidebar: View {
+struct AppleTVCalibrationLayout: View {
+    let snapshot: AppleTVRemoteSnapshot
+
+    var body: some View {
+        GeometryReader { geo in
+            let middleTopHeight = max(220, (geo.size.height - 14) * 0.57)
+            HStack(alignment: .top, spacing: 14) {
+                CalibrationCard(title: "Button press mapping") {
+                    AppleTVRemoteView(snapshot: snapshot)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                VStack(spacing: 14) {
+                    CalibrationCard(title: "Gesture capture") {
+                        AppleTVGestureCaptureContent(snapshot: snapshot)
+                    }
+                    .frame(height: middleTopHeight)
+
+                    CalibrationCard(title: "Click history") {
+                        CalibrationInputHistory(
+                            events: snapshot.events,
+                            emptyText: "Press buttons, swipe the pad, or circle the ring"
+                        )
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                CalibrationCard(title: "Live clicks") {
+                    AppleTVLiveClicksContent(snapshot: snapshot)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+}
+
+private struct AppleTVGestureCaptureContent: View {
+    let snapshot: AppleTVRemoteSnapshot
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        snapshot.touchActive || snapshot.wheelActive
+                            ? Palette.accent.opacity(0.12)
+                            : Palette.fill(colorScheme)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(
+                                snapshot.touchActive || snapshot.wheelActive
+                                    ? Palette.accent.opacity(0.72)
+                                    : Palette.hairline(colorScheme),
+                                lineWidth: 1
+                            )
+                    }
+
+                Circle()
+                    .stroke(
+                        snapshot.wheelActive
+                            ? Palette.accent
+                            : Palette.hairline(colorScheme).opacity(0.7),
+                        style: StrokeStyle(lineWidth: 5, dash: [4, 5])
+                    )
+                    .frame(
+                        width: min(geo.size.width, geo.size.height) * 0.56,
+                        height: min(geo.size.width, geo.size.height) * 0.56
+                    )
+                    .rotationEffect(.degrees(snapshot.wheelAccumulated))
+
+                Circle()
+                    .fill(Palette.accent)
+                    .frame(width: 24, height: 24)
+                    .position(
+                        x: 28 + CGFloat(snapshot.touchX) * max(0, geo.size.width - 56),
+                        y: 28 + CGFloat(snapshot.touchY) * max(0, geo.size.height - 56)
+                    )
+                    .opacity(snapshot.touchActive ? 1 : 0)
+
+                VStack {
+                    Text("CLICKPAD / CLICK WHEEL")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                        .padding(.top, 14)
+                    Spacer()
+                    Text(caption)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(
+                            snapshot.touchActive || snapshot.wheelActive
+                                ? Palette.accent
+                                : Palette.secondaryText(colorScheme)
+                        )
+                        .padding(.bottom, 14)
+                }
+            }
+        }
+    }
+
+    private var caption: String {
+        if snapshot.wheelActive {
+            return String(format: "Ring %+.1f°", snapshot.wheelDegrees)
+        }
+        if snapshot.touchActive { return "Touch active" }
+        return snapshot.touchAvailable ? "Swipe the clickpad" : "Waiting for touch"
+    }
+}
+
+private struct AppleTVLiveClicksContent: View {
     let snapshot: AppleTVRemoteSnapshot
     @Environment(\.colorScheme) private var colorScheme
 
@@ -262,29 +373,6 @@ struct AppleTVSidebar: View {
                     row("Down", snapshot.clickDown)
                     row("Left", snapshot.clickLeft)
                     row("Right", snapshot.clickRight)
-                }
-                panel("Recent inputs") {
-                    if snapshot.events.isEmpty {
-                        Text("Press buttons, swipe the pad, or circle the ring")
-                            .font(.system(size: 12, design: .rounded))
-                            .foregroundStyle(Palette.secondaryText(colorScheme))
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(snapshot.events) { event in
-                                HStack(spacing: 8) {
-                                    Text(event.pressed ? "↓" : "↑")
-                                        .foregroundStyle(event.pressed ? Palette.good : Palette.secondaryText(colorScheme))
-                                        .frame(width: 12)
-                                    Text(event.label)
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                    Spacer()
-                                    Text(event.date, style: .time)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

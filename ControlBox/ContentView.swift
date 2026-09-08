@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -11,6 +12,7 @@ struct ContentView: View {
     @Bindable var capsLockCatalog: CapsLockCatalog
     @Bindable var boltCatalog: LogiBoltCatalog
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismissWindow) private var dismissWindow
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
 
@@ -142,6 +144,14 @@ struct ContentView: View {
             PaneNavigation.pending = .systemMonitor
             applyPendingPane()
         }
+        .onChange(of: selection) { oldSelection, newSelection in
+            guard oldSelection != newSelection,
+                  case .device(let deviceID) = oldSelection
+            else {
+                return
+            }
+            dismissWindow(id: "calibration", value: deviceID)
+        }
     }
 
     private func applyPendingPane() {
@@ -246,6 +256,7 @@ private struct SidebarTypeHeader: View {
 
 struct CalibrationWindow: View {
     @Bindable var monitor: DualSenseMonitor
+    let deviceID: String
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -266,17 +277,12 @@ struct CalibrationWindow: View {
                     .foregroundStyle(.secondary)
             }
 
-            if monitor.selectedKind == .appleTVRemote {
+            if deviceKind == .appleTVRemote {
                 AppleTVHeaderBar(snapshot: monitor.appleTVSnapshot)
-                HStack(alignment: .top, spacing: 18) {
-                    AppleTVRemoteView(snapshot: monitor.appleTVSnapshot)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    AppleTVSidebar(snapshot: monitor.appleTVSnapshot)
-                        .frame(width: 360)
-                }
-            } else if monitor.selectedKind.isMXMaster {
-                MXMasterCalibrationView(monitor: monitor)
-            } else if monitor.selectedKind.isMXKeyboard {
+                AppleTVCalibrationLayout(snapshot: monitor.appleTVSnapshot)
+            } else if deviceKind.isMXMaster {
+                MXMasterCalibrationView(monitor: monitor, deviceID: deviceID)
+            } else if deviceKind.isMXKeyboard {
                 ContentUnavailableView(
                     "No calibration for this keyboard",
                     systemImage: "keyboard",
@@ -284,42 +290,221 @@ struct CalibrationWindow: View {
                 )
             } else {
                 HeaderBar(snapshot: monitor.snapshot)
-                HStack(alignment: .top, spacing: 18) {
-                    ControllerDiagramView(snapshot: monitor.snapshot)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    CaptureSidebar(monitor: monitor)
-                        .frame(width: 360)
-                }
-                MicrophoneStatusView(
-                    dualSenseAudioPresent: monitor.dualSenseAudioPresent,
-                    audioInputs: monitor.audioInputs
-                )
+                ControllerCalibrationLayout(monitor: monitor, deviceID: deviceID)
             }
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.background(colorScheme))
-        .navigationTitle("Calibration")
+        .navigationTitle("Calibration — \(deviceDisplayName)")
+        .onAppear {
+            monitor.registerCalibrationWindow(for: deviceID)
+            DispatchQueue.main.async {
+                monitor.calibrationWindowFocused = isCalibrationWindow(NSApp.keyWindow)
+            }
+        }
+        .onDisappear {
+            monitor.unregisterCalibrationWindow(for: deviceID)
+            monitor.calibrationWindowFocused = isCalibrationWindow(NSApp.keyWindow)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            monitor.calibrationWindowFocused = isCalibrationWindow(notification.object as? NSWindow)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
+            if isCalibrationWindow(notification.object as? NSWindow) {
+                monitor.calibrationWindowFocused = false
+            }
+        }
+    }
+
+    private var deviceKind: DeviceKind {
+        monitor.deviceRecord(for: deviceID)?.kind ?? .unsupported
+    }
+
+    private var deviceDisplayName: String {
+        monitor.deviceRecord(for: deviceID)?.displayName ?? "Device"
     }
 
     private var isLive: Bool {
-        if monitor.selectedKind == .appleTVRemote {
+        if deviceKind == .appleTVRemote {
             return monitor.appleTVSnapshot.connected
         }
-        if monitor.selectedKind.isMXMaster {
-            return monitor.isLiveMXSelection()
+        if deviceKind.isMXMaster {
+            return monitor.mxSnapshot(for: deviceID).connected
         }
-        if monitor.selectedKind.isMXKeyboard {
-            return monitor.isLiveKeyboardSelection()
+        if deviceKind.isMXKeyboard {
+            return false
         }
         return monitor.snapshot.connected
     }
 
     private var subtitle: String {
-        if let name = monitor.selectedRecord?.name {
-            return "Live capture for \(name)"
+        "Live capture for \(deviceDisplayName)"
+    }
+
+    private func isCalibrationWindow(_ window: NSWindow?) -> Bool {
+        window?.title.hasPrefix("Calibration") == true
+    }
+}
+
+private struct ControllerCalibrationLayout: View {
+    @Bindable var monitor: DualSenseMonitor
+    let deviceID: String
+
+    private var snapshot: DualSenseSnapshot { monitor.snapshot }
+
+    var body: some View {
+        GeometryReader { geo in
+            let middleTopHeight = max(220, (geo.size.height - 14) * 0.57)
+            HStack(alignment: .top, spacing: 14) {
+                CalibrationCard(title: "Button press mapping") {
+                    ControllerDiagramView(snapshot: snapshot)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if snapshot.isDualSense {
+                    VStack(spacing: 14) {
+                        CalibrationCard(title: "Gesture capture") {
+                            DualSenseGestureCaptureContent(snapshot: snapshot)
+                        }
+                        .frame(height: middleTopHeight)
+
+                        CalibrationCard(title: "Click history") {
+                            CalibrationInputHistory(
+                                events: snapshot.events,
+                                emptyText: "Press buttons, move sticks, or use the touchpad"
+                            )
+                        }
+                        .frame(maxHeight: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    CalibrationCard(title: "Click history") {
+                        CalibrationInputHistory(
+                            events: snapshot.events,
+                            emptyText: "Press buttons or move the sticks"
+                        )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                CalibrationCard(title: "Live clicks") {
+                    ControllerLiveClicksContent(monitor: monitor, deviceID: deviceID)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        return "Live capture for the selected device"
+    }
+}
+
+private struct DualSenseGestureCaptureContent: View {
+    let snapshot: DualSenseSnapshot
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Palette.fill(colorScheme))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+                    }
+
+                Path { path in
+                    path.move(to: CGPoint(x: geo.size.width / 2, y: 28))
+                    path.addLine(to: CGPoint(x: geo.size.width / 2, y: geo.size.height - 28))
+                    path.move(to: CGPoint(x: 28, y: geo.size.height / 2))
+                    path.addLine(to: CGPoint(x: geo.size.width - 28, y: geo.size.height / 2))
+                }
+                .stroke(
+                    Palette.hairline(colorScheme).opacity(0.7),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 5])
+                )
+
+                finger(snapshot.touch1, number: 1, in: geo.size)
+                finger(snapshot.touch2, number: 2, in: geo.size)
+
+                VStack {
+                    Text("DUALSENSE TOUCHPAD")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                        .padding(.top, 14)
+                    Spacer()
+                    Text(gestureCaption)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(
+                            snapshot.touch1.active || snapshot.touch2.active
+                                ? Palette.accent
+                                : Palette.secondaryText(colorScheme)
+                        )
+                        .padding(.bottom, 14)
+                }
+            }
+        }
+    }
+
+    private func finger(_ finger: TouchFinger, number: Int, in size: CGSize) -> some View {
+        Circle()
+            .fill(Palette.accent)
+            .overlay {
+                Text("\(number)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 26, height: 26)
+            .position(
+                x: 28 + CGFloat(finger.x) * max(0, size.width - 56),
+                y: 28 + CGFloat(finger.y) * max(0, size.height - 56)
+            )
+            .opacity(finger.active ? 1 : 0)
+            .animation(.easeOut(duration: 0.08), value: finger.active)
+    }
+
+    private var gestureCaption: String {
+        if snapshot.touch2.active { return "2-finger gesture" }
+        if snapshot.touch1.active { return "1-finger gesture" }
+        return "Swipe the touchpad"
+    }
+}
+
+struct CalibrationInputHistory: View {
+    let events: [InputLogEvent]
+    let emptyText: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 7) {
+                if events.isEmpty {
+                    Text(emptyText)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                } else {
+                    ForEach(events) { event in
+                        HStack(spacing: 8) {
+                            Text(event.pressed ? "↓" : "↑")
+                                .foregroundStyle(
+                                    event.pressed
+                                        ? Palette.good
+                                        : Palette.secondaryText(colorScheme)
+                                )
+                                .frame(width: 12)
+                            Text(event.label)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                            Spacer()
+                            Text(event.date, style: .time)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Palette.secondaryText(colorScheme))
+                        }
+                        if event.id != events.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -482,79 +667,54 @@ private struct StatusChip: View {
     }
 }
 
-private struct CaptureSidebar: View {
+private struct ControllerLiveClicksContent: View {
     @Bindable var monitor: DualSenseMonitor
+    let deviceID: String
     @Environment(\.colorScheme) private var colorScheme
 
     private var snapshot: DualSenseSnapshot { monitor.snapshot }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Panel(title: "Analog") {
-                ValueRow(label: "Left stick", value: format(snapshot.leftStick))
-                ValueRow(label: "Right stick", value: format(snapshot.rightStick))
-                ValueRow(label: "L2", value: String(format: "%.3f", snapshot.l2))
-                ValueRow(label: "R2", value: String(format: "%.3f", snapshot.r2))
-            }
-
-            Panel(title: "Triggers") {
-                SettingsSlider(
-                    "Tab repeat",
-                    value: tabRepeatBinding,
-                    in: 0.10...0.55,
-                    valueText: "\(Int(((monitor.selectedRecord?.mxDefaultProfile.resolvedTabRepeatInterval ?? 0.22) * 1000).rounded())) ms"
-                )
-                Text("One setting for this gamepad across every app profile.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-            }
-
-            Panel(title: "Touchpad") {
-                ValueRow(label: "Click", value: snapshot.touchpadClick ? "down" : "up")
-                ValueRow(label: "Finger 1", value: format(snapshot.touch1))
-                ValueRow(label: "Finger 2", value: format(snapshot.touch2))
-                Text("Hardware limit: 2 fingers at once")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-            }
-
-            Panel(title: "Motion") {
-                if snapshot.hasMotion {
-                    ValueRow(label: "Gravity", value: format(snapshot.gravity))
-                    ValueRow(label: "Accel", value: format(snapshot.userAcceleration))
-                    ValueRow(label: "Gyro", value: format(snapshot.rotationRate))
-                } else {
-                    Text("No IMU data")
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                        .font(.system(size: 12, design: .rounded))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Panel(title: "Analog") {
+                    ValueRow(label: "Left stick", value: format(snapshot.leftStick))
+                    ValueRow(label: "Right stick", value: format(snapshot.rightStick))
+                    ValueRow(label: "L2", value: String(format: "%.3f", snapshot.l2))
+                    ValueRow(label: "R2", value: String(format: "%.3f", snapshot.r2))
                 }
-            }
 
-            Panel(title: "Recent inputs") {
-                if snapshot.events.isEmpty {
-                    Text("Press buttons, move sticks, or use the touchpad")
+                Panel(title: "Triggers") {
+                    SettingsSlider(
+                        "Tab repeat",
+                        value: tabRepeatBinding,
+                        in: 0.10...0.55,
+                        valueText: "\(Int(((monitor.selectedRecord?.mxDefaultProfile.resolvedTabRepeatInterval ?? 0.22) * 1000).rounded())) ms"
+                    )
+                    Text("One setting for this gamepad across every app profile.")
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Palette.secondaryText(colorScheme))
-                        .font(.system(size: 12, design: .rounded))
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(snapshot.events) { event in
-                                HStack(spacing: 8) {
-                                    Text(event.pressed ? "↓" : "↑")
-                                        .foregroundStyle(event.pressed ? Palette.good : Palette.secondaryText(colorScheme))
-                                        .frame(width: 12)
-                                    Text(event.label)
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Palette.primaryText(colorScheme))
-                                    Spacer()
-                                    Text(event.date, style: .time)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                                }
-                            }
-                        }
+                }
+
+                Panel(title: "Touchpad") {
+                    ValueRow(label: "Click", value: snapshot.touchpadClick ? "down" : "up")
+                    ValueRow(label: "Finger 1", value: format(snapshot.touch1))
+                    ValueRow(label: "Finger 2", value: format(snapshot.touch2))
+                    Text("Hardware limit: 2 fingers at once")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
+
+                Panel(title: "Motion") {
+                    if snapshot.hasMotion {
+                        ValueRow(label: "Gravity", value: format(snapshot.gravity))
+                        ValueRow(label: "Accel", value: format(snapshot.userAcceleration))
+                        ValueRow(label: "Gyro", value: format(snapshot.rotationRate))
+                    } else {
+                        Text("No IMU data")
+                            .foregroundStyle(Palette.secondaryText(colorScheme))
+                            .font(.system(size: 12, design: .rounded))
                     }
-                    .frame(minHeight: 140)
                 }
             }
         }
@@ -562,8 +722,12 @@ private struct CaptureSidebar: View {
 
     private var tabRepeatBinding: Binding<Double> {
         Binding(
-            get: { monitor.selectedRecord?.mxDefaultProfile.resolvedTabRepeatInterval ?? 0.22 },
-            set: { monitor.setTabRepeatInterval($0) }
+            get: {
+                monitor.deviceRecord(for: deviceID)?
+                    .mxDefaultProfile
+                    .resolvedTabRepeatInterval ?? 0.22
+            },
+            set: { monitor.setTabRepeatInterval($0, for: deviceID) }
         )
     }
 

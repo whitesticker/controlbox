@@ -3,9 +3,10 @@ import SwiftUI
 
 struct MXMasterCalibrationView: View {
     @Bindable var monitor: DualSenseMonitor
+    let deviceID: String
     @Environment(\.colorScheme) private var colorScheme
 
-    private var snapshot: MXMasterSnapshot { monitor.mxMasterSnapshot }
+    private var snapshot: MXMasterSnapshot { monitor.mxSnapshot(for: deviceID) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -36,27 +37,38 @@ struct MXMasterCalibrationView: View {
                 )
             }
 
-            HStack(alignment: .top, spacing: 18) {
-                GeometryReader { geo in
-                    let mouseH = min(geo.size.height * 0.92, 520)
-                    let mouseW = mouseH * 0.62
-                    let padH = mouseH * 0.86
-                    let padW = padH * 0.82
-                    HStack(alignment: .center, spacing: 36) {
-                        MXMasterMouseView(snapshot: snapshot)
-                            .frame(width: mouseW, height: mouseH)
-                        GestureSwipeStage(snapshot: snapshot)
-                            .frame(width: padW, height: padH)
+            GeometryReader { geo in
+                let middleTopHeight = max(240, (geo.size.height - 14) * 0.57)
+                HStack(alignment: .top, spacing: 14) {
+                    CalibrationCard(title: "Button press mapping") {
+                        GeometryReader { cardGeo in
+                            let mouseH = min(cardGeo.size.height * 0.94, cardGeo.size.width / 0.62)
+                            MXMasterMouseView(snapshot: snapshot)
+                                .frame(width: mouseH * 0.62, height: mouseH)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    VStack(spacing: 14) {
+                        CalibrationCard(title: "Haptic capture") {
+                            GestureSwipeStage(snapshot: snapshot)
+                                .padding(2)
+                        }
+                        .frame(height: middleTopHeight)
+
+                        CalibrationCard(title: "Click history") {
+                            MXButtonPressHistoryContent(snapshot: snapshot)
+                        }
+                        .frame(maxHeight: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    CalibrationCard(title: "Live clicks") {
+                        MXLiveClicksContent(snapshot: snapshot)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Palette.surface(colorScheme))
-                )
-                MXMasterSidebar(monitor: monitor)
-                    .frame(width: 360)
             }
         }
     }
@@ -67,6 +79,161 @@ struct MXMasterCalibrationView: View {
             return snapshot.liveGesture?.title ?? "\(snapshot.kind.mxGestureControlTitle) held"
         }
         return "Connected"
+    }
+}
+
+struct CalibrationCard<Content: View>: View {
+    let title: String
+    @Environment(\.colorScheme) private var colorScheme
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(Palette.secondaryText(colorScheme))
+                .tracking(0.8)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(14)
+        .background(
+            Palette.surface(colorScheme),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
+    }
+}
+
+private struct MXLiveClicksContent: View {
+    let snapshot: MXMasterSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            MXCalibrationGroup(title: "Main buttons") {
+                MXValueRow(label: "Left", value: state(snapshot.left))
+                MXValueRow(label: "Right", value: state(snapshot.right))
+                MXValueRow(label: "Middle", value: state(snapshot.middle))
+                MXValueRow(label: "Mode shift", value: state(snapshot.smartShift))
+            }
+
+            MXCalibrationGroup(title: "Scroll wheel") {
+                MXValueRow(label: "Up", value: state(snapshot.wheelUp))
+                MXValueRow(label: "Down", value: state(snapshot.wheelDown))
+            }
+
+            MXCalibrationGroup(title: "Thumb wheel") {
+                MXValueRow(label: "Left", value: state(snapshot.thumbLeft))
+                MXValueRow(label: "Right", value: state(snapshot.thumbRight))
+            }
+
+            MXCalibrationGroup(title: "Thumb buttons") {
+                if !snapshot.kind.isMXMaster3Family {
+                    MXValueRow(label: "Side", value: state(snapshot.side))
+                }
+                MXValueRow(label: "Back", value: state(snapshot.back))
+                MXValueRow(label: "Forward", value: state(snapshot.forward))
+                MXValueRow(
+                    label: snapshot.kind.mxGestureControlTitle,
+                    value: state(snapshot.haptic || snapshot.gestureDown)
+                )
+                ForEach(snapshot.extras) { extra in
+                    MXValueRow(label: extra.title, value: state(extra.down))
+                }
+            }
+
+            MXCalibrationGroup(
+                title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture"
+            ) {
+                MXValueRow(
+                    label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad",
+                    value: state(snapshot.haptic || snapshot.gestureDown)
+                )
+                MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
+                MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
+                MXValueRow(
+                    label: "Delta",
+                    value: String(
+                        format: "%+.0f, %+.0f",
+                        snapshot.gestureDX,
+                        snapshot.gestureDY
+                    )
+                )
+            }
+        }
+    }
+
+    private func state(_ pressed: Bool) -> String {
+        pressed ? "down" : "up"
+    }
+}
+
+private struct MXButtonPressHistoryContent: View {
+    let snapshot: MXMasterSnapshot
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if snapshot.events.isEmpty {
+                    Text("Click, scroll, or hold the gesture button")
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                        .font(.system(size: 12, design: .rounded))
+                } else {
+                    ForEach(snapshot.events) { event in
+                        HStack(spacing: 8) {
+                            Text(event.pressed ? "↓" : "↑")
+                                .foregroundStyle(
+                                    event.pressed
+                                        ? Palette.good
+                                        : Palette.secondaryText(colorScheme)
+                                )
+                                .frame(width: 12)
+                            Text(event.label)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                            Spacer()
+                            Text(event.date, style: .time)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Palette.secondaryText(colorScheme))
+                        }
+                        if event.id != snapshot.events.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+
+                Divider()
+                    .padding(.vertical, 4)
+
+                MXCalibrationGroup(title: "HID++") {
+                    MXValueRow(label: "Last event", value: snapshot.lastHIDEvent)
+                    Text(snapshot.status)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+}
+
+private struct MXCalibrationGroup<Content: View>: View {
+    let title: String
+    @Environment(\.colorScheme) private var colorScheme
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(Palette.secondaryText(colorScheme))
+                .tracking(0.6)
+            content
+        }
     }
 }
 
@@ -455,7 +622,38 @@ private struct GestureSwipeStage: View {
     }
 }
 
-private struct MXMasterSidebar: View {
+struct MXMouseSettingsWindow: View {
+    @Bindable var monitor: DualSenseMonitor
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("On This Mouse")
+                    .font(.largeTitle.weight(.bold))
+                Text(monitor.selectedRecord?.displayName ?? "MX Master")
+                    .foregroundStyle(.secondary)
+            }
+
+            if monitor.selectedKind.isMXMaster {
+                CalibrationCard(title: "Mouse settings") {
+                    MXMouseSettingsContent(monitor: monitor)
+                }
+            } else {
+                ContentUnavailableView(
+                    "Select an MX Master",
+                    systemImage: "computermouse",
+                    description: Text("Choose an MX Master in the sidebar to view its settings.")
+                )
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.background(colorScheme))
+    }
+}
+
+private struct MXMouseSettingsContent: View {
     @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
 
@@ -463,103 +661,29 @@ private struct MXMasterSidebar: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                MXPanel(title: "On this mouse") {
-                    dpiSlider
-                    Text("Written to the sensor over HID++. Pointer speed stays the same.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                    ratchetPicker
-                    ratchetSensitivitySlider
-                    Text("Free Spin and Ratchet are written to this mouse. Sensitivity only applies in Ratchet.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                    thumbWheelSlider
-                    Text("Scales HID++ thumb-wheel travel. Pointer & Scroll wheel speed stays on the main wheel.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                    Toggle("Invert thumb wheel", isOn: thumbInvertBinding)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                    Text("Written to this mouse. Does not change the main wheel or the trackpad.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                }
-                MXPanel(title: "Clicks") {
-                    MXValueRow(label: "Left", value: down(snapshot.left))
-                    MXValueRow(label: "Right", value: down(snapshot.right))
-                    MXValueRow(label: "Middle", value: down(snapshot.middle))
-                }
-                MXPanel(title: "Scroll wheel") {
-                    MXValueRow(label: "Up", value: down(snapshot.wheelUp))
-                    MXValueRow(label: "Down", value: down(snapshot.wheelDown))
-                }
-                MXPanel(title: "Thumb wheel") {
-                    MXValueRow(label: "Left", value: down(snapshot.thumbLeft))
-                    MXValueRow(label: "Right", value: down(snapshot.thumbRight))
-                }
-                MXPanel(title: "Thumb") {
-                    if !snapshot.kind.isMXMaster3Family {
-                        MXValueRow(label: "Side", value: down(snapshot.side))
-                    }
-                    MXValueRow(label: "Back", value: down(snapshot.back))
-                    MXValueRow(label: "Forward", value: down(snapshot.forward))
-                    MXValueRow(label: "Mode shift", value: down(snapshot.smartShift))
-                    MXValueRow(label: snapshot.kind.mxGestureControlTitle, value: down(snapshot.haptic))
-                    ForEach(snapshot.extras) { extra in
-                        MXValueRow(label: extra.title, value: down(extra.down))
-                    }
-                }
-                MXPanel(title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture") {
-                    MXValueRow(
-                        label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad",
-                        value: down(snapshot.haptic || snapshot.gestureDown)
-                    )
-                    MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
-                    MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
-                    MXValueRow(
-                        label: "Delta",
-                        value: String(format: "%+.0f, %+.0f", snapshot.gestureDX, snapshot.gestureDY)
-                    )
-                    Text(snapshot.kind.isMXMaster3Family
-                         ? "Gesture means: hold the thumb gesture button and move the mouse. A tap without moving is Click. Quit Logi Options+ first."
-                         : "Gesture means: press the haptic thumb pad, keep it held, and move the mouse. A tap without moving is Haptic. Quit Logi Options+ first.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                }
-                MXPanel(title: "HID++") {
-                    MXValueRow(label: "Last event", value: snapshot.lastHIDEvent)
-                    Text(snapshot.status)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
-                        .textSelection(.enabled)
-                }
-                MXPanel(title: "Recent inputs") {
-                    if snapshot.events.isEmpty {
-                        Text("Click, scroll, or hold the gesture button")
-                            .foregroundStyle(Palette.secondaryText(colorScheme))
-                            .font(.system(size: 12, design: .rounded))
-                    } else {
-                        ForEach(snapshot.events) { event in
-                            HStack(spacing: 8) {
-                                Text(event.pressed ? "↓" : "↑")
-                                    .foregroundStyle(event.pressed ? Palette.good : Palette.secondaryText(colorScheme))
-                                    .frame(width: 12)
-                                Text(event.label)
-                                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                                Spacer()
-                                Text(event.date, style: .time)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(Palette.secondaryText(colorScheme))
-                            }
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 10) {
+                dpiSlider
+                Text("Written to the sensor over HID++. Pointer speed stays the same.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
+                Divider()
+                ratchetPicker
+                ratchetSensitivitySlider
+                Text("Free Spin and Ratchet are written to this mouse. Sensitivity only applies in Ratchet.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
+                Divider()
+                thumbWheelSlider
+                Text("Scales HID++ thumb-wheel travel. Pointer & Scroll wheel speed stays on the main wheel.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
+                Toggle("Invert thumb wheel", isOn: thumbInvertBinding)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Text("Written to this mouse. Does not change the main wheel or the trackpad.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
             }
         }
-    }
-
-    private func down(_ pressed: Bool) -> String {
-        pressed ? "down" : "up"
     }
 
     private var dpiLevels: [Int] {
@@ -679,29 +803,6 @@ private struct MXChip: View {
             .padding(.vertical, 6)
             .background(tint.opacity(colorScheme == .dark ? 0.22 : 0.16), in: Capsule())
             .foregroundStyle(colorScheme == .dark ? .white : tint)
-    }
-}
-
-private struct MXPanel<Content: View>: View {
-    let title: String
-    @Environment(\.colorScheme) private var colorScheme
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Palette.secondaryText(colorScheme))
-                .tracking(0.8)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .leading, spacing: 6) {
-                content
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.surface(colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
     }
 }
 

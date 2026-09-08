@@ -24,6 +24,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var sensorDPI: Int?
     public var smoothScrolling: Bool?
     public var gestureSets: [DeviceButton: GestureSet]?
+    public var customGestureSets: [DeviceButton: [NamedGestureSet]]?
+    public var selectedCustomGestureSetIDs: [DeviceButton: String]?
     public var dualSenseTabRepeatInterval: Double?
     public var windowMoveEnabled: Bool?
     public var windowResizeEnabled: Bool?
@@ -133,6 +135,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         sensorDPI: Int? = nil,
         smoothScrolling: Bool? = true,
         gestureSets: [DeviceButton: GestureSet]? = nil,
+        customGestureSets: [DeviceButton: [NamedGestureSet]]? = nil,
+        selectedCustomGestureSetIDs: [DeviceButton: String]? = nil,
         dualSenseTabRepeatInterval: Double? = nil,
         windowMoveEnabled: Bool? = nil,
         windowResizeEnabled: Bool? = nil,
@@ -177,6 +181,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.sensorDPI = sensorDPI
         self.smoothScrolling = smoothScrolling
         self.gestureSets = gestureSets
+        self.customGestureSets = customGestureSets
+        self.selectedCustomGestureSetIDs = selectedCustomGestureSetIDs
         self.dualSenseTabRepeatInterval = dualSenseTabRepeatInterval
         self.windowMoveEnabled = windowMoveEnabled
         self.windowResizeEnabled = windowResizeEnabled
@@ -372,6 +378,158 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         gestureSets = sets
     }
 
+    public func namedCustomGestureSets(for button: DeviceButton) -> [NamedGestureSet] {
+        if let saved = customGestureSets?[button], !saved.isEmpty {
+            return saved
+        }
+        guard let active = gestureSet(for: button), active.preset == .custom else {
+            return []
+        }
+        return [
+            NamedGestureSet(
+                id: Self.legacyCustomGestureSetID(for: button),
+                name: "Custom 1",
+                set: active
+            )
+        ]
+    }
+
+    public func selectedNamedCustomGestureSetID(for button: DeviceButton) -> String? {
+        let sets = namedCustomGestureSets(for: button)
+        if let selected = selectedCustomGestureSetIDs?[button],
+           sets.contains(where: { $0.id == selected }) {
+            return selected
+        }
+        return sets.first?.id
+    }
+
+    public mutating func selectGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
+        guard button.canOwnGestures else { return }
+        persistActiveCustomGestureSet(for: button)
+        guard preset == .custom else {
+            setGestureSet(.named(preset), for: button)
+            return
+        }
+
+        var sets = materializedCustomGestureSets(for: button)
+        if sets.isEmpty {
+            _ = addNamedCustomGestureSet(for: button)
+            return
+        }
+        let selectedID = selectedCustomGestureSetIDs?[button] ?? sets[0].id
+        let selected = sets.first(where: { $0.id == selectedID }) ?? sets[0]
+        var active = selected.set
+        active.preset = .custom
+        var selectedIDs = selectedCustomGestureSetIDs ?? [:]
+        selectedIDs[button] = selected.id
+        selectedCustomGestureSetIDs = selectedIDs
+        setGestureSet(active, for: button)
+    }
+
+    @discardableResult
+    public mutating func addNamedCustomGestureSet(for button: DeviceButton) -> NamedGestureSet {
+        var sets = materializedCustomGestureSets(for: button)
+        let usedNames = Set(sets.map(\.name))
+        var number = sets.count + 1
+        while usedNames.contains("Custom \(number)") {
+            number += 1
+        }
+        let named = NamedGestureSet(name: "Custom \(number)")
+        sets.append(named)
+        var libraries = customGestureSets ?? [:]
+        libraries[button] = sets
+        customGestureSets = libraries
+        var selectedIDs = selectedCustomGestureSetIDs ?? [:]
+        selectedIDs[button] = named.id
+        selectedCustomGestureSetIDs = selectedIDs
+        setGestureSet(named.set, for: button)
+        return named
+    }
+
+    public mutating func selectNamedCustomGestureSet(_ id: String, for button: DeviceButton) {
+        persistActiveCustomGestureSet(for: button)
+        let sets = materializedCustomGestureSets(for: button)
+        guard let selected = sets.first(where: { $0.id == id }) else { return }
+        var active = selected.set
+        active.preset = .custom
+        var selectedIDs = selectedCustomGestureSetIDs ?? [:]
+        selectedIDs[button] = id
+        selectedCustomGestureSetIDs = selectedIDs
+        setGestureSet(active, for: button)
+    }
+
+    public mutating func deleteNamedCustomGestureSet(_ id: String, for button: DeviceButton) {
+        persistActiveCustomGestureSet(for: button)
+        var sets = materializedCustomGestureSets(for: button)
+        guard let removedIndex = sets.firstIndex(where: { $0.id == id }) else { return }
+        let selectedID = selectedNamedCustomGestureSetID(for: button)
+        sets.remove(at: removedIndex)
+
+        var libraries = customGestureSets ?? [:]
+        var selectedIDs = selectedCustomGestureSetIDs ?? [:]
+        if sets.isEmpty {
+            libraries[button] = nil
+            selectedIDs[button] = nil
+            customGestureSets = libraries.isEmpty ? nil : libraries
+            selectedCustomGestureSetIDs = selectedIDs.isEmpty ? nil : selectedIDs
+            setGestureSet(.named(.windowNavigation), for: button)
+            return
+        }
+
+        libraries[button] = sets
+        customGestureSets = libraries
+        let nextID: String
+        if selectedID == id {
+            nextID = sets[min(removedIndex, sets.count - 1)].id
+        } else if let selectedID, sets.contains(where: { $0.id == selectedID }) {
+            nextID = selectedID
+        } else {
+            nextID = sets[0].id
+        }
+        selectedIDs[button] = nextID
+        selectedCustomGestureSetIDs = selectedIDs
+        if selectedID == id, let next = sets.first(where: { $0.id == nextID }) {
+            var active = next.set
+            active.preset = .custom
+            setGestureSet(active, for: button)
+        }
+    }
+
+    private mutating func materializedCustomGestureSets(
+        for button: DeviceButton
+    ) -> [NamedGestureSet] {
+        if let saved = customGestureSets?[button], !saved.isEmpty {
+            return saved
+        }
+        let migrated = namedCustomGestureSets(for: button)
+        if !migrated.isEmpty {
+            var libraries = customGestureSets ?? [:]
+            libraries[button] = migrated
+            customGestureSets = libraries
+            var selectedIDs = selectedCustomGestureSetIDs ?? [:]
+            selectedIDs[button] = migrated[0].id
+            selectedCustomGestureSetIDs = selectedIDs
+        }
+        return migrated
+    }
+
+    private mutating func persistActiveCustomGestureSet(for button: DeviceButton) {
+        guard var active = gestureSet(for: button), active.preset == .custom else { return }
+        active.preset = .custom
+        var sets = materializedCustomGestureSets(for: button)
+        guard !sets.isEmpty else { return }
+        let selectedID = selectedCustomGestureSetIDs?[button] ?? sets[0].id
+        guard let index = sets.firstIndex(where: { $0.id == selectedID }) else { return }
+        sets[index].set = active
+        var libraries = customGestureSets ?? [:]
+        libraries[button] = sets
+        customGestureSets = libraries
+    }
+
+    private static func legacyCustomGestureSetID(for button: DeviceButton) -> String {
+        "legacy-custom-\(button.rawValue)"
+    }
+
     private static func defaultGesturePreset(for button: DeviceButton) -> GesturePreset {
         button == .touchpadTwoFinger ? .mediaControls : .windowNavigation
     }
@@ -417,7 +575,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public mutating func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
         var set = gestureSet(for: button) ?? GestureSet.named(.custom)
         set.setAction(action, for: slot)
+        set.preset = .custom
         setGestureSet(set, for: button)
+        persistActiveCustomGestureSet(for: button)
     }
 
     public func duplicated(as name: String? = nil) -> MappingProfile {
@@ -444,6 +604,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             sensorDPI: sensorDPI,
             smoothScrolling: smoothScrolling,
             gestureSets: gestureSets,
+            customGestureSets: customGestureSets,
+            selectedCustomGestureSetIDs: selectedCustomGestureSetIDs,
             dualSenseTabRepeatInterval: dualSenseTabRepeatInterval,
             windowMoveEnabled: windowMoveEnabled,
             windowResizeEnabled: windowResizeEnabled,

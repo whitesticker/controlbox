@@ -13,6 +13,8 @@ final class DualSenseMonitor {
     var snapshot = DualSenseSnapshot()
     var audioInputs: [String] = []
     var dualSenseAudioPresent = false
+    var calibrationWindowFocused = false
+    var openCalibrationDeviceIDs: Set<String> = []
     var connectedDevices: [ConnectedBluetoothDevice] = []
     var selectedDeviceID: String?
     var appleTVSnapshot = AppleTVRemoteSnapshot()
@@ -56,6 +58,18 @@ final class DualSenseMonitor {
     var selectedRecord: DeviceRecord? {
         guard let selectedDeviceID else { return nil }
         return deviceRecords.first { $0.id == selectedDeviceID }
+    }
+
+    func deviceRecord(for id: String) -> DeviceRecord? {
+        deviceRecords.first { $0.id == id }
+    }
+
+    func registerCalibrationWindow(for deviceID: String) {
+        openCalibrationDeviceIDs.insert(deviceID)
+    }
+
+    func unregisterCalibrationWindow(for deviceID: String) {
+        openCalibrationDeviceIDs.remove(deviceID)
     }
 
     var selectedProfile: MappingProfile {
@@ -587,6 +601,16 @@ final class DualSenseMonitor {
         updateSelectedProfile { $0.dualSenseTabRepeatInterval = clamped }
     }
 
+    func setTabRepeatInterval(_ interval: Double, for deviceID: String) {
+        let clamped = min(max(interval, 0.10), 0.55)
+        updateRecord(deviceID) { record in
+            guard record.isGamepad else { return }
+            for index in record.profiles.indices {
+                record.profiles[index].dualSenseTabRepeatInterval = clamped
+            }
+        }
+    }
+
     func setStickyTargeting(_ enabled: Bool) {
         if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
             updateControllerDeviceSettings { $0.stickyTargeting = enabled }
@@ -693,7 +717,19 @@ final class DualSenseMonitor {
     }
 
     func setGesturePreset(_ preset: GesturePreset, for button: DeviceButton) {
-        updateSelectedProfile { $0.setGestureSet(.named(preset), for: button) }
+        updateSelectedProfile { $0.selectGesturePreset(preset, for: button) }
+    }
+
+    func addNamedCustomGestureSet(for button: DeviceButton) {
+        updateSelectedProfile { _ = $0.addNamedCustomGestureSet(for: button) }
+    }
+
+    func selectNamedCustomGestureSet(_ id: String, for button: DeviceButton) {
+        updateSelectedProfile { $0.selectNamedCustomGestureSet(id, for: button) }
+    }
+
+    func deleteNamedCustomGestureSet(_ id: String, for button: DeviceButton) {
+        updateSelectedProfile { $0.deleteNamedCustomGestureSet(id, for: button) }
     }
 
     func setGestureAction(_ action: ControlAction, slot: GestureSlot, for button: DeviceButton) {
@@ -1183,7 +1219,11 @@ final class DualSenseMonitor {
         }
 
         let dualSenseRecord = liveDualSenseRecord()
-        let wantMotion = selectedKind == .dualSense || selectedKind == .dualSenseEdge
+        let wantMotion = selectedKind == .dualSense
+            || selectedKind == .dualSenseEdge
+            || openCalibrationDeviceIDs.contains(where: {
+                deviceRecord(for: $0)?.isGamepad == true
+            })
         dualSense.poll(
             hapticEnabled: dualSenseRecord?.hapticFeedbackEnabled == true,
             wantMotion: wantMotion
@@ -1199,7 +1239,13 @@ final class DualSenseMonitor {
             let device = connectedDevices.first(where: {
                 $0.deviceKind == .appleTVRemote && $0.isConnected
             }) ?? connectedDevices.first(where: { $0.deviceKind == .appleTVRemote })
-            appleTV.poll(catalogDevice: device, selected: selectedKind == .appleTVRemote)
+            let calibrationOpen = openCalibrationDeviceIDs.contains(where: {
+                deviceRecord(for: $0)?.isAppleTVRemote == true
+            })
+            appleTV.poll(
+                catalogDevice: device,
+                selected: selectedKind == .appleTVRemote || calibrationOpen
+            )
             let nextAppleTV = appleTV.snapshot
             if appleTVSnapshot != nextAppleTV {
                 appleTVSnapshot = nextAppleTV
@@ -1258,6 +1304,21 @@ final class DualSenseMonitor {
         return nil
     }
 
+    func mxSnapshot(for deviceID: String) -> MXMasterSnapshot {
+        guard let record = deviceRecord(for: deviceID), record.isMXMaster else {
+            return MXMasterSnapshot()
+        }
+        if let live = reader(for: record.kind)?.current {
+            return live
+        }
+        var unavailable = MXMasterSnapshot()
+        unavailable.kind = record.kind
+        unavailable.name = record.displayName
+        unavailable.address = record.address
+        unavailable.status = "Not connected"
+        return unavailable
+    }
+
     private func displayMXSnapshot() -> MXMasterSnapshot {
         if selectedKind.isMXMaster, let reader = reader(for: selectedKind) {
             return reader.current
@@ -1270,10 +1331,12 @@ final class DualSenseMonitor {
         let live = liveMXProfile(for: record)
         let deviceLevel = record.mxDefaultProfile
         engine.profile = live
-        engine.enabled = record.controlEnabled
+        engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = false
-        reader.injectEnabled = record.controlEnabled && !ShortcutCapture.isActive
+        reader.injectEnabled = record.controlEnabled
+            && !ShortcutCapture.isActive
+            && !calibrationWindowFocused
         reader.wheelsEnabled = accessibilityTrusted
         reader.setGestureOwners(live.mxGestureOwners)
         reader.applySensorDPI(deviceLevel.resolvedSensorDPI)
@@ -1285,6 +1348,7 @@ final class DualSenseMonitor {
         reader.applyThumbWheelInvert(deviceLevel.resolvedMXThumbWheelInvert)
         let canInject = record.controlEnabled
             && !ShortcutCapture.isActive
+            && !calibrationWindowFocused
             && (!NSApp.isActive || record.controlWhileFocused)
         let wheelEngine = mxWheelEngine(for: record.id)
         if canInject, frame.scrollX != 0 {
@@ -1472,7 +1536,7 @@ final class DualSenseMonitor {
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
         let engine = engine(for: record.id)
         engine.profile = record.usesAppProfiles ? liveAppProfile(for: record) : record.selectedProfile
-        engine.enabled = record.controlEnabled
+        engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = record.kind.isGamepad
         if record.isMXMaster {
@@ -1556,6 +1620,9 @@ final class DualSenseMonitor {
     private var appleTVShouldCapture: Bool {
         appleTV.hidConnected
             || selectedKind == .appleTVRemote
+            || openCalibrationDeviceIDs.contains(where: {
+                deviceRecord(for: $0)?.isAppleTVRemote == true
+            })
             || connectedDevices.contains { $0.deviceKind == .appleTVRemote && $0.isConnected }
     }
 
@@ -1692,6 +1759,12 @@ final class DualSenseMonitor {
     private func updateSelectedRecord(_ mutate: (inout DeviceRecord) -> Void) {
         guard let id = selectedDeviceID else { return }
         ensureRecord(for: id)
+        guard let index = deviceRecords.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&deviceRecords[index])
+        persistDeviceRecords()
+    }
+
+    private func updateRecord(_ id: String, mutate: (inout DeviceRecord) -> Void) {
         guard let index = deviceRecords.firstIndex(where: { $0.id == id }) else { return }
         mutate(&deviceRecords[index])
         persistDeviceRecords()

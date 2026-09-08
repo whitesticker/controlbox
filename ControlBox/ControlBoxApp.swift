@@ -120,13 +120,32 @@ struct ControlBoxApp: App {
             ControlBoxWindowCommands()
         }
 
-        Window("Calibration", id: "calibration") {
-            CalibrationWindow(monitor: appDelegate.monitor)
+        WindowGroup("Calibration", id: "calibration", for: String.self) { $deviceID in
+            Group {
+                if let deviceID {
+                    CalibrationWindow(monitor: appDelegate.monitor, deviceID: deviceID)
+                } else {
+                    ContentUnavailableView(
+                        "No Device",
+                        systemImage: "slider.horizontal.3",
+                        description: Text("Open Calibration from a device page.")
+                    )
+                }
+            }
                 .frame(minWidth: 1100, minHeight: 700)
                 .preferredColorScheme(nil)
                 .onAppear { appDelegate.monitor.start() }
         }
         .defaultSize(width: 1280, height: 800)
+        .windowResizability(.contentMinSize)
+
+        Window("Mouse Settings", id: "mx-mouse-settings") {
+            MXMouseSettingsWindow(monitor: appDelegate.monitor)
+                .frame(minWidth: 480, minHeight: 560)
+                .preferredColorScheme(nil)
+                .onAppear { appDelegate.monitor.start() }
+        }
+        .defaultSize(width: 540, height: 680)
         .windowResizability(.contentMinSize)
 
         Window("Pair Logi Bolt", id: "bolt-pairing") {

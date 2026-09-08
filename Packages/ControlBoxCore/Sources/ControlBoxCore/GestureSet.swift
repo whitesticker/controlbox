@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 public enum GesturePreset: String, Codable, CaseIterable, Sendable {
     case windowNavigation
     case mediaControls
@@ -62,6 +64,22 @@ public enum GestureSlot: String, Codable, CaseIterable, Sendable {
         case .mxGestureRight: return .right
         default: return nil
         }
+    }
+}
+
+public struct NamedGestureSet: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var set: GestureSet
+
+    public init(
+        id: String = UUID().uuidString,
+        name: String,
+        set: GestureSet = .named(.custom)
+    ) {
+        self.id = id
+        self.name = name
+        self.set = set
     }
 }
 
