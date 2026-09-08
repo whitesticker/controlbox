@@ -22,8 +22,8 @@ HID **reports** themselves are event-driven (`IOHID` callbacks). The 120 Hz time
 | Sound menu extra | 1.5 s | `SystemAudio` outputs + `AppVolumeMixer.apps()` | Only while the Sound extra menu is **open** | Rebuild process taps on an empty `!obj` list. See [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md). |
 | Caffeinate countdown | 1 s | Menu item title from `endDate` | Only while the Caffeinate extra menu is **open** and a timed session is on | Do not tick while the menu is closed. Expire with a one-shot timer, not this poll. |
 | App volume taps | HAL IOProc / tap clock | Per-app gain while a tap is installed | Sound mixer is live | Two mixers on the same app. See [process-tap-exclusive.md](process-tap-exclusive.md). |
-| MX Mechanical battery | 30 s | HID++ `UNIFIED_BATTERY` | Keyboard HID++ ready | Do not put on the 120 Hz path. Do not divert keys. Do not `SetReport` on the main thread from a SwiftUI toggle. |
-| MX Master battery | 30 s | HID++ `UNIFIED_BATTERY` | Mouse HID++ ready | Do not put on the 120 Hz path. |
+| MX Mechanical battery | 5 min | HID++ `UNIFIED_BATTERY` | Keyboard HID++ ready | Do not put on the 120 Hz path. Do not divert keys. Do not `SetReport` on the main thread from a SwiftUI toggle. |
+| MX Master battery | 5 min | HID++ `UNIFIED_BATTERY` | Mouse HID++ ready | Do not put on the 120 Hz path. |
 
 ## Event-driven (no idle poll)
 
@@ -32,7 +32,7 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 | Path | Trigger | System API | Notes |
 |---|---|---|---|
 | MX HID++ / clicks | HID report, one shared click tap | `IOHID`, `CGEvent` tap | Do not open the standard mouse collection. |
-| MX Mechanical HID++ | HID++ report `0x11` + 30 s battery read while attached | `IOHID` SetReport on a serial IO queue, no seize | Do not treat keyboard reports as HID++. Do not divert keys. Do not read-after-write on backlight toggle / effect. See [mx-mechanical-hid.md](mx-mechanical-hid.md). |
+| MX Mechanical HID++ | HID++ report `0x11` + 5 min battery read while attached | `IOHID` SetReport on a serial IO queue, no seize | Do not treat keyboard reports as HID++. Do not divert keys. Do not read-after-write on backlight toggle / effect. See [mx-mechanical-hid.md](mx-mechanical-hid.md). |
 | Scroll speed / invert | Wheel `CGEvent` tap | `CGEvent` | Input Monitoring. |
 | Window Grab / Organize / Arrangement hotkeys | Listen-only `CGEvent` tap | `CGEvent`, then AX on a timer | Stash in the tap; AX on the tick. |
 | Shake to focus | Listen-only left-mouse tap; Window Grab move feeds points | Coalesced main-queue AX hit / minimize | **No idle timer.** Keep down and drag in the same flush. See [shake-to-focus.md](shake-to-focus.md). |
@@ -47,7 +47,7 @@ These react to HID, `CGEvent`, `NSWorkspace`, or screen-change notifications. Th
 
 ## One-shot or user-driven (not loops)
 
-Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview and app-switcher thumbnail stills (only while that panel is up). Caffeinate expire timer (one-shot at `endDate`).
+Display Arrangement apply, Window Organize, Night Shift take-over, Screen Recording request, Dock Preview and app-switcher thumbnail stills (only while that panel is up). Caffeinate expire timer (one-shot at `endDate`). MX Easy-Switch host list (`0x1814` / `0x1815`) after HID++ attach, and again from the Easy-Switch **Refresh** button.
 
 ## Rules for a new loop
 

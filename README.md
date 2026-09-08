@@ -46,9 +46,9 @@ Control Box stays on your Mac. Nothing is uploaded.
 |---|---|
 | **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
-| **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Bluetooth or Logi Bolt; the same mouse is one sidebar row. |
-| **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Bluetooth or Logi Bolt. |
-| **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. Bluetooth or Logi Bolt. |
+| **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
+| **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
+| **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
 | **Logi Bolt** | Add Device → Logi Bolt: pair, unpair, and talk on the USB receiver. Do not list the dongle itself. |
 
 Wheel invert and scroll speed are shared across mice (one system scroll tap). Button and gesture mappings stay per device.

@@ -50,4 +50,12 @@ final class MXKeyboardSession: DeviceFamilySession {
     func setBatterySaving(_ enabled: Bool) {
         reader.setBatterySaving(enabled)
     }
+
+    func reloadEasySwitchHosts() {
+        reader.reloadEasySwitchHosts()
+    }
+
+    func setFriendlyName(_ name: String) {
+        reader.setFriendlyName(name)
+    }
 }

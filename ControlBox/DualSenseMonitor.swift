@@ -36,6 +36,7 @@ final class DualSenseMonitor {
         !accessibilityTrusted || !inputMonitoringTrusted
     }
     private var suppressedDeviceKeys: Set<String> = []
+    private var friendlyNameWriteWork: DispatchWorkItem?
 
     var selectedDevice: ConnectedBluetoothDevice? {
         if let selectedDeviceID, let match = connectedDevices.first(where: { $0.id == selectedDeviceID }) {
@@ -87,7 +88,7 @@ final class DualSenseMonitor {
             items.append(
                 SidebarDevice(
                     id: id,
-                    name: record?.name ?? device.name,
+                    name: record?.displayName ?? device.name,
                     address: record?.address ?? device.address,
                     kind: record?.kind ?? device.deviceKind,
                     isConnected: true,
@@ -106,7 +107,7 @@ final class DualSenseMonitor {
             items.append(
                 SidebarDevice(
                     id: record.id,
-                    name: record.name,
+                    name: record.displayName,
                     address: record.address,
                     kind: record.kind,
                     isConnected: false,
@@ -727,6 +728,39 @@ final class DualSenseMonitor {
             if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
                 record.profiles[index] = profile
             }
+        }
+    }
+
+    func renameSelectedDevice(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateSelectedRecord { record in
+            record.customName = trimmed.isEmpty ? nil : trimmed
+        }
+        friendlyNameWriteWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.writeSelectedFriendlyName(trimmed)
+        }
+        friendlyNameWriteWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+
+    func reloadEasySwitch(isKeyboard: Bool) {
+        if isKeyboard {
+            keyboard.reloadEasySwitchHosts()
+            return
+        }
+        guard let record = selectedRecord, let reader = reader(for: record.kind) else { return }
+        reader.reloadEasySwitchHosts()
+    }
+
+    private func writeSelectedFriendlyName(_ name: String) {
+        guard let record = selectedRecord else { return }
+        if record.isMXKeyboard {
+            keyboard.setFriendlyName(name)
+            return
+        }
+        if record.isMXMaster, let reader = reader(for: record.kind) {
+            reader.setFriendlyName(name)
         }
     }
 

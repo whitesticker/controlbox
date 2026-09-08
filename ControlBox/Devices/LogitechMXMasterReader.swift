@@ -55,6 +55,7 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var connection = DeviceConnection.bluetooth
     var unitID: UInt32 = 0
     var wirelessProductID = 0
+    var easySwitchHosts: [MXEasySwitchHost] = []
 
     var logitechKey: LogitechDeviceKey {
         LogitechDeviceKey(
@@ -84,6 +85,8 @@ final class LogitechMXMasterReader {
 
     private struct Pending {
         let swID: UInt8
+        let countsTowardTimeouts: Bool
+        let dropsPipeOnError: Bool
         let completion: (Data?) -> Void
     }
 
@@ -150,6 +153,8 @@ final class LogitechMXMasterReader {
     private var pointerScaleIndex: UInt8?
     private var dpiIndex: UInt8?
     private var batteryIndex: UInt8?
+    private var hostsInfoIndex: UInt8?
+    private var changeHostIndex: UInt8?
     private var batteryTimer: Timer?
     private var dpiValues: [Int] = []
     private var lastSentDPI = -1
@@ -162,8 +167,17 @@ final class LogitechMXMasterReader {
     private var desiredSmoothScrolling = true
     private var lastWheelConfig: (divert: Bool, invert: Bool, highRes: Bool)?
     private var consecutiveTimeouts = 0
+    private var easySwitchLoadAttempts = 0
     private var hidppEpoch = 0
-    private var hidppQueue: [(featureIndex: UInt8, function: UInt8, params: [UInt8], completion: (Data?) -> Void)] = []
+    private var hidppQueue: [(
+        featureIndex: UInt8,
+        function: UInt8,
+        params: [UInt8],
+        countsTowardTimeouts: Bool,
+        allowShortReport: Bool,
+        dropsPipeOnError: Bool,
+        completion: (Data?) -> Void
+    )] = []
     var naturalScrolling = true
     var injectEnabled = false
     var wheelsEnabled = false {
@@ -244,6 +258,9 @@ final class LogitechMXMasterReader {
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        hostsInfoIndex = nil
+        changeHostIndex = nil
+        easySwitchLoadAttempts = 0
         dpiValues = []
         lastSentDPI = -1
         lastSentPointerScale = -1
@@ -330,6 +347,9 @@ final class LogitechMXMasterReader {
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        hostsInfoIndex = nil
+        changeHostIndex = nil
+        easySwitchLoadAttempts = 0
         stopBatteryTimer()
         ready = false
         lastAppliedOSDPI = -1
@@ -346,6 +366,7 @@ final class LogitechMXMasterReader {
         snapshot.unitID = unitID
         snapshot.wirelessProductID = wpid
         snapshot.status = "Talking to \(name) over Logi Bolt…"
+        snapshot.easySwitchHosts = []
         lock.unlock()
         probeDeviceIndices([UInt8(link.slot)])
         return true
@@ -864,6 +885,9 @@ final class LogitechMXMasterReader {
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
+        hostsInfoIndex = nil
+        changeHostIndex = nil
+        easySwitchLoadAttempts = 0
         stopBatteryTimer()
         ready = false
         hidppDevice = device
@@ -883,6 +907,7 @@ final class LogitechMXMasterReader {
         snapshot.unitID = 0
         snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
+        snapshot.easySwitchHosts = []
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3, 4, 5, 6])
     }
@@ -1320,16 +1345,14 @@ final class LogitechMXMasterReader {
             ]
         ) { [weak self] data in
             guard let self else { return }
-            let listed = self.controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
             let cidHex = String(format: "%04X", self.model.gestureCID)
             if let data, !data.isEmpty {
                 let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
                 self.noteLastEvent("\(cidHex) reporting \(hex)")
-                self.setStatus("Connected. CIDs \(listed). \(cidHex) \(hex)")
             } else {
                 self.noteLastEvent("\(cidHex) reporting missing")
-                self.setStatus("Connected. CIDs \(listed). \(cidHex) reporting missing")
             }
+            self.setStatus("Connected")
         }
     }
 
@@ -1351,8 +1374,21 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func lookupFeature(_ id: UInt16, completion: @escaping (UInt8?) -> Void) {
-        request(featureIndex: 0, function: 0, params: [UInt8(id >> 8), UInt8(id & 0xFF)]) { data in
+    private func lookupFeature(
+        _ id: UInt16,
+        countsTowardTimeouts: Bool = true,
+        allowShortReport: Bool = true,
+        dropsPipeOnError: Bool = true,
+        completion: @escaping (UInt8?) -> Void
+    ) {
+        request(
+            featureIndex: 0,
+            function: 0,
+            params: [UInt8(id >> 8), UInt8(id & 0xFF)],
+            countsTowardTimeouts: countsTowardTimeouts,
+            allowShortReport: allowShortReport,
+            dropsPipeOnError: dropsPipeOnError
+        ) { data in
             guard let data, data.count >= 1 else {
                 completion(nil)
                 return
@@ -1391,6 +1427,8 @@ final class LogitechMXMasterReader {
                 case 0x2205: self.pointerScaleIndex = index
                 case 0x2201: self.dpiIndex = index
                 case 0x1004: self.batteryIndex = index
+                case 0x1814: self.changeHostIndex = index
+                case 0x1815: self.hostsInfoIndex = index
                 default: break
                 }
             }
@@ -1468,6 +1506,98 @@ final class LogitechMXMasterReader {
         lock.unlock()
         readBattery()
         startBatteryTimer()
+        loadEasySwitchHosts()
+    }
+
+    private func loadEasySwitchHosts() {
+        let read = { [weak self] in
+            guard let self else { return }
+            MXEasySwitchHIDPP.load(
+                hostsInfoIndex: self.hostsInfoIndex,
+                changeHostIndex: self.changeHostIndex,
+                request: { [weak self] feature, function, params, completion in
+                    guard let self else {
+                        completion(nil)
+                        return
+                    }
+                    self.request(
+                        featureIndex: feature,
+                        function: function,
+                        params: params,
+                        countsTowardTimeouts: false,
+                        allowShortReport: false,
+                        dropsPipeOnError: false,
+                        completion: completion
+                    )
+                }
+            ) { [weak self] hosts in
+                guard let self else { return }
+                self.lock.lock()
+                self.snapshot.easySwitchHosts = hosts
+                self.lock.unlock()
+                if hosts.isEmpty, self.ready, self.easySwitchLoadAttempts < 1 {
+                    self.easySwitchLoadAttempts += 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                        self?.loadEasySwitchHosts()
+                    }
+                }
+            }
+        }
+        lookupFeature(
+            MXEasySwitchHIDPP.hostsInfoFeature,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] hostsInfo in
+            guard let self else { return }
+            self.hostsInfoIndex = hostsInfo
+            self.lookupFeature(
+                MXEasySwitchHIDPP.changeHostFeature,
+                countsTowardTimeouts: false,
+                allowShortReport: false,
+                dropsPipeOnError: false
+            ) { [weak self] changeHost in
+                guard let self else { return }
+                self.changeHostIndex = changeHost
+                read()
+            }
+        }
+    }
+
+    func reloadEasySwitchHosts() {
+        easySwitchLoadAttempts = 0
+        loadEasySwitchHosts()
+    }
+
+    func setFriendlyName(_ name: String) {
+        guard ready else { return }
+        lookupFeature(
+            MXFriendlyNameHIDPP.featureID,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] index in
+            guard let self, let index else { return }
+            MXFriendlyNameHIDPP.set(
+                name: name,
+                featureIndex: index,
+                request: { [weak self] feature, function, params, completion in
+                    guard let self else {
+                        completion(nil)
+                        return
+                    }
+                    self.request(
+                        featureIndex: feature,
+                        function: function,
+                        params: params,
+                        countsTowardTimeouts: false,
+                        allowShortReport: false,
+                        dropsPipeOnError: false,
+                        completion: completion
+                    )
+                }
+            ) { _ in }
+        }
     }
 
     private func readBattery() {
@@ -1503,10 +1633,10 @@ final class LogitechMXMasterReader {
     private func startBatteryTimer() {
         stopBatteryTimer()
         guard batteryIndex != nil else { return }
-        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
             self?.readBattery()
         }
-        timer.tolerance = 5
+        timer.tolerance = 30
         RunLoop.main.add(timer, forMode: .common)
         batteryTimer = timer
     }
@@ -1630,8 +1760,24 @@ final class LogitechMXMasterReader {
         noteLastEvent(String(format: "thumb %+d", delta))
     }
 
-    private func request(featureIndex: UInt8, function: UInt8, params: [UInt8], completion: @escaping (Data?) -> Void) {
-        hidppQueue.append((featureIndex, function, params, completion))
+    private func request(
+        featureIndex: UInt8,
+        function: UInt8,
+        params: [UInt8],
+        countsTowardTimeouts: Bool = true,
+        allowShortReport: Bool = true,
+        dropsPipeOnError: Bool = true,
+        completion: @escaping (Data?) -> Void
+    ) {
+        hidppQueue.append((
+            featureIndex,
+            function,
+            params,
+            countsTowardTimeouts,
+            allowShortReport,
+            dropsPipeOnError,
+            completion
+        ))
         pumpHIDPP()
     }
 
@@ -1639,14 +1785,19 @@ final class LogitechMXMasterReader {
         guard pending == nil, canWriteHIDPP, let call = hidppQueue.first else { return }
         swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
         let swID = swCounter
-        pending = Pending(swID: swID, completion: { [weak self] data in
-            guard let self else { return }
-            if !self.hidppQueue.isEmpty {
-                self.hidppQueue.removeFirst()
+        pending = Pending(
+            swID: swID,
+            countsTowardTimeouts: call.countsTowardTimeouts,
+            dropsPipeOnError: call.dropsPipeOnError,
+            completion: { [weak self] data in
+                guard let self else { return }
+                if !self.hidppQueue.isEmpty {
+                    self.hidppQueue.removeFirst()
+                }
+                call.completion(data)
+                self.pumpHIDPP()
             }
-            call.completion(data)
-            self.pumpHIDPP()
-        })
+        )
         var report = [UInt8](repeating: 0, count: 20)
         report[0] = 0x11
         report[1] = deviceIndex
@@ -1656,7 +1807,7 @@ final class LogitechMXMasterReader {
             report[4 + offset] = byte
         }
         writeHIDPPReport(report)
-        if model.tryShortHIDPPReport, call.params.count <= 3, boltLink == nil {
+        if model.tryShortHIDPPReport, call.allowShortReport, call.params.count <= 3, boltLink == nil {
             var short = [UInt8](repeating: 0, count: 7)
             short[0] = 0x10
             short[1] = deviceIndex
@@ -1676,7 +1827,7 @@ final class LogitechMXMasterReader {
             else { return }
             self.pending = nil
             pending.completion(nil)
-            guard self.ready else { return }
+            guard self.ready, pending.countsTowardTimeouts else { return }
             self.consecutiveTimeouts += 1
             if self.consecutiveTimeouts >= 3 {
                 self.notePipeDropped("HID++ timed out. Retrying…")
@@ -1694,11 +1845,12 @@ final class LogitechMXMasterReader {
         guard bytes.count >= 4 else { return }
         if bytes[2] == 0x8F {
             let wasReady = ready
+            let dropPipe = pending?.dropsPipeOnError ?? true
             if let pending {
                 self.pending = nil
                 pending.completion(nil)
             }
-            if wasReady {
+            if wasReady, dropPipe {
                 notePipeDropped("HID++ error. Retrying…")
             }
             return

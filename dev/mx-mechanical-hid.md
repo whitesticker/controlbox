@@ -21,7 +21,7 @@ There is no separate `0xFF00` collection. Match product IDs only. Do not treat n
 | Feature | ID | What |
 |---|---|---|
 | Device Name | `0x0005` | Sidebar label |
-| Unified Battery | `0x1004` | Percent; 30 s while HID++ is ready |
+| Unified Battery | `0x1004` | Percent; 5 min while HID++ is ready |
 | Backlight2 | `0x1982` | On/off, lighting effect, battery saving |
 
 Effects: Static, Breathing, Contrast, Reaction, Random, Waves. Firmware **None** stays hidden unless the keyboard is already on it.
@@ -48,5 +48,5 @@ MX Keys and key remapping are still open ([roadmap.md](roadmap.md)).
 ## Related
 
 - [logi-bolt-receiver.md](logi-bolt-receiver.md) — do not attach `C548` from this matcher
-- [polling-loops.md](polling-loops.md) — 30 s battery, not 120 Hz
+- [polling-loops.md](polling-loops.md) — 5 min battery, not 120 Hz
 - [hid-open-seize-dual-mouse.md](hid-open-seize-dual-mouse.md)

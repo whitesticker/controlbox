@@ -58,6 +58,7 @@ Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as
 
 - [ ] **More Logitech devices** — probe HID++ features; not only MX 3/3S/4 / Mechanical product IDs.
 - [x] **Logi Bolt — talk** — one catalog owns `C548` vendor HID++ only; walk slots 1–6; prefer BLE if both radios are up; MX4 haptic from HID++ (not report `0x02`). Same Easy-Switch unit is one sidebar row.
+- [x] **Easy-Switch channels** — MX mouse and keyboard **device pages** list three channels from `0x1814` / `0x1815` (BLE or Bolt). Section stays up with **Pending**; **Refresh** re-reads. No forget-host UI.
 - [x] **Logi Bolt — pair** — **Add Device** sheet, Bluetooth / Logi Bolt panels (discover list / passkey / unpair). Occupied slots split Online / Not connected. Not Other. Not a Devices sidebar row.
 - [ ] **Unifying / Lightspeed** — same slot walk as Bolt; Unifying pairing can be another Add Device tab later.
 - [ ] **Restore original divert** — read flags before divert; put those back on quit / failed start (not a blanket `0x22`).

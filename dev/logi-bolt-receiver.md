@@ -48,7 +48,7 @@ Mouser (macOS, 2026) used this layout for MX Master 3S For Mac on BLE and Bolt: 
 
 The dongle is not a Mouse / Gamepad / Remote / Keyboard. Do **not** put `C548` in the Devices sidebar (not under Other either).
 
-- **Already paired:** the occupant is a normal sidebar row under Mouse or Keyboard, caption `Logitech · Bolt` when that radio is the one in use. BLE and Bolt for the same unit collapse to one row (BLE caption when both are up).
+- **Already paired:** the occupant is a normal sidebar row under Mouse or Keyboard, caption `Logitech · Bolt` when that radio is the one in use. BLE and Bolt for the same unit collapse to one row (BLE caption when both are up). The device page **Easy-Switch** section always shows three channels (`0x1814` / `0x1815` on BLE or Bolt, one-shot after HID++ attach). Names stay **Pending** until the mouse or keyboard answers.
 - **Pair / unpair / empty slots:** **Add Device** sheet, **Bluetooth | Logi Bolt**. One row per dongle. **Add** and the slot-count line belong to that receiver section. Pairing success closes the guide and refreshes the list. The paired-count register can update before `0xB5:50+n` names; listing retries a missed slot instead of treating a timeout as empty, and keeps current rows on screen. Pairing pauses slot talk on that receiver.
 
 See [todo.md](todo.md) Logitech-related improvements (Bolt talk still open).

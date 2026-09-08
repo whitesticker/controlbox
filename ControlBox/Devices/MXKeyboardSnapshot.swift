@@ -51,6 +51,7 @@ struct MXKeyboardSnapshot: Equatable, Sendable {
     var connection = DeviceConnection.bluetooth
     var unitID: UInt32 = 0
     var wirelessProductID = 0
+    var easySwitchHosts: [MXEasySwitchHost] = []
 
     var logitechKey: LogitechDeviceKey {
         LogitechDeviceKey(

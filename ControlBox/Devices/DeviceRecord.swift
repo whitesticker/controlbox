@@ -14,6 +14,13 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var selectedProfileID: String
     var unitID: UInt32?
     var wirelessProductID: Int?
+    /// Sidebar title. Hardware / Bluetooth name stays in `name` for identity.
+    var customName: String? = nil
+
+    var displayName: String {
+        let custom = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return custom.isEmpty ? name : custom
+    }
 
     var isAppleTVRemote: Bool { kind == .appleTVRemote }
     var isMXMaster: Bool { kind.isMXMaster }

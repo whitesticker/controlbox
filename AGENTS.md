@@ -2,9 +2,9 @@
 
 Control Box is a local Mac app that maps unusual input devices (DualSense, Apple TV remote, Logitech MX Master, MX Mechanical) to pointer, keys, and system gestures.
 
-## Current status (2026-09-04)
+## Current status (2026-09-07)
 
-- Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, MX Master 4, and **MX Mechanical / Mini** can stay attached at once. Mice have a **Control this Mac** toggle. The keyboard family is settings-only (backlight, lighting effect, battery saving, battery %). **Logi Bolt** is Add Device → Logi Bolt (vendor HID++ on `C548` only): pair/unpair plus Bolt-only talk on that same pipe (slot HID++ 2.0). The same mouse or keyboard on BLE and Bolt is one sidebar row; BLE wins when both radios are up.
+- Multi-device is live: DualSense, Apple TV remote, MX Master 3/3S, MX Master 4, and **MX Mechanical / Mini** can stay attached at once. Mice have a **Control this Mac** toggle. The keyboard family is settings-only (backlight, lighting effect, battery saving, battery %). **Logi Bolt** is Add Device → Logi Bolt (vendor HID++ on `C548` only): pair/unpair plus Bolt-only talk on that same pipe (slot HID++ 2.0). The same mouse or keyboard on BLE and Bolt is one sidebar row; BLE wins when both radios are up. MX **device pages** show Easy-Switch **channels** (`0x1814` / `0x1815`, three columns, Refresh, Pending until HID++ answers). **Name** is a Control Box nickname plus HID++ friendly name `0x0007` on MX. Battery HID++ is every 5 minutes.
 - Device I/O lives in family sessions (`DeviceFamilySession`): `DualSenseSession`, `AppleTVRemoteSession` (generation `AppleTVA2540`), `MXKeyboardSession`, MX 3/3S and MX 4 readers. The host (`DualSenseMonitor`) is records, engines, and the poll loop. Add a family; do not add `captureXbox()` on the host.
 - HID modules stay split: **3/3S together** (`MXMaster3Support`) and **4** (`MXMaster4Support`). Keyboard is `MXMechanicalSupport` (`0xB366` / `0xB367`). Each family has its own HID++ reader (product IDs only). Shared code is the HID++ pipe and hold-to-swipe engine. `0xB366` is the keyboard, not MX4. See `dev/mx-mechanical-hid.md`.
 - 3S HID++ is nested on the mouse device (page `0xFF43`, report `0x11`). Gesture is thumb CID `0x00C3`. See `dev/mx-master-3s-hid.md`.

@@ -27,20 +27,42 @@ struct DeviceProfilePane: View {
                                 .textSelection(.enabled)
                         }
                         LabeledContent("Type", value: record.kind.title)
+                        TextField("Name", text: deviceNameBinding)
                         if record.isMXMaster {
                             LabeledContent("HID++", value: mxHIDPPStatus(for: record))
                         }
                         if record.isMXKeyboard {
                             LabeledContent("HID++", value: keyboardHIDPPStatus(for: record))
                         }
+                    } footer: {
+                        if record.isMXMaster || record.isMXKeyboard {
+                            bullets(
+                                "Shown in the sidebar.",
+                                "Also stored on this device. Bluetooth Settings may update after reconnect."
+                            )
+                        } else {
+                            bullets("Shown in the sidebar.")
+                        }
                     }
 
                     if record.isMXKeyboard {
                         keyboardBatterySection
+                        easySwitchSection(
+                            hosts: monitor.mxKeyboardSnapshot.easySwitchHosts,
+                            noun: "keyboard",
+                            canRefresh: monitor.mxKeyboardSnapshot.hidppReady,
+                            onRefresh: { monitor.reloadEasySwitch(isKeyboard: true) }
+                        )
                         keyboardSettingsSection
                     } else {
                         if record.isMXMaster {
                             mxBatterySection
+                            easySwitchSection(
+                                hosts: monitor.mxMasterSnapshot.easySwitchHosts,
+                                noun: "mouse",
+                                canRefresh: monitor.mxMasterSnapshot.connected,
+                                onRefresh: { monitor.reloadEasySwitch(isKeyboard: false) }
+                            )
                         }
                         Section {
                             Toggle("Control this Mac", isOn: controlEnabledBinding)
@@ -217,7 +239,7 @@ struct DeviceProfilePane: View {
                     }
                 }
                 .formStyle(.grouped)
-                .navigationTitle(record.name)
+                .navigationTitle(record.displayName)
                 .onChange(of: monitor.selectedDeviceID) { _, _ in
                     customizingButton = nil
                     customizingGestureButton = nil
@@ -513,6 +535,13 @@ struct DeviceProfilePane: View {
         )
     }
 
+    private var deviceNameBinding: Binding<String> {
+        Binding(
+            get: { monitor.selectedRecord?.displayName ?? "" },
+            set: { monitor.renameSelectedDevice($0) }
+        )
+    }
+
     private var nameBinding: Binding<String> {
         Binding(
             get: { monitor.selectedProfile.name },
@@ -722,7 +751,7 @@ struct DeviceProfilePane: View {
     private func mxHIDPPStatus(for record: DeviceRecord) -> String {
         let live = monitor.mxMasterSnapshot
         if monitor.isLiveMXSelection(live) {
-            return live.status
+            return sanitizedHIDPPStatus(live.status)
         }
         return "Not connected"
     }
@@ -730,9 +759,14 @@ struct DeviceProfilePane: View {
     private func keyboardHIDPPStatus(for record: DeviceRecord) -> String {
         let live = monitor.mxKeyboardSnapshot
         if monitor.isLiveKeyboardSelection(live) {
-            return live.status
+            return sanitizedHIDPPStatus(live.status)
         }
         return "Not connected"
+    }
+
+    private func sanitizedHIDPPStatus(_ status: String) -> String {
+        if status.localizedCaseInsensitiveContains("CID") { return "Connected" }
+        return status
     }
 
     @ViewBuilder
@@ -766,6 +800,65 @@ struct DeviceProfilePane: View {
                 LabeledContent("Level", value: monitor.isLiveKeyboardSelection(live) ? "Reading…" : "Not connected")
             }
         }
+    }
+
+    @ViewBuilder
+    private func easySwitchSection(
+        hosts: [MXEasySwitchHost],
+        noun: String,
+        canRefresh: Bool,
+        onRefresh: @escaping () -> Void
+    ) -> some View {
+        let columns = (0..<3).map { index in
+            hosts.first(where: { $0.index == index }) ?? MXEasySwitchHost.pending(index: index)
+        }
+        let pending = columns.allSatisfy(\.isPending)
+        Section {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(columns) { host in
+                    easySwitchColumn(host)
+                }
+            }
+        } header: {
+            HStack {
+                Text("Easy-Switch")
+                Spacer()
+                Button("Refresh", action: onRefresh)
+                    .disabled(!canRefresh)
+            }
+        } footer: {
+            if pending {
+                bullets(
+                    "This \(noun) can stay paired with up to three computers.",
+                    "Channel names show once this \(noun) answers."
+                )
+            } else {
+                bullets("This \(noun) can stay paired with up to three computers.")
+            }
+        }
+    }
+
+    private func easySwitchColumn(_ host: MXEasySwitchHost) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(host.title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(host.primary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            if host.isCurrent {
+                Text("This Mac")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let secondary = host.secondary {
+                Text(secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder

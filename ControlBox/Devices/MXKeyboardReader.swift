@@ -14,7 +14,7 @@ final class MXKeyboardReader {
     private static let powerSaveBit: UInt16 = 1 << 2
     private static let modeShift: UInt16 = 3
     private static let modeMask: UInt16 = 0b11 << 3
-    private static let batteryInterval: TimeInterval = 30
+    private static let batteryInterval: TimeInterval = 300
 
     private struct Pending {
         let swID: UInt8
@@ -50,8 +50,11 @@ final class MXKeyboardReader {
     private var batteryIndex: UInt8?
     private var backlightIndex: UInt8?
     private var nameIndex: UInt8?
+    private var hostsInfoIndex: UInt8?
+    private var changeHostIndex: UInt8?
     private var backlightConfig: BacklightConfig?
     private var consecutiveTimeouts = 0
+    private var easySwitchLoadAttempts = 0
     private var batteryTimer: Timer?
     private var recoverWork: DispatchWorkItem?
     private var effectWriteWork: DispatchWorkItem?
@@ -156,6 +159,7 @@ final class MXKeyboardReader {
         snapshot.unitID = unitID
         snapshot.wirelessProductID = wpid
         snapshot.status = "Talking to \(name) over Logi Bolt…"
+        snapshot.easySwitchHosts = []
         lock.unlock()
         probeDeviceIndices([UInt8(link.slot)])
         return true
@@ -321,6 +325,7 @@ final class MXKeyboardReader {
         snapshot.unitID = 0
         snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
+        snapshot.easySwitchHosts = []
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3])
     }
@@ -417,6 +422,7 @@ final class MXKeyboardReader {
         readBattery()
         readBacklight()
         startBatteryTimer()
+        loadEasySwitchHosts()
     }
 
     private func readNameIfNeeded() {
@@ -591,12 +597,72 @@ final class MXKeyboardReader {
         }
     }
 
+    private func loadEasySwitchHosts() {
+        lookup(MXEasySwitchHIDPP.hostsInfoFeature) { [weak self] hostsInfo in
+            guard let self else { return }
+            self.hostsInfoIndex = hostsInfo
+            self.lookup(MXEasySwitchHIDPP.changeHostFeature) { [weak self] changeHost in
+                guard let self else { return }
+                self.changeHostIndex = changeHost
+                MXEasySwitchHIDPP.load(
+                    hostsInfoIndex: self.hostsInfoIndex,
+                    changeHostIndex: self.changeHostIndex,
+                    request: { [weak self] feature, function, params, completion in
+                        guard let self else {
+                            completion(nil)
+                            return
+                        }
+                        self.request(featureIndex: feature, function: function, params: params, completion: completion)
+                    }
+                ) { [weak self] hosts in
+                    guard let self else { return }
+                    self.publish { $0.easySwitchHosts = hosts }
+                    self.lock.lock()
+                    let ready = self.snapshot.hidppReady
+                    self.lock.unlock()
+                    if hosts.isEmpty, ready, self.easySwitchLoadAttempts < 1 {
+                        self.easySwitchLoadAttempts += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                            self?.loadEasySwitchHosts()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func reloadEasySwitchHosts() {
+        easySwitchLoadAttempts = 0
+        loadEasySwitchHosts()
+    }
+
+    func setFriendlyName(_ name: String) {
+        lock.lock()
+        let ready = snapshot.hidppReady
+        lock.unlock()
+        guard ready else { return }
+        lookup(MXFriendlyNameHIDPP.featureID) { [weak self] index in
+            guard let self, let index else { return }
+            MXFriendlyNameHIDPP.set(
+                name: name,
+                featureIndex: index,
+                request: { [weak self] feature, function, params, completion in
+                    guard let self else {
+                        completion(nil)
+                        return
+                    }
+                    self.request(featureIndex: feature, function: function, params: params, completion: completion)
+                }
+            ) { _ in }
+        }
+    }
+
     private func startBatteryTimer() {
         stopBatteryTimer()
         let timer = Timer(timeInterval: Self.batteryInterval, repeats: true) { [weak self] _ in
             self?.readBattery()
         }
-        timer.tolerance = 5
+        timer.tolerance = 30
         RunLoop.main.add(timer, forMode: .common)
         batteryTimer = timer
     }
@@ -654,7 +720,10 @@ final class MXKeyboardReader {
         batteryIndex = nil
         backlightIndex = nil
         nameIndex = nil
+        hostsInfoIndex = nil
+        changeHostIndex = nil
         backlightConfig = nil
+        easySwitchLoadAttempts = 0
     }
 
     private func isSameDevice(_ lhs: IOHIDDevice, _ rhs: IOHIDDevice?) -> Bool {
