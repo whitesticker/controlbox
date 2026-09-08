@@ -1219,11 +1219,9 @@ final class DualSenseMonitor {
         }
 
         let dualSenseRecord = liveDualSenseRecord()
-        let wantMotion = selectedKind == .dualSense
-            || selectedKind == .dualSenseEdge
-            || openCalibrationDeviceIDs.contains(where: {
-                deviceRecord(for: $0)?.isGamepad == true
-            })
+        let wantMotion = openCalibrationDeviceIDs.contains(where: {
+            deviceRecord(for: $0)?.isGamepad == true
+        })
         dualSense.poll(
             hapticEnabled: dualSenseRecord?.hapticFeedbackEnabled == true,
             wantMotion: wantMotion
@@ -1247,7 +1245,11 @@ final class DualSenseMonitor {
                 selected: selectedKind == .appleTVRemote || calibrationOpen
             )
             let nextAppleTV = appleTV.snapshot
-            if appleTVSnapshot != nextAppleTV {
+            if calibrationOpen {
+                if appleTVSnapshot != nextAppleTV {
+                    appleTVSnapshot = nextAppleTV
+                }
+            } else if !appleTVSnapshot.matchesSettings(nextAppleTV) {
                 appleTVSnapshot = nextAppleTV
             }
             if let record = liveAppleTVRecord(), nextAppleTV.connected {
@@ -1272,7 +1274,14 @@ final class DualSenseMonitor {
             reader.consumePendingScroll()
         }
         let nextMX = displayMXSnapshot()
-        if mxMasterSnapshot != nextMX {
+        let mxCalibrationOpen = openCalibrationDeviceIDs.contains(where: {
+            deviceRecord(for: $0)?.isMXMaster == true
+        })
+        if mxCalibrationOpen {
+            if mxMasterSnapshot != nextMX {
+                mxMasterSnapshot = nextMX
+            }
+        } else if !mxMasterSnapshot.matchesSettings(nextMX) {
             mxMasterSnapshot = nextMX
         }
         applyMouseScrollTap()
@@ -1287,15 +1296,20 @@ final class DualSenseMonitor {
     }
 
     private func publishDualSense(_ next: DualSenseSnapshot, wantMotion: Bool) {
-        if snapshot.matchesIgnoringMotion(next) {
-            if wantMotion, Date().timeIntervalSince(lastMotionPublish) >= 0.1 {
-                snapshot = next
-                lastMotionPublish = Date()
+        if wantMotion {
+            if snapshot.matchesIgnoringMotion(next) {
+                if Date().timeIntervalSince(lastMotionPublish) >= 0.1 {
+                    snapshot = next
+                    lastMotionPublish = Date()
+                }
+                return
             }
+            snapshot = next
+            lastMotionPublish = Date()
             return
         }
+        if snapshot.matchesSettings(next) { return }
         snapshot = next
-        lastMotionPublish = Date()
     }
 
     private func reader(for kind: DeviceKind) -> LogitechMXMasterReader? {

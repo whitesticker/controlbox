@@ -64,33 +64,21 @@ struct DeviceProfilePane: View {
 
                         if record.isGamepad || record.isAppleTVRemote {
                             Section {
-                                controllerInputCard(for: record)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
+                                devicePageListRow {
+                                    controllerAnalogBox(for: record)
+                                }
+                                devicePageListRow {
+                                    controllerPointerScrollBox(for: record)
+                                }
                             } header: {
                                 Text("Analog & pointer")
                             }
                         }
 
                         if record.isMXMaster {
-                            Section {
-                                mxProfilesCard(for: record)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                            } header: {
-                                Text("Profiles")
-                            }
+                            mxProfilesSections(for: record)
                         } else if record.isGamepad || record.isAppleTVRemote {
-                            Section {
-                                controllerProfilesCard(for: record)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                            } header: {
-                                Text("Profiles")
-                            }
+                            controllerProfilesSections(for: record)
                         } else {
                             Section("Profile") {
                                 if record.profiles.count > 1 {
@@ -426,13 +414,6 @@ struct DeviceProfilePane: View {
         return (nil, false, "Not available")
     }
 
-    private func controllerInputCard(for record: DeviceRecord) -> some View {
-        devicePageCard {
-            controllerAnalogBox(for: record)
-            controllerPointerScrollBox(for: record)
-        }
-    }
-
     @ViewBuilder
     private func controllerAnalogBox(for record: DeviceRecord) -> some View {
         if record.isAppleTVRemote {
@@ -581,7 +562,15 @@ struct DeviceProfilePane: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
+    }
+
+    private func devicePageListRow<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
     private func devicePageBox<Content: View>(
@@ -1030,7 +1019,7 @@ struct DeviceProfilePane: View {
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, minHeight: 72)
         .background(
-            .thinMaterial,
+            Palette.fill(colorScheme),
             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
         )
         .overlay {
@@ -1316,63 +1305,44 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private func controllerProfilesCard(for record: DeviceRecord) -> some View {
-        VStack(spacing: 7) {
-            appProfileSelectorCard(for: record)
-                .padding(10)
-                .background(
-                    Palette.fill(colorScheme).opacity(0.42),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+    @ViewBuilder
+    private func controllerProfilesSections(for record: DeviceRecord) -> some View {
+        Section {
+            devicePageListRow {
+                devicePageCard {
+                    appProfileSelectorCard(for: record)
+                }
+            }
+            if record.isGamepad {
+                devicePageListRow {
+                    controllerProfileBox("1-finger swipe") {
+                        controllerProfileRow {
+                            mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
+                        }
+                    }
+                }
+                devicePageListRow {
+                    controllerProfileBox("2-finger swipe") {
+                        controllerProfileRow {
+                            mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
+                        }
+                    }
+                }
+            }
+            ForEach(buttonGroups(for: record)) { group in
+                devicePageListRow {
+                    controllerButtonBox(group, record: record)
+                }
+            }
+        } header: {
+            Text("Profiles")
+        } footer: {
+            if record.isGamepad {
+                bullets(
+                    "Two separate Touchpad Gestures, like the MX gesture button.",
+                    "Hold and move for the four directions; lift without moving is Click.",
+                    "Physical click is Touchpad click under System."
                 )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-                }
-
-            ZStack(alignment: .topLeading) {
-                VStack(spacing: 7) {
-                    if record.isGamepad {
-                        controllerTouchpadGesturesBox(for: record)
-                    }
-
-                    ForEach(buttonGroups(for: record)) { group in
-                        controllerButtonBox(group, record: record)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .id(record.selectedProfileID)
-                .transition(.opacity)
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .animation(.easeInOut(duration: 0.18), value: record.selectedProfileID)
-        }
-        .padding(10)
-        .background(
-            Palette.surface(colorScheme),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
-    }
-
-    private func controllerTouchpadGesturesBox(for record: DeviceRecord) -> some View {
-        controllerProfileBox(
-            "Touchpad gestures",
-            footer: bullets(
-                "Two separate Gestures, like the MX gesture button.",
-                "Hold and move for the four directions; lift without moving is Click.",
-                "Physical click is Touchpad click under System."
-            )
-        ) {
-            controllerProfileRow {
-                mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
-            }
-            Divider().padding(.leading, 12)
-            controllerProfileRow {
-                mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
             }
         }
     }
@@ -1485,7 +1455,8 @@ struct DeviceProfilePane: View {
             .padding(.vertical, 5)
     }
 
-    private func mxProfilesCard(for record: DeviceRecord) -> some View {
+    @ViewBuilder
+    private func mxProfilesSections(for record: DeviceRecord) -> some View {
         let groups = buttonGroups(for: record)
         let buttonGroup = groups.first(where: { $0.id == "buttons" })
         let gestureButtons = buttonGroup?.buttons.filter(\.canOwnGestures) ?? []
@@ -1496,50 +1467,35 @@ struct DeviceProfilePane: View {
             !$0.canOwnGestures && !mainButtonOrder.contains($0)
         } ?? []
 
-        return VStack(spacing: 7) {
-            appProfileSelectorCard(for: record)
-                .padding(10)
-                .background(
-                    Palette.fill(colorScheme).opacity(0.42),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        Section {
+            devicePageListRow {
+                devicePageCard {
+                    appProfileSelectorCard(for: record)
                 }
-
-            ZStack(alignment: .topLeading) {
-                VStack(spacing: 7) {
-                    if !gestureButtons.isEmpty {
-                        mxProfileMappingBox("Gesture button", buttons: gestureButtons, record: record)
-                    }
-                    if !otherButtons.isEmpty {
-                        mxProfileMappingBox("Other buttons", buttons: otherButtons, record: record)
-                    }
-                    if groups.contains(where: { $0.id == "thumb-wheel" }) {
-                        mxThumbWheelModeBox()
-                    }
-                    if !mainButtons.isEmpty {
-                        mxProfileMappingBox("Buttons", buttons: mainButtons, record: record)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .id(record.selectedProfileID)
-                .transition(.opacity)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .animation(.easeInOut(duration: 0.18), value: record.selectedProfileID)
+            if !gestureButtons.isEmpty {
+                devicePageListRow {
+                    mxProfileMappingBox("Gesture button", buttons: gestureButtons, record: record)
+                }
+            }
+            if !otherButtons.isEmpty {
+                devicePageListRow {
+                    mxProfileMappingBox("Other buttons", buttons: otherButtons, record: record)
+                }
+            }
+            if groups.contains(where: { $0.id == "thumb-wheel" }) {
+                devicePageListRow {
+                    mxThumbWheelModeBox()
+                }
+            }
+            if !mainButtons.isEmpty {
+                devicePageListRow {
+                    mxProfileMappingBox("Buttons", buttons: mainButtons, record: record)
+                }
+            }
+        } header: {
+            Text("Profiles")
         }
-        .padding(10)
-        .background(
-            Palette.surface(colorScheme),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
     }
 
     private func mxProfileMappingBox(
@@ -1686,7 +1642,7 @@ struct DeviceProfilePane: View {
                 .frame(height: 58)
                 .foregroundStyle(.secondary)
                 .background(
-                    .thinMaterial,
+                    Palette.fill(colorScheme),
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                 )
                 .overlay {
@@ -1731,8 +1687,8 @@ struct DeviceProfilePane: View {
             )
             .background(
                 selected
-                    ? AnyShapeStyle(Palette.accent.opacity(0.16))
-                    : AnyShapeStyle(.thinMaterial),
+                    ? Palette.accent.opacity(0.16)
+                    : Palette.fill(colorScheme),
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .overlay {
@@ -1851,9 +1807,11 @@ struct DeviceProfilePane: View {
             }
 
             if host.isPending {
-                ProgressView()
-                    .controlSize(.small)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
+                    .accessibilityLabel("Pending")
             } else {
                 Image(systemName: host.isPaired ? "display" : "rectangle.dashed")
                     .font(.system(size: 18, weight: .medium))
@@ -1877,8 +1835,8 @@ struct DeviceProfilePane: View {
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .top)
         .background(
             host.isCurrent
-                ? AnyShapeStyle(Palette.accent.opacity(0.14))
-                : AnyShapeStyle(.thinMaterial),
+                ? Palette.accent.opacity(0.14)
+                : Palette.fill(colorScheme),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay {

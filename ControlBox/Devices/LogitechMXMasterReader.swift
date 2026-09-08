@@ -73,6 +73,41 @@ struct MXMasterSnapshot: Equatable, Sendable {
             connection: connection
         )
     }
+
+    /// Battery, identity, Easy-Switch, and firmware settings — the MX **device page**.
+    /// Live clicks, gestures, and HID++ chatter stay off this compare so the
+    /// settings Form is not invalidated at poll rate.
+    func matchesSettings(_ other: MXMasterSnapshot) -> Bool {
+        connected == other.connected
+            && kind == other.kind
+            && name == other.name
+            && product == other.product
+            && address == other.address
+            && settingsStatus == other.settingsStatus
+            && thumbNativeResolution == other.thumbNativeResolution
+            && thumbDivertedResolution == other.thumbDivertedResolution
+            && availableDPI == other.availableDPI
+            && appliedDPI == other.appliedDPI
+            && smoothScrolling == other.smoothScrolling
+            && smartShiftSupported == other.smartShiftSupported
+            && ratchetMode == other.ratchetMode
+            && smartShiftSensitivity == other.smartShiftSensitivity
+            && batterySupported == other.batterySupported
+            && batteryAvailable == other.batteryAvailable
+            && batteryPercent == other.batteryPercent
+            && batteryCharging == other.batteryCharging
+            && batteryFull == other.batteryFull
+            && batteryStateDescription == other.batteryStateDescription
+            && connection == other.connection
+            && unitID == other.unitID
+            && wirelessProductID == other.wirelessProductID
+            && easySwitchHosts == other.easySwitchHosts
+    }
+
+    var settingsStatus: String {
+        if status.localizedCaseInsensitiveContains("CID") { return "Connected" }
+        return status
+    }
 }
 
 final class LogitechMXMasterReader {

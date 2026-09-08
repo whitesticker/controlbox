@@ -59,6 +59,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md) | Relaunch forces Dark while Night Shift take-over is on |
 | [space-switch-wallpaper-black.md](space-switch-wallpaper-black.md) | MacBook wallpaper goes black when switching Spaces |
 | [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md) | MacBook trackpad scroll stutters once an MX Master is attached |
+| [device-settings-scroll-lag.md](device-settings-scroll-lag.md) | Device sidebar page stutters when scrolled, even disconnected |
 | [system-monitor-reorder.md](system-monitor-reorder.md) | System Monitor dashboard rows cannot be dragged in settings |
 | [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |
 | [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |

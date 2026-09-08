@@ -104,4 +104,19 @@ struct DualSenseSnapshot: Equatable, Sendable {
         rhs.rotationRate = .zero
         return lhs == rhs
     }
+
+    /// Battery, name, and connection — the DualSense **device page** only.
+    /// Analog, buttons, touch, IMU, and click history stay off this compare so
+    /// the settings Form is not invalidated at poll rate.
+    func matchesSettings(_ other: DualSenseSnapshot) -> Bool {
+        connected == other.connected
+            && name == other.name
+            && product == other.product
+            && isDualSense == other.isDualSense
+            && batteryPercent == other.batteryPercent
+            && batteryCharging == other.batteryCharging
+            && batteryFull == other.batteryFull
+            && batteryAvailable == other.batteryAvailable
+            && batteryStateDescription == other.batteryStateDescription
+    }
 }

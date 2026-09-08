@@ -6,7 +6,10 @@ struct MXMasterCalibrationView: View {
     let deviceID: String
     @Environment(\.colorScheme) private var colorScheme
 
-    private var snapshot: MXMasterSnapshot { monitor.mxSnapshot(for: deviceID) }
+    private var snapshot: MXMasterSnapshot {
+        _ = monitor.mxMasterSnapshot
+        return monitor.mxSnapshot(for: deviceID)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

@@ -17,8 +17,8 @@ The poll has to run at 120 Hz for DualSense sticks and MX hold-to-swipe. It also
 
 ## Fix
 
-Cache Accessibility for 1 s. Skip MX HID++ / OS pointer writes when DPI and speed are unchanged. Publish DualSense / MX / Apple TV snapshots only when controls change; IMU at 10 Hz and only on the DualSense page; sensors off otherwise. Give the poll timer a small tolerance.
+Cache Accessibility for 1 s. Skip MX HID++ / OS pointer writes when DPI and speed are unchanged. IMU at 10 Hz and only while DualSense **Calibration** is open; sensors off otherwise. Give the poll timer a small tolerance.
 
-Keep analog `process` at 120 Hz. Do not put IOKit walks or AX prompts on that path.
+Keep analog `process` at 120 Hz. Do not put IOKit walks or AX prompts on that path. Do not publish IMU or live clicks onto the device settings Form.
 
 Code: `DualSenseMonitor.swift`, `DualSenseSession.swift`, `LogitechMXMasterReader.swift`, `EventPoster.swift`. Related: [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md).

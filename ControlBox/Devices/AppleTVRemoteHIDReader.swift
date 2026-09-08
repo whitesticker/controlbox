@@ -50,6 +50,20 @@ struct AppleTVRemoteSnapshot: Equatable, Sendable {
     var micArmLog = "Not armed yet"
 
     var events: [InputLogEvent] = []
+
+    /// Battery, name, and connection — the remote **device page** only.
+    /// Buttons, clickpad, HID counters, and mic stay off this compare so the
+    /// settings Form is not invalidated at poll rate.
+    func matchesSettings(_ other: AppleTVRemoteSnapshot) -> Bool {
+        connected == other.connected
+            && name == other.name
+            && product == other.product
+            && batteryPercent == other.batteryPercent
+            && batteryCharging == other.batteryCharging
+            && batteryFull == other.batteryFull
+            && batteryAvailable == other.batteryAvailable
+            && batteryStateDescription == other.batteryStateDescription
+    }
 }
 
 final class AppleTVRemoteHIDReader {
