@@ -98,17 +98,23 @@ struct AddDeviceSheet: View {
     private var addDeviceFooter: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Button("Supported Device") {
-                    showSupported = true
+            VStack(alignment: .leading, spacing: 10) {
+                Text("On a device row, Add puts it on the sidebar. Settings opens one that’s already there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Supported Device") {
+                        showSupported = true
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(showSupported)
+                    Spacer()
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.cancelAction)
                 }
-                .buttonStyle(.bordered)
-                .disabled(showSupported)
-                Spacer()
-                Button("Done") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -175,11 +181,16 @@ struct AddDeviceSheet: View {
                     if lhs.online != rhs.online { return lhs.online && !rhs.online }
                     return lhs.slot < rhs.slot
                 }) { device in
-                    BoltPairedRow(device: device, onSettings: {
-                        openBoltSettings(device)
-                    }, onRemove: {
-                        pendingUnpair = device
-                    })
+                    BoltPairedRow(
+                        device: device,
+                        hasSettings: hasRememberedSettings(for: device),
+                        onOpen: {
+                            openBoltSettings(device)
+                        },
+                        onRemove: {
+                            pendingUnpair = device
+                        }
+                    )
                 }
             }
             boltActions(receiver)
@@ -281,7 +292,7 @@ struct AddDeviceSheet: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(Color(nsColor: .systemBlue).opacity(0.16), in: Capsule())
-                Button("Settings") {
+                Button(monitor.hasRememberedSettings(for: device) ? "Settings" : "Add") {
                     openDeviceSettings(device)
                 }
                 .buttonStyle(.borderless)
@@ -311,11 +322,19 @@ struct AddDeviceSheet: View {
         let candidates = monitor.bluetoothConnectedDevices + monitor.bluetoothDisconnectedDevices + monitor.connectedDevices
         return candidates.first { DeviceIdentity.sameLogitech($0.logitechKey, bolt.logitechKey) }
     }
+
+    private func hasRememberedSettings(for bolt: LogiBoltPairedDevice) -> Bool {
+        if let match = matchingBluetoothDevice(for: bolt) {
+            return monitor.hasRememberedSettings(for: match)
+        }
+        return monitor.hasRememberedSettings(for: bolt.asConnectedDevice())
+    }
 }
 
 private struct BoltPairedRow: View {
     let device: LogiBoltPairedDevice
-    var onSettings: () -> Void
+    var hasSettings = false
+    var onOpen: () -> Void
     var onRemove: () -> Void
 
     var body: some View {
@@ -334,7 +353,7 @@ private struct BoltPairedRow: View {
             Spacer()
             DeviceStatusTag(online: device.online)
             if device.deviceKind.isSupported {
-                Button("Settings", action: onSettings)
+                Button(hasSettings ? "Settings" : "Add", action: onOpen)
                     .buttonStyle(.borderless)
             }
             Button("Remove", role: .destructive, action: onRemove)

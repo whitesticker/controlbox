@@ -287,7 +287,7 @@ struct CalibrationWindow: View {
                 HStack(alignment: .top, spacing: 18) {
                     ControllerDiagramView(snapshot: monitor.snapshot)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    CaptureSidebar(snapshot: monitor.snapshot)
+                    CaptureSidebar(monitor: monitor)
                         .frame(width: 360)
                 }
                 MicrophoneStatusView(
@@ -483,8 +483,10 @@ private struct StatusChip: View {
 }
 
 private struct CaptureSidebar: View {
-    let snapshot: DualSenseSnapshot
+    @Bindable var monitor: DualSenseMonitor
     @Environment(\.colorScheme) private var colorScheme
+
+    private var snapshot: DualSenseSnapshot { monitor.snapshot }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -493,6 +495,18 @@ private struct CaptureSidebar: View {
                 ValueRow(label: "Right stick", value: format(snapshot.rightStick))
                 ValueRow(label: "L2", value: String(format: "%.3f", snapshot.l2))
                 ValueRow(label: "R2", value: String(format: "%.3f", snapshot.r2))
+            }
+
+            Panel(title: "Triggers") {
+                SettingsSlider(
+                    "Tab repeat",
+                    value: tabRepeatBinding,
+                    in: 0.10...0.55,
+                    valueText: "\(Int(((monitor.selectedRecord?.mxDefaultProfile.resolvedTabRepeatInterval ?? 0.22) * 1000).rounded())) ms"
+                )
+                Text("One setting for this gamepad across every app profile.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Palette.secondaryText(colorScheme))
             }
 
             Panel(title: "Touchpad") {
@@ -544,6 +558,13 @@ private struct CaptureSidebar: View {
                 }
             }
         }
+    }
+
+    private var tabRepeatBinding: Binding<Double> {
+        Binding(
+            get: { monitor.selectedRecord?.mxDefaultProfile.resolvedTabRepeatInterval ?? 0.22 },
+            set: { monitor.setTabRepeatInterval($0) }
+        )
     }
 
     private func format(_ stick: SIMD2<Float>) -> String {

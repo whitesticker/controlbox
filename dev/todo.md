@@ -50,8 +50,8 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
 - [x] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
-- [ ] **Delete device does not leave the sidebar.** Removing a device must drop that **sidebar** row (and its remembered record). Today it stays.
-- [ ] **Device management and onboarding.** A clearer path to add a device, see what’s attached vs disconnected, forget one, and first-run attach. Product shape is in [roadmap.md](roadmap.md).
+- [x] **Delete device does not leave the sidebar.** Removing a device drops that **sidebar** row (and its remembered record) even if it is still connected.
+- [x] **Device management and onboarding.** Add Device: **Add** when there is no Control Box page, **Settings** when there is. Connected hardware is not on the sidebar until Add. Product shape is in [roadmap.md](roadmap.md).
 
 
 
@@ -85,4 +85,4 @@ Unsigned Debug compile on GitHub Actions plus hard-constraint greps. One job is 
 - [ ] **Release configuration** — CI is Debug-only today; add a Release build so shipping flags get compiled too.
 - [ ] **Pin Xcode** — lock the runner image / Xcode version so a silent GitHub image bump does not fail `main` overnight.
 
-Product-facing work (mic, live gesture HUD, MX Keys remapping, DualSense per-app profiles, generic mouse/gamepad mapper, MX4 Side-as-Gestures, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, onboarding, product page, settings export, Pointer & Scroll vs System Settings, Sound per-app icons) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, per-app mouse profiles, SmartShift, and thumb-wheel sensitivity are shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys remapping, generic mouse/gamepad mapper, MX4 Side-as-Gestures, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, product page, settings export, Pointer & Scroll vs System Settings, Sound per-app icons) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, per-app mouse and DualSense profiles, SmartShift, thumb-wheel sensitivity, and Add Device onboarding are shipped. Media skip / play / mute already show an action HUD.

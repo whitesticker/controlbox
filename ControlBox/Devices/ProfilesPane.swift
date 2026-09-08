@@ -72,6 +72,46 @@ struct DeviceProfilePane: View {
                             )
                         }
 
+                        if record.isGamepad || record.isAppleTVRemote {
+                            analogSection(for: record)
+
+                            Section {
+                                SettingsSlider("Pointer speed", value: pointerSpeedBinding)
+                                SettingsSlider("Scroll speed", value: wheelSpeedBinding)
+                                if record.isGamepad {
+                                    Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
+                                        .disabled(!hasAnalogScrollSource(record))
+                                    if (monitor.selectedProfile.scrollAcceleration == true),
+                                       hasAnalogScrollSource(record) {
+                                        SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
+                                    }
+                                }
+                                Picker("Scroll direction", selection: scrollDirectionBinding) {
+                                    Text("Natural").tag("natural")
+                                    Text("Standard").tag("standard")
+                                }
+                                .pickerStyle(.radioGroup)
+                            } header: {
+                                Text("Pointer & scroll")
+                            } footer: {
+                                if record.isAppleTVRemote {
+                                    bullets(
+                                        "One setting for this remote across every app profile.",
+                                        "Pointer speed: stick, clickpad, and touchpad.",
+                                        "Scroll speed: only when that analog is set to Scroll.",
+                                        "Natural matches the Mac."
+                                    )
+                                } else {
+                                    bullets(
+                                        "One setting for this gamepad across every app profile.",
+                                        "Pointer speed: stick and touchpad.",
+                                        "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
+                                        "Natural matches the Mac."
+                                    )
+                                }
+                            }
+                        }
+
                         if record.isMXMaster {
                             Section {
                                 mxProfilesCard(for: record)
@@ -81,129 +121,112 @@ struct DeviceProfilePane: View {
                             } header: {
                                 Text("Profiles")
                             }
+                        } else if record.isGamepad || record.isAppleTVRemote {
+                            Section {
+                                controllerProfilesCard(for: record)
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            } header: {
+                                Text("Profiles")
+                            }
                         } else {
-                        Section("Profile") {
-                        if record.profiles.count > 1 {
-                            Picker("Active profile", selection: profileSelection) {
-                                ForEach(record.profiles) { profile in
-                                    Text(profile.name).tag(profile.id)
+                            Section("Profile") {
+                                if record.profiles.count > 1 {
+                                    Picker("Active profile", selection: profileSelection) {
+                                        ForEach(record.profiles) { profile in
+                                            Text(profile.name).tag(profile.id)
+                                        }
+                                    }
+                                }
+
+                                TextField("Name", text: nameBinding)
+                                TextField("Description", text: summaryBinding, axis: .vertical)
+                                    .lineLimit(2...4)
+
+                                HStack {
+                                    Button("New Profile") {
+                                        monitor.addProfile()
+                                    }
+                                    Button("Duplicate") {
+                                        monitor.duplicateSelectedProfile()
+                                    }
+                                    Spacer()
+                                    Button("Delete Profile", role: .destructive) {
+                                        monitor.deleteSelectedProfile()
+                                    }
+                                    .disabled(record.profiles.count < 2)
                                 }
                             }
-                        }
 
-                        TextField("Name", text: nameBinding)
-                        TextField("Description", text: summaryBinding, axis: .vertical)
-                            .lineLimit(2...4)
+                            analogSection(for: record)
 
-                        HStack {
-                            Button("New Profile") {
-                                monitor.addProfile()
-                            }
-                            Button("Duplicate") {
-                                monitor.duplicateSelectedProfile()
-                            }
-                            Spacer()
-                            Button("Delete Profile", role: .destructive) {
-                                monitor.deleteSelectedProfile()
-                            }
-                            .disabled(record.profiles.count < 2)
-                        }
-                    }
-
-                    analogSection(for: record)
-
-                    if !record.isMXMaster && !record.isAppleTVRemote && !record.isMXKeyboard {
-                        dualSenseTouchpadGesturesSection(for: record)
-                    }
-
-                        Section {
-                            SettingsSlider("Pointer speed", value: pointerSpeedBinding)
-                            SettingsSlider("Scroll speed", value: wheelSpeedBinding)
-                            if !record.isAppleTVRemote {
-                                Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
-                                    .disabled(!hasAnalogScrollSource(record))
-                                if (monitor.selectedProfile.scrollAcceleration == true),
-                                   hasAnalogScrollSource(record) {
-                                    SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
+                            Section {
+                                SettingsSlider("Pointer speed", value: pointerSpeedBinding)
+                                SettingsSlider("Scroll speed", value: wheelSpeedBinding)
+                                if !record.isAppleTVRemote {
+                                    Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
+                                        .disabled(!hasAnalogScrollSource(record))
+                                    if (monitor.selectedProfile.scrollAcceleration == true),
+                                       hasAnalogScrollSource(record) {
+                                        SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
+                                    }
                                 }
-                            }
-                            Picker("Scroll direction", selection: scrollDirectionBinding) {
-                                Text("Natural").tag("natural")
-                                Text("Standard").tag("standard")
-                            }
-                            .pickerStyle(.radioGroup)
-                        } header: {
-                            Text("Pointer & scroll")
-                        } footer: {
-                            if record.isAppleTVRemote {
-                                bullets(
-                                    "Pointer speed: stick, clickpad, and touchpad.",
-                                    "Scroll speed: only when that analog is set to Scroll.",
-                                    "Natural matches the Mac."
-                                )
-                            } else {
-                                bullets(
-                                    "Pointer speed: stick and touchpad.",
-                                    "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
-                                    "Natural matches the Mac."
-                                )
-                            }
-                        }
-
-                    ForEach(buttonGroups(for: record)) { group in
-                        Section {
-                            ForEach(group.buttons, id: \.self) { button in
-                                if button == .clickSelect {
-                                    selectRow(for: record)
-                                } else if button.canOwnGestures {
-                                    mxActionRow(label(for: button, kind: record.kind), button: button, record: record)
+                                Picker("Scroll direction", selection: scrollDirectionBinding) {
+                                    Text("Natural").tag("natural")
+                                    Text("Standard").tag("standard")
+                                }
+                                .pickerStyle(.radioGroup)
+                            } header: {
+                                Text("Pointer & scroll")
+                            } footer: {
+                                if record.isAppleTVRemote {
+                                    bullets(
+                                        "Pointer speed: stick, clickpad, and touchpad.",
+                                        "Scroll speed: only when that analog is set to Scroll.",
+                                        "Natural matches the Mac."
+                                    )
                                 } else {
-                                    let mapped = record.selectedProfile.bindings[button]
-                                        ?? (button.isMXScrollDirection ? .scroll : .none)
-                                    actionRow(label(for: button, kind: record.kind), button: button, current: mapped)
+                                    bullets(
+                                        "Pointer speed: stick and touchpad.",
+                                        "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
+                                        "Natural matches the Mac."
+                                    )
                                 }
                             }
-                            if group.id == "shoulders",
-                               !record.isMXMaster,
-                               !record.isAppleTVRemote,
-                               dualSenseUsesTriggerTabs(record) {
-                                SettingsSlider(
-                                    "Tab repeat",
-                                    value: tabRepeatBinding,
-                                    in: 0.10...0.55,
-                                    valueText: "\(Int((monitor.selectedProfile.resolvedTabRepeatInterval * 1000).rounded())) ms"
-                                )
+
+                            ForEach(buttonGroups(for: record)) { group in
+                                Section {
+                                    ForEach(group.buttons, id: \.self) { button in
+                                        if button == .clickSelect {
+                                            selectRow(for: record)
+                                        } else if button.canOwnGestures {
+                                            mxActionRow(
+                                                label(for: button, kind: record.kind),
+                                                button: button,
+                                                record: record
+                                            )
+                                        } else {
+                                            let mapped = record.selectedProfile.bindings[button]
+                                                ?? (button.isMXScrollDirection ? .scroll : .none)
+                                            actionRow(
+                                                label(for: button, kind: record.kind),
+                                                button: button,
+                                                current: mapped
+                                            )
+                                        }
+                                    }
+                                } header: {
+                                    Text(group.title)
+                                } footer: {
+                                    if group.id == "clickpad" {
+                                        bullets(
+                                            "Double-tap Select for a double-click.",
+                                            "Hold for the Hold action."
+                                        )
+                                    }
+                                }
                             }
-                        } header: {
-                            Text(group.title)
-                        } footer: {
-                            if group.id == "clickpad" {
-                                bullets(
-                                    "Double-tap Select for a double-click.",
-                                    "Hold for the Hold action."
-                                )
-                            } else if group.id == "buttons" {
-                                mxButtonsFooter(for: record)
-                            } else if group.id == "wheel" {
-                                bullets(
-                                    "Up and Down are the main wheel, one direction each.",
-                                    "Scroll keeps native scrolling; any other action replaces that direction."
-                                )
-                            } else if group.id == "thumb-wheel" {
-                                bullets(
-                                    "Left and Right are the thumb wheel.",
-                                    "Scroll keeps native scrolling; any other action replaces that direction."
-                                )
-                            } else if group.id == "sticks" {
-                                Text("L3 and R3 are stick clicks.")
-                            } else if group.id == "shoulders", !record.isMXMaster, !record.isAppleTVRemote {
-                                bullets(
-                                    "L2 / R2 are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
-                                    "L1 / R1 are click buttons."
-                                )
-                            }
-                        }
-                    }
                         }
 
                     Section {
@@ -223,8 +246,7 @@ struct DeviceProfilePane: View {
                         } footer: {
                             bullets(
                                 "Removes it from the sidebar.",
-                                "Add Device brings it back.",
-                                "If it’s still connected, it stays until it disconnects."
+                                "Add Device brings it back."
                             )
                         }
                     }
@@ -252,7 +274,7 @@ struct DeviceProfilePane: View {
                         pendingMXProfileRemoval = nil
                     }
                 } message: {
-                    Text("The mouse will use Default in that app.")
+                    Text("The \(record.isMXMaster ? "mouse" : (record.isAppleTVRemote ? "remote" : "gamepad")) will use Default in that app.")
                 }
                 .onChange(of: monitor.selectedDeviceID) { _, _ in
                     customizingButton = nil
@@ -298,6 +320,7 @@ struct DeviceProfilePane: View {
                     .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
             } footer: {
                 bullets(
+                    "One setting for this remote across every app profile.",
                     "Slow slides stay precise; flicks cover more of the screen.",
                     "Pointer does not move while Select is pressed.",
                     "Sticky targeting outlines the control under the pointer and clicks it."
@@ -320,6 +343,7 @@ struct DeviceProfilePane: View {
                 Text("Analog")
             } footer: {
                 bullets(
+                    "One setting for this gamepad across every app profile.",
                     "Sticks only move or scroll if that source is on.",
                     "Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.",
                     "Acceleration: small moves stay precise, flicks speed up.",
@@ -597,19 +621,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private func dualSenseUsesTriggerTabs(_ record: DeviceRecord) -> Bool {
-        let profile = record.selectedProfile
-        return profile.bindings[.l2]?.isTabSwitch == true
-            || profile.bindings[.r2]?.isTabSwitch == true
-    }
-
-    private var tabRepeatBinding: Binding<Double> {
-        Binding(
-            get: { monitor.selectedProfile.resolvedTabRepeatInterval },
-            set: { monitor.setTabRepeatInterval($0) }
-        )
-    }
-
     private func hasAnalogScrollSource(_ record: DeviceRecord) -> Bool {
         let profile = record.selectedProfile
         if record.isAppleTVRemote {
@@ -714,6 +725,166 @@ struct DeviceProfilePane: View {
         )
     }
 
+    private func controllerProfilesCard(for record: DeviceRecord) -> some View {
+        VStack(spacing: 7) {
+            appProfileSelectorCard(for: record)
+                .padding(10)
+                .background(
+                    Palette.fill(colorScheme).opacity(0.42),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+                }
+
+            if record.isGamepad {
+                controllerTouchpadGesturesBox(for: record)
+            }
+
+            ForEach(buttonGroups(for: record)) { group in
+                controllerButtonBox(group, record: record)
+            }
+        }
+        .padding(10)
+        .background(
+            Palette.surface(colorScheme),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 2, y: 1)
+    }
+
+    private func controllerTouchpadGesturesBox(for record: DeviceRecord) -> some View {
+        controllerProfileBox(
+            "Touchpad gestures",
+            footer: bullets(
+                "Two separate Gestures, like the MX gesture button.",
+                "Hold and move for the four directions; lift without moving is Click.",
+                "Physical click is Touchpad click under System."
+            )
+        ) {
+            controllerProfileRow {
+                mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
+            }
+            Divider().padding(.leading, 12)
+            controllerProfileRow {
+                mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
+            }
+        }
+    }
+
+    private func controllerButtonBox(
+        _ group: DeviceButtonGroup,
+        record: DeviceRecord
+    ) -> some View {
+        controllerProfileBox(
+            group.title,
+            footer: controllerButtonFooter(group, record: record)
+        ) {
+            ForEach(group.buttons, id: \.self) { button in
+                controllerProfileRow {
+                    if button == .clickSelect {
+                        selectRow(for: record)
+                    } else if button.canOwnGestures {
+                        mxActionRow(
+                            label(for: button, kind: record.kind),
+                            button: button,
+                            record: record
+                        )
+                    } else {
+                        let mapped = record.selectedProfile.bindings[button]
+                            ?? (button.isMXScrollDirection ? .scroll : .none)
+                        actionRow(
+                            label(for: button, kind: record.kind),
+                            button: button,
+                            current: mapped
+                        )
+                    }
+                }
+
+                if button != group.buttons.last {
+                    Divider().padding(.leading, 12)
+                }
+            }
+
+        }
+    }
+
+    private func controllerButtonFooter(
+        _ group: DeviceButtonGroup,
+        record: DeviceRecord
+    ) -> Text? {
+        if group.id == "clickpad" {
+            return bullets(
+                "Double-tap Select for a double-click.",
+                "Hold for the Hold action."
+            )
+        }
+        if group.id == "sticks" {
+            return Text("L3 and R3 are stick clicks.")
+        }
+        if group.id == "shoulders", record.isGamepad {
+            return bullets(
+                "L2 / R2 are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
+                "L1 / R1 are click buttons."
+            )
+        }
+        return nil
+    }
+
+    private func controllerProfileBox<Content: View>(
+        _ title: String? = nil,
+        footer: Text? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let title {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.45)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 9)
+                    .padding(.bottom, 3)
+            }
+
+            content()
+
+            if let footer {
+                footer
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 3)
+                    .padding(.bottom, 9)
+            } else {
+                Color.clear.frame(height: 2)
+            }
+        }
+        .background(
+            Palette.fill(colorScheme).opacity(0.34),
+            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+        }
+    }
+
+    private func controllerProfileRow<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+    }
+
     private func mxProfilesCard(for record: DeviceRecord) -> some View {
         let groups = buttonGroups(for: record)
         let buttonGroup = groups.first(where: { $0.id == "buttons" })
@@ -726,7 +897,7 @@ struct DeviceProfilePane: View {
         } ?? []
 
         return VStack(spacing: 7) {
-            mxProfileSelectorCard(for: record)
+            appProfileSelectorCard(for: record)
                 .padding(10)
                 .background(
                     Palette.fill(colorScheme).opacity(0.42),
@@ -854,15 +1025,15 @@ struct DeviceProfilePane: View {
         .help("One action for both directions of the thumb wheel.")
     }
 
-    private func mxProfileSelectorCard(for record: DeviceRecord) -> some View {
+    private func appProfileSelectorCard(for record: DeviceRecord) -> some View {
         let selected = record.selectedProfile
         return VStack(spacing: 8) {
-            mxProfileTileGrid(for: record)
+            appProfileTileGrid(for: record)
             HStack(spacing: 7) {
                 Circle()
                     .fill(Palette.good)
                     .frame(width: 7, height: 7)
-                Text(monitor.liveMXCaption(for: record))
+                Text(monitor.liveAppCaption(for: record))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -884,13 +1055,13 @@ struct DeviceProfilePane: View {
         .padding(.vertical, 3)
     }
 
-    private func mxProfileTileGrid(for record: DeviceRecord) -> some View {
+    private func appProfileTileGrid(for record: DeviceRecord) -> some View {
         let columns = [
             GridItem(.adaptive(minimum: 96, maximum: 132), spacing: 8)
         ]
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(record.mxScopeProfiles()) { profile in
-                mxProfileTile(profile, record: record)
+            ForEach(record.appScopeProfiles()) { profile in
+                appProfileTile(profile, record: record)
             }
             Button {
                 showAddApp = true
@@ -924,9 +1095,9 @@ struct DeviceProfilePane: View {
         }
     }
 
-    private func mxProfileTile(_ profile: MappingProfile, record: DeviceRecord) -> some View {
+    private func appProfileTile(_ profile: MappingProfile, record: DeviceRecord) -> some View {
         let selected = profile.id == record.selectedProfileID
-        let live = monitor.liveMXProfile(for: record).id == profile.id
+        let live = monitor.liveAppProfile(for: record).id == profile.id
         return Button {
             monitor.selectProfile(profile.id)
         } label: {

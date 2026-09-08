@@ -44,8 +44,8 @@ Control Box stays on your Mac. Nothing is uploaded.
 
 | Device | What you get |
 |---|---|
-| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. |
-| **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. |
+| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. Per-app **profile tiles** follow the frontmost app, same as MX mice. |
+| **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. Per-app **profile tiles** follow the frontmost app. |
 | **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Per-app **profile tiles** follow the frontmost app. Thumb wheel is one mode (scroll, tabs, volume, desktops, …). Free Spin / Ratchet, DPI, thumb-wheel sensitivity, and invert are on Calibration. Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
 | **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Same per-app profiles, thumb-wheel modes, and Calibration controls as 3 / 3S. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
 | **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |

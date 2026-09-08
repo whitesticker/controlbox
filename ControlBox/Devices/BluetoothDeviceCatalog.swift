@@ -29,6 +29,10 @@ enum DeviceKind: String, Codable, Equatable {
         self == .logitechMXMechanical || self == .logitechMXMechanicalMini
     }
 
+    var isGamepad: Bool {
+        self == .dualSense || self == .dualSenseEdge
+    }
+
     var paneGlyph: String {
         if self == .appleTVRemote { return "device-siri-remote-filled" }
         if isMXMaster { return "device-mx-master-line" }
@@ -295,17 +299,52 @@ enum DeviceIdentity {
             return same(lhs.address, rhs.address)
         }
         if same(lhs.address, rhs.address) { return true }
-        guard namesMatch(lhs.name, rhs.name) else { return false }
-        if let leftWPID = lhs.wirelessProductID, leftWPID != 0,
-           let rightWPID = rhs.wirelessProductID, rightWPID != 0,
-           leftWPID == rightWPID {
+        let sameWPID = wpidEqual(lhs.wirelessProductID, rhs.wirelessProductID)
+        // Easy-Switch: one unit on BLE and Bolt. HID product name is often
+        // truncated ("MX MCHNCL M") while Bolt uses the full title.
+        if sameWPID, lhs.connection != rhs.connection {
             return true
         }
+        guard logitechNamesEquivalent(lhs.name, rhs.name) else { return false }
+        if sameWPID { return true }
         return lhs.connection != rhs.connection
             || isBoltWPID(lhs.address)
             || isBoltWPID(rhs.address)
             || !isConcrete(lhs.address)
             || !isConcrete(rhs.address)
+    }
+
+    static func logitechNamesEquivalent(_ lhs: String, _ rhs: String) -> Bool {
+        if namesMatch(lhs, rhs) { return true }
+        let left = canonicalLogitechName(lhs)
+        let right = canonicalLogitechName(rhs)
+        return !left.isEmpty && left == right
+    }
+
+    static func canonicalLogitechName(_ name: String) -> String {
+        var compact = name.lowercased().filter(\.isLetter)
+        compact = compact.replacingOccurrences(of: "mchncl", with: "mechanical")
+        if compact.hasSuffix("mechanicalm") {
+            compact += "ini"
+        }
+        return compact
+    }
+
+    static func preferredLogitechName(_ lhs: String, _ rhs: String) -> String {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        if left.isEmpty { return right }
+        if right.isEmpty { return left }
+        let leftTruncated = left.lowercased().contains("mchncl")
+        let rightTruncated = right.lowercased().contains("mchncl")
+        if leftTruncated, !rightTruncated { return right }
+        if rightTruncated, !leftTruncated { return left }
+        return left.count >= right.count ? left : right
+    }
+
+    private static func wpidEqual(_ lhs: Int?, _ rhs: Int?) -> Bool {
+        guard let lhs, lhs != 0, let rhs, rhs != 0 else { return false }
+        return lhs == rhs
     }
 
     static func unitToken(_ unit: UInt32) -> String {

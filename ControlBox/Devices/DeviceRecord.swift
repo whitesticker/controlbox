@@ -25,6 +25,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var isAppleTVRemote: Bool { kind == .appleTVRemote }
     var isMXMaster: Bool { kind.isMXMaster }
     var isMXKeyboard: Bool { kind.isMXKeyboard }
+    var isGamepad: Bool { kind.isGamepad }
+    var usesAppProfiles: Bool { isMXMaster || isGamepad || isAppleTVRemote }
 
     var hapticFeedbackEnabled: Bool {
         hapticFeedback ?? (kind == .dualSense || kind == .dualSenseEdge)
@@ -46,8 +48,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             ?? selectedProfile
     }
 
-    mutating func ensureMXMouseProfiles() {
-        guard isMXMaster else { return }
+    mutating func ensureAppProfiles() {
+        guard usesAppProfiles else { return }
         if !profiles.contains(where: \.treatsAsMXDefault) {
             if let index = profiles.firstIndex(where: { $0.id == selectedProfileID }) {
                 profiles[index].isMXDefault = true
@@ -70,7 +72,29 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
         }
     }
 
-    func mxScopeProfiles() -> [MappingProfile] {
+    mutating func ensureControllerDeviceSettings() {
+        guard isGamepad || isAppleTVRemote, !profiles.isEmpty else { return }
+        let deviceSettings = mxDefaultProfile
+        for index in profiles.indices {
+            profiles[index].leftStick = deviceSettings.leftStick
+            profiles[index].rightStick = deviceSettings.rightStick
+            profiles[index].dualSenseTouchpad = deviceSettings.dualSenseTouchpad
+            profiles[index].appleTVClickpad = deviceSettings.appleTVClickpad
+            profiles[index].appleTVWheel = deviceSettings.appleTVWheel
+            profiles[index].pointerAcceleration = deviceSettings.pointerAcceleration
+            profiles[index].pointerAccelerationAmount = deviceSettings.pointerAccelerationAmount
+            profiles[index].stickyTargeting = deviceSettings.stickyTargeting
+            profiles[index].pointerSpeed = deviceSettings.pointerSpeed
+            profiles[index].wheelScrollSpeed = deviceSettings.wheelScrollSpeed
+            profiles[index].thumbScrollSpeed = deviceSettings.thumbScrollSpeed
+            profiles[index].naturalScrolling = deviceSettings.naturalScrolling
+            profiles[index].scrollAcceleration = deviceSettings.scrollAcceleration
+            profiles[index].scrollAccelerationAmount = deviceSettings.scrollAccelerationAmount
+            profiles[index].dualSenseTabRepeatInterval = deviceSettings.dualSenseTabRepeatInterval
+        }
+    }
+
+    func appScopeProfiles() -> [MappingProfile] {
         let defaultProfile = mxDefaultProfile
         var ordered: [MappingProfile] = [defaultProfile]
         ordered.append(contentsOf: profiles.filter { ($0.frontmostAppBundleID ?? "").isEmpty == false }
@@ -120,7 +144,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             unitID: device.unitID,
             wirelessProductID: device.wirelessProductID
         )
-        record.ensureMXMouseProfiles()
+        record.ensureAppProfiles()
+        record.ensureControllerDeviceSettings()
         return record
     }
 }

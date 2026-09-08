@@ -74,18 +74,25 @@ public enum MouseAppCatalog: Sendable {
         return defaultProfile
     }
 
+    public enum AppProfileFamily: Sendable {
+        case mouse
+        case gamepad
+        case remote
+    }
+
     public static func profileForAddedApp(
         from defaultProfile: MappingProfile,
         bundleID: String,
-        name: String
+        name: String,
+        family: AppProfileFamily = .mouse
     ) -> MappingProfile {
         var next = defaultProfile.duplicated(as: name)
         next.frontmostAppBundleID = bundleID
         next.appCategory = nil
         next.isMXDefault = false
         next.name = name
-        switch category(forBundleID: bundleID) {
-        case .browsers:
+        switch (family, category(forBundleID: bundleID)) {
+        case (.mouse, .browsers):
             next.mxThumbWheelMode = .switchTabs
             next.bindings[.mxThumbLeft] = nil
             next.bindings[.mxThumbRight] = nil
@@ -100,10 +107,13 @@ public enum MouseAppCatalog: Sendable {
                 ),
                 for: .mxHaptic
             )
-        case .editors:
+        case (.mouse, .editors):
             next.bindings[.mxBack] = .tabPrevious
             next.bindings[.mxForward] = .tabNext
-        case nil:
+        case (.gamepad, .browsers), (.gamepad, .editors):
+            next.bindings[.l2] = .tabPrevious
+            next.bindings[.r2] = .tabNext
+        default:
             break
         }
         return next

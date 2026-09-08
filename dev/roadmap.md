@@ -19,7 +19,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **MX thumb-wheel sensitivity.** Calibration **On this mouse**: per-mouse scale of diverted HID++ `0x2150` thumb travel. Independent of Pointer & Scroll wheel speed. See [mx-smartshift.md](mx-smartshift.md).
 - [x] **MX Free Spin / Ratchet.** Calibration **On this mouse**: segmented **Free Spin** / **Ratchet** plus a SmartShift sensitivity slider. Firmware `0x2111`, fallback `0x2110`. See [mx-smartshift.md](mx-smartshift.md).
 - [ ] **MX4 Side as a Gestures owner.** On MX Master 4, **Side** is the thumb gesture button (CID `0x00C3`, same family as 3S). **Haptic** stays the force-sensing pad. Both should be allowed to own Gestures (hold-to-swipe). Today only haptic can. Do not put Gestures back on Back / Forward. Related: [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
-- [ ] **DualSense per-app profiles.** Same **profile tiles** treatment as MX mice: Default plus per-app mappings that follow the frontmost app. DualSense still uses the named Profile picker today. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
+- [x] **DualSense and Remote per-app profiles.** Same **profile tiles** treatment as MX mice: Default plus per-app button and gesture mappings that follow the frontmost app. Analog, Pointer & Scroll, and Calibration remain device-level outside Profiles; DualSense Tab repeat is on Calibration. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 
 ## App settings
 
@@ -32,7 +32,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [ ] **Gesture visual cue.** Stronger on-screen feedback when the 3S gesture button, MX4 haptic pad, or DualSense touchpad is held / swiping. Media skip / play / mute already use the action HUD; this is the live hold overlay.
 - [x] **Media action cue.** Previous / next track, play/pause, mute, back/forward, and tab switch show the same card as volume (symbol + title).
 - [ ] **Calibration layouts.** More accurate physical button placement on DualSense, Apple TV remote, and each MX body.
-- [ ] **Onboarding and device management.** First-launch: permissions, attach a device, Control this Mac, Calibration. After that: a clearer way to add, see attached vs **disconnected**, and **forget** a device so it actually leaves the **sidebar** (delete today does not). See also [todo.md](todo.md).
+- [x] **Onboarding and device management.** First-launch: permissions, attach a device, Control this Mac, Calibration. A device is on the **sidebar** only after **Add** on Add Device (existing settings → **Settings**). **Delete Device** drops the sidebar row even if the hardware is still connected; Add Device brings it back. See also [todo.md](todo.md).
 - [x] **System Monitor (top).** Separate Mac pane; optional second menu bar extra with live network speed and the top dashboard. Control Box’s own menu extra is unchanged.
 - [x] **Night Shift curve.** Separate Mac pane; optional 24-hour yellowness curve that drives system Night Shift. Off until the pane toggle is on.
 - [x] **Menu bar icon.** The Control Box extra is a template ring matching the app icon annulus, not `gamecontroller.fill`.

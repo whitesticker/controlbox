@@ -78,46 +78,24 @@ final class DualSenseMonitor {
     }
 
     var sidebarDevices: [SidebarDevice] {
-        var seen = Set<String>()
         var items: [SidebarDevice] = []
-        for device in connectedDevices where device.isSupported && device.isConnected {
-            if items.contains(where: { DeviceIdentity.sameLogitech($0.logitechKey, device.logitechKey) }) {
-                continue
-            }
-            let record = matchingRecord(for: device)
-            let id = record?.id ?? device.id
-            seen.insert(id)
-            items.append(
-                SidebarDevice(
-                    id: id,
-                    name: record?.displayName ?? device.name,
-                    address: record?.address ?? device.address,
-                    kind: record?.kind ?? device.deviceKind,
-                    isConnected: true,
-                    controlEnabled: record?.controlEnabled ?? false,
-                    remembered: record?.remembered ?? false,
-                    connection: device.connection,
-                    unitID: record?.unitID ?? device.unitID,
-                    wirelessProductID: record?.wirelessProductID ?? device.wirelessProductID
-                )
-            )
-        }
-        for record in deviceRecords where record.remembered && !seen.contains(record.id) {
+        for record in deviceRecords where record.remembered {
             if items.contains(where: { DeviceIdentity.sameLogitech($0.logitechKey, record.logitechKey) }) {
                 continue
             }
+            let live = connectedDevices.first { recordsMatch(record, $0) && $0.isConnected }
             items.append(
                 SidebarDevice(
                     id: record.id,
                     name: record.displayName,
-                    address: record.address,
+                    address: live?.address ?? record.address,
                     kind: record.kind,
-                    isConnected: false,
+                    isConnected: live != nil,
                     controlEnabled: record.controlEnabled,
                     remembered: true,
-                    connection: record.logitechKey.connection,
-                    unitID: record.unitID,
-                    wirelessProductID: record.wirelessProductID
+                    connection: live?.connection ?? record.logitechKey.connection,
+                    unitID: record.unitID ?? live?.unitID,
+                    wirelessProductID: record.wirelessProductID ?? live?.wirelessProductID
                 )
             )
         }
@@ -184,7 +162,7 @@ final class DualSenseMonitor {
     private var didStart = false
     private var engines: [String: ControlEngine] = [:]
     private var mxWheelEngines: [String: MXWheelActionEngine] = [:]
-    private var lastLiveMXProfileID: [String: String] = [:]
+    private var lastLiveAppProfileID: [String: String] = [:]
     private let dualSense = DualSenseSession()
     private let appleTV = AppleTVRemoteSession()
     private let keyboard = MXKeyboardSession()
@@ -307,31 +285,49 @@ final class DualSenseMonitor {
                 recentFrontmostApps = Array(recentFrontmostApps.prefix(24))
             }
         }
-        applyLiveMXProfiles()
+        applyLiveAppProfiles()
     }
 
-    func liveMXProfile(for record: DeviceRecord) -> MappingProfile {
+    func liveAppProfile(for record: DeviceRecord) -> MappingProfile {
         MouseAppCatalog.liveProfile(
             profiles: record.profiles,
             defaultProfile: record.mxDefaultProfile,
             frontmostBundleID: frontmostBundleID,
-            lastLiveID: lastLiveMXProfileID[record.id]
+            lastLiveID: lastLiveAppProfileID[record.id]
         )
     }
 
-    func liveMXCaption(for record: DeviceRecord) -> String {
-        "Mouse is using \(liveMXProfile(for: record).mxScopeTitle)"
+    func liveMXProfile(for record: DeviceRecord) -> MappingProfile {
+        liveAppProfile(for: record)
     }
 
-    private func applyLiveMXProfiles() {
-        var nextIDs = lastLiveMXProfileID
-        for record in deviceRecords where record.isMXMaster {
-            let live = liveMXProfile(for: record)
-            let previous = lastLiveMXProfileID[record.id]
+    func liveAppCaption(for record: DeviceRecord) -> String {
+        let noun: String
+        if record.isMXMaster {
+            noun = "Mouse"
+        } else if record.isAppleTVRemote {
+            noun = "Remote"
+        } else {
+            noun = "Gamepad"
+        }
+        return "\(noun) is using \(liveAppProfile(for: record).mxScopeTitle)"
+    }
+
+    func liveMXCaption(for record: DeviceRecord) -> String {
+        liveAppCaption(for: record)
+    }
+
+    private func applyLiveAppProfiles() {
+        var nextIDs = lastLiveAppProfileID
+        for record in deviceRecords where record.usesAppProfiles {
+            let live = liveAppProfile(for: record)
+            let previous = lastLiveAppProfileID[record.id]
             if previous != live.id {
                 engine(for: record.id).reset()
-                mxWheelEngine(for: record.id).reset()
-                lastScrollTapSignature = ""
+                if record.isMXMaster {
+                    mxWheelEngine(for: record.id).reset()
+                    lastScrollTapSignature = ""
+                }
             }
             let bundle = frontmostBundleID ?? ""
             if bundle != MouseAppCatalog.controlBoxBundleID
@@ -341,8 +337,8 @@ final class DualSenseMonitor {
                 nextIDs[record.id] = live.id
             }
         }
-        if nextIDs != lastLiveMXProfileID {
-            lastLiveMXProfileID = nextIDs
+        if nextIDs != lastLiveAppProfileID {
+            lastLiveAppProfileID = nextIDs
         }
     }
 
@@ -511,6 +507,10 @@ final class DualSenseMonitor {
     }
 
     func setAnalogMode(_ mode: AnalogMode, for source: AnalogSource) {
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.setMode(mode, for: source) }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
             profile.setMode(mode, for: source)
@@ -521,9 +521,14 @@ final class DualSenseMonitor {
     }
 
     func setPointerAccelerationAmount(_ amount: Double) {
+        let clamped = min(max(amount, 0), 1)
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.pointerAccelerationAmount = clamped }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
-            profile.pointerAccelerationAmount = min(max(amount, 0), 1)
+            profile.pointerAccelerationAmount = clamped
             if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
                 record.profiles[index] = profile
             }
@@ -531,9 +536,14 @@ final class DualSenseMonitor {
     }
 
     func setScrollAccelerationAmount(_ amount: Double) {
+        let clamped = min(max(amount, 0), 1)
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.scrollAccelerationAmount = clamped }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
-            profile.scrollAccelerationAmount = min(max(amount, 0), 1)
+            profile.scrollAccelerationAmount = clamped
             if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
                 record.profiles[index] = profile
             }
@@ -541,6 +551,10 @@ final class DualSenseMonitor {
     }
 
     func setScrollAcceleration(_ enabled: Bool) {
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.scrollAcceleration = enabled }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
             profile.scrollAcceleration = enabled
@@ -551,6 +565,10 @@ final class DualSenseMonitor {
     }
 
     func setPointerAcceleration(_ enabled: Bool) {
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.pointerAcceleration = enabled }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
             profile.pointerAcceleration = enabled
@@ -561,10 +579,22 @@ final class DualSenseMonitor {
     }
 
     func setTabRepeatInterval(_ interval: Double) {
-        updateSelectedProfile { $0.dualSenseTabRepeatInterval = min(max(interval, 0.10), 0.55) }
+        let clamped = min(max(interval, 0.10), 0.55)
+        if selectedRecord?.isGamepad == true {
+            updateControllerDeviceSettings { $0.dualSenseTabRepeatInterval = clamped }
+            return
+        }
+        updateSelectedProfile { $0.dualSenseTabRepeatInterval = clamped }
     }
 
     func setStickyTargeting(_ enabled: Bool) {
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.stickyTargeting = enabled }
+            if !enabled {
+                StickyTargeting.hide()
+            }
+            return
+        }
         updateSelectedRecord { record in
             guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
             profile.stickyTargeting = enabled
@@ -578,11 +608,23 @@ final class DualSenseMonitor {
     }
 
     func setPointerSpeed(_ speed: Double) {
-        updateSharedMouseScroll { $0.pointerSpeed = min(max(speed, 0), 1) }
+        let clamped = min(max(speed, 0), 1)
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.pointerSpeed = clamped }
+            return
+        }
+        updateSharedMouseScroll { $0.pointerSpeed = clamped }
     }
 
     func setWheelScrollSpeed(_ speed: Double) {
         let clamped = min(max(speed, 0), 1)
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings {
+                $0.wheelScrollSpeed = clamped
+                $0.thumbScrollSpeed = clamped
+            }
+            return
+        }
         updateSharedMouseScroll {
             $0.wheelScrollSpeed = clamped
             $0.thumbScrollSpeed = clamped
@@ -590,6 +632,10 @@ final class DualSenseMonitor {
     }
 
     func setNaturalScrolling(_ enabled: Bool) {
+        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
+            updateControllerDeviceSettings { $0.naturalScrolling = enabled }
+            return
+        }
         updateSharedMouseScroll { $0.naturalScrolling = enabled }
     }
 
@@ -641,7 +687,8 @@ final class DualSenseMonitor {
             name: record.name,
             live: live,
             unitID: record.unitID,
-            wpid: record.wirelessProductID
+            wpid: record.wirelessProductID,
+            connection: record.logitechKey.connection
         )
     }
 
@@ -671,6 +718,15 @@ final class DualSenseMonitor {
             mutate(&profile)
             if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
                 record.profiles[index] = profile
+            }
+        }
+    }
+
+    private func updateControllerDeviceSettings(_ mutate: (inout MappingProfile) -> Void) {
+        updateSelectedRecord { record in
+            guard record.isGamepad || record.isAppleTVRemote else { return }
+            for index in record.profiles.indices {
+                mutate(&record.profiles[index])
             }
         }
     }
@@ -787,12 +843,12 @@ final class DualSenseMonitor {
     }
 
     func selectProfile(_ id: String) {
-        let isMX = selectedRecord?.isMXMaster == true
+        let usesAppProfiles = selectedRecord?.usesAppProfiles == true
         updateSelectedRecord { record in
             guard record.profiles.contains(where: { $0.id == id }) else { return }
             record.selectedProfileID = id
         }
-        if !isMX, let deviceID = selectedDeviceID {
+        if !usesAppProfiles, let deviceID = selectedDeviceID {
             engine(for: deviceID).reset()
         }
     }
@@ -839,7 +895,7 @@ final class DualSenseMonitor {
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         updateSelectedRecord { record in
-            guard record.isMXMaster else { return }
+            guard record.usesAppProfiles else { return }
             if let existing = record.profiles.first(where: { $0.frontmostAppBundleID == trimmed }) {
                 record.selectedProfileID = existing.id
                 return
@@ -847,7 +903,8 @@ final class DualSenseMonitor {
             let copy = MouseAppCatalog.profileForAddedApp(
                 from: record.mxDefaultProfile,
                 bundleID: trimmed,
-                name: name
+                name: name,
+                family: record.isMXMaster ? .mouse : (record.isAppleTVRemote ? .remote : .gamepad)
             )
             record.profiles.append(copy)
             record.selectedProfileID = copy.id
@@ -856,7 +913,7 @@ final class DualSenseMonitor {
 
     func removeMXProfile(_ id: String) {
         updateSelectedRecord { record in
-            guard record.isMXMaster else { return }
+            guard record.usesAppProfiles else { return }
             guard let profile = record.profiles.first(where: { $0.id == id }) else { return }
             guard !profile.treatsAsMXDefault else { return }
             record.profiles.removeAll { $0.id == id }
@@ -864,7 +921,7 @@ final class DualSenseMonitor {
                 record.selectedProfileID = record.mxDefaultProfile.id
             }
         }
-        applyLiveMXProfiles()
+        applyLiveAppProfiles()
     }
 
     func renameSelectedProfile(_ name: String) {
@@ -1054,6 +1111,10 @@ final class DualSenseMonitor {
         }
     }
 
+    func hasRememberedSettings(for device: ConnectedBluetoothDevice) -> Bool {
+        matchingRecord(for: device)?.remembered == true
+    }
+
     func addDevice(_ device: ConnectedBluetoothDevice) {
         suppressedDeviceKeys.remove(suppressionKey(for: device))
         persistSuppressedDevices()
@@ -1088,16 +1149,10 @@ final class DualSenseMonitor {
         }
         deviceRecords.removeAll { $0.id == id }
         engines[id] = nil
+        mxWheelEngines[id] = nil
+        lastLiveAppProfileID[id] = nil
         persistDeviceRecords()
-        if let connected = connectedDevices.first(where: { $0.id == id && $0.isSupported && $0.isConnected }) {
-            selectedDeviceID = connected.id
-            ensureRecord(for: connected.id, remembered: false)
-        } else {
-            selectedDeviceID = sidebarDevices.first?.id
-            if let selectedDeviceID {
-                ensureRecord(for: selectedDeviceID)
-            }
-        }
+        selectedDeviceID = sidebarDevices.first?.id
         dualSense.detach()
         snapshot = DualSenseSnapshot()
         appleTVSnapshot = AppleTVRemoteSnapshot()
@@ -1106,7 +1161,7 @@ final class DualSenseMonitor {
 
     private func attachPreferredController() {
         let preferredName = deviceRecords.first {
-            $0.kind == .dualSense || $0.kind == .dualSenseEdge
+            $0.remembered && $0.isGamepad
         }?.name
         dualSense.attachPreferred(named: preferredName)
         snapshot = dualSense.snapshot
@@ -1164,6 +1219,8 @@ final class DualSenseMonitor {
             let next = reader.current
             if let record = liveMXRecord(for: next) {
                 ingestMX(reader, record, ControlFrameBuilder.make(from: next))
+            } else {
+                reader.injectEnabled = false
             }
             _ = reader.consumePendingGesture()
             reader.consumePendingScroll()
@@ -1414,10 +1471,10 @@ final class DualSenseMonitor {
 
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
         let engine = engine(for: record.id)
-        engine.profile = record.selectedProfile
+        engine.profile = record.usesAppProfiles ? liveAppProfile(for: record) : record.selectedProfile
         engine.enabled = record.controlEnabled
         engine.postsWhenHostIsActive = record.controlWhileFocused
-        engine.isDualSense = record.kind == .dualSense || record.kind == .dualSenseEdge
+        engine.isDualSense = record.kind.isGamepad
         if record.isMXMaster {
             return
         }
@@ -1443,12 +1500,6 @@ final class DualSenseMonitor {
             if remembered {
                 deviceRecords[index].remembered = true
             }
-            return
-        }
-        guard let device = connectedDevices.first(where: { $0.id == id && $0.isSupported }) else { return }
-        deviceRecords.append(.make(from: device, remembered: remembered))
-        if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
-            applyMacMouseIfNeeded(&deviceRecords[index])
         }
     }
 
@@ -1495,7 +1546,10 @@ final class DualSenseMonitor {
             kind: record.kind,
             address: record.address,
             name: record.name,
-            live: live ?? mxMasterSnapshot
+            live: live ?? mxMasterSnapshot,
+            unitID: record.unitID,
+            wpid: record.wirelessProductID,
+            connection: record.logitechKey.connection
         )
     }
 
@@ -1506,52 +1560,33 @@ final class DualSenseMonitor {
     }
 
     private func liveAppleTVRecord() -> DeviceRecord? {
-        if let match = deviceRecords.first(where: { $0.kind == .appleTVRemote }) {
-            return match
-        }
-        if let device = connectedDevices.first(where: { $0.deviceKind == .appleTVRemote && $0.isConnected }) {
-            ensureRecord(for: device.id)
-            return matchingRecord(for: device) ?? deviceRecords.first { $0.id == device.id }
-        }
-        return nil
+        deviceRecords.first { $0.remembered && $0.isAppleTVRemote }
     }
 
     private func liveDualSenseRecord() -> DeviceRecord? {
         if let name = dualSense.vendorName,
            let match = deviceRecords.first(where: {
-               ($0.kind == .dualSense || $0.kind == .dualSenseEdge) && namesMatch($0.name, name)
+               $0.remembered && $0.isGamepad && namesMatch($0.name, name)
            }) {
             return match
         }
-        return deviceRecords.first { $0.kind == .dualSense || $0.kind == .dualSenseEdge }
+        return deviceRecords.first { $0.remembered && $0.isGamepad }
     }
 
     private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
         guard live.connected else { return nil }
         if let match = deviceRecords.first(where: {
-            isLiveMXDevice(
+            $0.remembered && isLiveMXDevice(
                 kind: $0.kind,
                 address: $0.address,
                 name: $0.name,
                 live: live,
                 unitID: $0.unitID,
-                wpid: $0.wirelessProductID
+                wpid: $0.wirelessProductID,
+                connection: $0.logitechKey.connection
             )
         }) {
             return match
-        }
-        if let device = connectedDevices.first(where: {
-            isLiveMXDevice(
-                kind: $0.deviceKind,
-                address: $0.address,
-                name: $0.name,
-                live: live,
-                unitID: $0.unitID,
-                wpid: $0.wirelessProductID
-            )
-        }) {
-            ensureRecord(for: device.id)
-            return matchingRecord(for: device) ?? deviceRecords.first { $0.id == device.id }
         }
         return nil
     }
@@ -1562,7 +1597,8 @@ final class DualSenseMonitor {
         name: String,
         live: MXMasterSnapshot,
         unitID: UInt32? = nil,
-        wpid: Int? = nil
+        wpid: Int? = nil,
+        connection: DeviceConnection = .bluetooth
     ) -> Bool {
         guard live.connected else { return false }
         return DeviceIdentity.sameLogitech(
@@ -1572,7 +1608,7 @@ final class DualSenseMonitor {
                 address: address,
                 unitID: unitID,
                 wirelessProductID: wpid,
-                connection: .bluetooth
+                connection: connection
             ),
             live.logitechKey
         )
@@ -1603,25 +1639,18 @@ final class DualSenseMonitor {
 
     private func rememberConnectedDevice(_ device: ConnectedBluetoothDevice) {
         if suppressedDeviceKeys.contains(suppressionKey(for: device)) { return }
-        if let index = matchingRecordIndex(for: device) {
-            deviceRecords[index].name = device.name
-            if DeviceIdentity.looksLikeHardwareAddress(device.address)
-                || !DeviceIdentity.looksLikeHardwareAddress(deviceRecords[index].address) {
-                if DeviceIdentity.isConcrete(device.address) {
-                    deviceRecords[index].address = device.address
-                }
+        guard let index = matchingRecordIndex(for: device) else { return }
+        deviceRecords[index].name = device.name
+        if DeviceIdentity.looksLikeHardwareAddress(device.address)
+            || !DeviceIdentity.looksLikeHardwareAddress(deviceRecords[index].address) {
+            if DeviceIdentity.isConcrete(device.address) {
+                deviceRecords[index].address = device.address
             }
-            deviceRecords[index].kind = device.deviceKind
-            deviceRecords[index].remembered = true
-            if deviceRecords[index].unitID == nil { deviceRecords[index].unitID = device.unitID }
-            if deviceRecords[index].wirelessProductID == nil {
-                deviceRecords[index].wirelessProductID = device.wirelessProductID
-            }
-            return
         }
-        deviceRecords.append(.make(from: device, remembered: true))
-        if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
-            applyMacMouseIfNeeded(&deviceRecords[index])
+        deviceRecords[index].kind = device.deviceKind
+        if deviceRecords[index].unitID == nil { deviceRecords[index].unitID = device.unitID }
+        if deviceRecords[index].wirelessProductID == nil {
+            deviceRecords[index].wirelessProductID = device.wirelessProductID
         }
     }
 
@@ -1652,6 +1681,7 @@ final class DualSenseMonitor {
         keep.controlEnabled = keep.controlEnabled || other.controlEnabled
         if keep.unitID == nil { keep.unitID = other.unitID }
         if keep.wirelessProductID == nil { keep.wirelessProductID = other.wirelessProductID }
+        keep.name = DeviceIdentity.preferredLogitechName(keep.name, other.name)
         if DeviceIdentity.looksLikeHardwareAddress(other.address),
            !DeviceIdentity.looksLikeHardwareAddress(keep.address) {
             keep.address = other.address
@@ -1682,14 +1712,16 @@ final class DualSenseMonitor {
                     next.profiles = [profile]
                     next.selectedProfileID = profile.id
                 }
-                if next.isMXMaster {
-                    for index in next.profiles.indices {
-                        next.profiles[index].restrictGesturesToHapticPad()
-                        if !next.kind.isMXMaster3Family {
-                            next.profiles[index].ensureMX4SideButton()
+                if next.usesAppProfiles {
+                    if next.isMXMaster {
+                        for index in next.profiles.indices {
+                            next.profiles[index].restrictGesturesToHapticPad()
+                            if !next.kind.isMXMaster3Family {
+                                next.profiles[index].ensureMX4SideButton()
+                            }
                         }
                     }
-                    next.ensureMXMouseProfiles()
+                    next.ensureAppProfiles()
                 }
                 if DeviceSupport.isMXMechanicalName(next.name), !next.kind.isMXKeyboard {
                     next.kind = MXMechanicalSupport.kind(from: next.name)
@@ -1716,13 +1748,14 @@ final class DualSenseMonitor {
                         }
                     }
                 }
+                next.ensureControllerDeviceSettings()
                 return next
             }
-            collapseDuplicateLogitechRecords()
         }
         if let id = UserDefaults.standard.string(forKey: Self.selectedDeviceDefaultsKey) {
             selectedDeviceID = id
         }
+        collapseDuplicateLogitechRecords()
         if let suppressed = UserDefaults.standard.array(forKey: Self.suppressedDevicesDefaultsKey) as? [String] {
             suppressedDeviceKeys = Set(suppressed)
         }
@@ -1823,7 +1856,15 @@ final class DualSenseMonitor {
     private func mergeLiveKeyboard(_ live: MXKeyboardSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
         guard live.connected else { return }
         if let index = devices.firstIndex(where: {
-            isLiveKeyboardDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live, unitID: $0.unitID, wpid: $0.wirelessProductID)
+            isLiveKeyboardDevice(
+                kind: $0.deviceKind,
+                address: $0.address,
+                name: $0.name,
+                live: live,
+                unitID: $0.unitID,
+                wpid: $0.wirelessProductID,
+                connection: $0.connection
+            )
         }) {
             devices[index].deviceKind = live.kind
             devices[index].isConnected = true
@@ -1858,7 +1899,8 @@ final class DualSenseMonitor {
         name: String,
         live: MXKeyboardSnapshot,
         unitID: UInt32? = nil,
-        wpid: Int? = nil
+        wpid: Int? = nil,
+        connection: DeviceConnection = .bluetooth
     ) -> Bool {
         guard live.connected else { return false }
         return DeviceIdentity.sameLogitech(
@@ -1868,7 +1910,7 @@ final class DualSenseMonitor {
                 address: address,
                 unitID: unitID,
                 wirelessProductID: wpid,
-                connection: .bluetooth
+                connection: connection
             ),
             live.logitechKey
         )
@@ -1877,7 +1919,15 @@ final class DualSenseMonitor {
     private func mergeLiveMX(_ live: MXMasterSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
         guard live.connected else { return }
         if let index = devices.firstIndex(where: {
-            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live, unitID: $0.unitID, wpid: $0.wirelessProductID)
+            isLiveMXDevice(
+                kind: $0.deviceKind,
+                address: $0.address,
+                name: $0.name,
+                live: live,
+                unitID: $0.unitID,
+                wpid: $0.wirelessProductID,
+                connection: $0.connection
+            )
         }) {
             devices[index].deviceKind = live.kind
             devices[index].isConnected = true
@@ -1961,6 +2011,7 @@ final class DualSenseMonitor {
         next.unitID = keep.unitID ?? other.unitID
         next.wirelessProductID = keep.wirelessProductID ?? other.wirelessProductID
         next.isConnected = keep.isConnected || other.isConnected
+        next.name = DeviceIdentity.preferredLogitechName(keep.name, other.name)
         if DeviceIdentity.looksLikeHardwareAddress(other.address),
            !DeviceIdentity.looksLikeHardwareAddress(keep.address) {
             next.address = other.address
