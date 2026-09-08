@@ -48,4 +48,18 @@ struct MXKeyboardSnapshot: Equatable, Sendable {
     var batteryCharging = false
     var batteryFull = false
     var batteryStateDescription = "Unknown"
+    var connection = DeviceConnection.bluetooth
+    var unitID: UInt32 = 0
+    var wirelessProductID = 0
+
+    var logitechKey: LogitechDeviceKey {
+        LogitechDeviceKey(
+            name: name,
+            kind: kind,
+            address: address,
+            unitID: unitID == 0 ? nil : unitID,
+            wirelessProductID: wirelessProductID == 0 ? nil : wirelessProductID,
+            connection: connection
+        )
+    }
 }

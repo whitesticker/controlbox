@@ -58,6 +58,88 @@ enum DeviceKind: String, Codable, Equatable {
         case .unsupported: return "Not supported yet"
         }
     }
+
+    var supportBlurb: String {
+        switch self {
+        case .dualSense, .dualSenseEdge:
+            return "Buttons, sticks, and the touchpad map to pointer, keys, and gestures. 1-finger and 2-finger pads are separate."
+        case .appleTVRemote:
+            return "Click, swipe, and Back from the Siri Remote / Apple TV remote."
+        case .logitechMXMaster3:
+            return "Pointer, wheel, thumb, and the gesture button. Same bindings as MX Master 3S."
+        case .logitechMXMaster3S:
+            return "Pointer, wheel, thumb, and the gesture button. Tap is click; hold then move is swipe."
+        case .logitechMXMaster, .logitechMXMaster4:
+            return "Pointer, wheel, thumb, Side, and the haptic pad. Control this Mac is a mouse toggle."
+        case .logitechMXMechanical, .logitechMXMechanicalMini:
+            return "Backlight, lighting effect, battery saving, and battery. Keys stay native."
+        case .unsupported:
+            return "Control Box does not attach this device yet."
+        }
+    }
+
+    var supportGroup: String { sidebarType.title }
+
+    var sidebarType: DeviceSidebarType {
+        switch self {
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+            return .mouse
+        case .dualSense, .dualSenseEdge:
+            return .gamepad
+        case .appleTVRemote:
+            return .remote
+        case .logitechMXMechanical, .logitechMXMechanicalMini:
+            return .keyboard
+        case .unsupported:
+            return .other
+        }
+    }
+
+    var brand: String {
+        switch self {
+        case .dualSense, .dualSenseEdge:
+            return "Sony"
+        case .appleTVRemote:
+            return "Apple"
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
+             .logitechMXMechanical, .logitechMXMechanicalMini:
+            return "Logitech"
+        case .unsupported:
+            return "Other"
+        }
+    }
+}
+
+enum DeviceSidebarType: String, CaseIterable, Identifiable {
+    case mouse
+    case gamepad
+    case remote
+    case keyboard
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mouse: return "Mouse"
+        case .gamepad: return "Gamepad"
+        case .remote: return "Remote"
+        case .keyboard: return "Keyboard"
+        case .other: return "Other"
+        }
+    }
+}
+
+enum DeviceConnection: String, Codable, Equatable, Sendable {
+    case bluetooth
+    case bolt
+
+    var title: String {
+        switch self {
+        case .bluetooth: return "Bluetooth"
+        case .bolt: return "Bolt"
+        }
+    }
 }
 
 struct ConnectedBluetoothDevice: Identifiable, Equatable {
@@ -67,9 +149,23 @@ struct ConnectedBluetoothDevice: Identifiable, Equatable {
     var deviceKind: DeviceKind
     var detail: String
     var isConnected: Bool
+    var unitID: UInt32? = nil
+    var wirelessProductID: Int? = nil
+    var connection: DeviceConnection = .bluetooth
 
     var isSupported: Bool { deviceKind.isSupported }
     var kind: String { deviceKind.title }
+
+    var logitechKey: LogitechDeviceKey {
+        LogitechDeviceKey(
+            name: name,
+            kind: deviceKind,
+            address: address,
+            unitID: unitID,
+            wirelessProductID: wirelessProductID,
+            connection: connection
+        )
+    }
 }
 
 enum DeviceSupport {
@@ -133,6 +229,17 @@ enum DeviceSupport {
     }
 }
 
+/// One Logitech mouse or keyboard, whether it is on Bluetooth or a Bolt slot.
+/// Easy-Switch can present the same unit on both radios; collapse those.
+struct LogitechDeviceKey: Equatable {
+    var name: String
+    var kind: DeviceKind
+    var address: String
+    var unitID: UInt32?
+    var wirelessProductID: Int?
+    var connection: DeviceConnection
+}
+
 enum DeviceIdentity {
     static let hidFallback = "HID"
     static let placeholders: Set<String> = [
@@ -140,13 +247,79 @@ enum DeviceIdentity {
     ]
 
     static func isConcrete(_ address: String) -> Bool {
-        !placeholders.contains(address)
+        !placeholders.contains(address) && !isBoltWPID(address)
+    }
+
+    static func isBoltWPID(_ address: String) -> Bool {
+        address.uppercased().hasPrefix("WPID")
     }
 
     static func same(_ lhs: String, _ rhs: String) -> Bool {
         guard isConcrete(lhs), isConcrete(rhs) else { return false }
         if lhs.caseInsensitiveCompare(rhs) == .orderedSame { return true }
         return format(lhs).caseInsensitiveCompare(format(rhs)) == .orderedSame
+    }
+
+    static func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !left.isEmpty, !right.isEmpty else { return false }
+        return left.caseInsensitiveCompare(right) == .orderedSame
+    }
+
+    static func compatibleLogitechKinds(_ lhs: DeviceKind, _ rhs: DeviceKind) -> Bool {
+        if lhs == rhs { return true }
+        if lhs.isMXMaster3Family, rhs.isMXMaster3Family { return true }
+        if (lhs == .logitechMXMaster4 || lhs == .logitechMXMaster),
+           (rhs == .logitechMXMaster4 || rhs == .logitechMXMaster) {
+            return true
+        }
+        if lhs.isMXKeyboard, rhs.isMXKeyboard { return true }
+        return false
+    }
+
+    static func sameLogitech(_ lhs: LogitechDeviceKey, _ rhs: LogitechDeviceKey) -> Bool {
+        guard lhs.kind.isMXMaster || lhs.kind.isMXKeyboard else { return false }
+        guard rhs.kind.isMXMaster || rhs.kind.isMXKeyboard else { return false }
+        guard compatibleLogitechKinds(lhs.kind, rhs.kind) else { return false }
+        if let leftUnit = nonzeroUnit(lhs.unitID), let rightUnit = nonzeroUnit(rhs.unitID) {
+            return leftUnit == rightUnit
+        }
+        if let leftUnit = nonzeroUnit(lhs.unitID), unitMatchesAddress(leftUnit, rhs.address) {
+            return true
+        }
+        if let rightUnit = nonzeroUnit(rhs.unitID), unitMatchesAddress(rightUnit, lhs.address) {
+            return true
+        }
+        if looksLikeHardwareAddress(lhs.address), looksLikeHardwareAddress(rhs.address) {
+            return same(lhs.address, rhs.address)
+        }
+        if same(lhs.address, rhs.address) { return true }
+        guard namesMatch(lhs.name, rhs.name) else { return false }
+        if let leftWPID = lhs.wirelessProductID, leftWPID != 0,
+           let rightWPID = rhs.wirelessProductID, rightWPID != 0,
+           leftWPID == rightWPID {
+            return true
+        }
+        return lhs.connection != rhs.connection
+            || isBoltWPID(lhs.address)
+            || isBoltWPID(rhs.address)
+            || !isConcrete(lhs.address)
+            || !isConcrete(rhs.address)
+    }
+
+    static func unitToken(_ unit: UInt32) -> String {
+        String(format: "%08X", unit)
+    }
+
+    private static func nonzeroUnit(_ unit: UInt32?) -> UInt32? {
+        guard let unit, unit != 0 else { return nil }
+        return unit
+    }
+
+    private static func unitMatchesAddress(_ unit: UInt32, _ address: String) -> Bool {
+        let hex = address.filter(\.isHexDigit).uppercased()
+        return hex == unitToken(unit)
     }
 
     static func displayLabel(for address: String) -> String {
@@ -201,8 +374,9 @@ enum BluetoothDeviceCatalog {
                 vendorID: record.vendorID,
                 productID: record.productID
             )
-            guard kind.isSupported else { continue }
-            let name = record.product.isEmpty ? kind.title : record.product
+            let name = record.product.isEmpty
+                ? (kind.isSupported ? kind.title : "Unknown device")
+                : record.product
             let token = record.address.isEmpty ? name.lowercased() : record.address.lowercased()
             let identity = "\(record.vendorID):\(record.productID):\(token)"
             guard seen.insert(identity).inserted else { continue }
@@ -213,8 +387,11 @@ enum BluetoothDeviceCatalog {
                     name: name,
                     address: record.address.isEmpty ? DeviceIdentity.hidFallback : record.address,
                     deviceKind: kind,
-                    detail: kind.title,
-                    isConnected: true
+                    detail: kind.isSupported ? kind.title : "Not supported yet",
+                    isConnected: true,
+                    unitID: nil,
+                    wirelessProductID: (kind.isMXMaster || kind.isMXKeyboard) ? record.productID : nil,
+                    connection: .bluetooth
                 )
             )
         }
@@ -266,6 +443,10 @@ private struct HIDNameIndex {
             [
                 kIOHIDDeviceUsagePageKey as String: 1,
                 kIOHIDDeviceUsageKey as String: 5
+            ],
+            [
+                kIOHIDDeviceUsagePageKey as String: 1,
+                kIOHIDDeviceUsageKey as String: 2
             ]
         ]
         for productID in DeviceSupport.appleTVRemoteProductIDs {
@@ -287,9 +468,13 @@ private struct HIDNameIndex {
         var records: [HIDRecord] = []
         if let copied = IOHIDManagerCopyDevices(manager) {
             for case let device as IOHIDDevice in (copied as NSSet) {
+                let productID = intProperty(kIOHIDProductIDKey as String, device: device)
+                if productID == MXMasterHIDDiscovery.boltReceiverProductID { continue }
+                let page = intProperty(kIOHIDPrimaryUsagePageKey as String, device: device)
+                let usage = intProperty(kIOHIDPrimaryUsageKey as String, device: device)
+                if page == 1 && (usage == 6 || usage == 7) { continue }
                 let product = stringProperty(kIOHIDProductKey as String, device: device) ?? ""
                 let vendorID = intProperty(kIOHIDVendorIDKey as String, device: device)
-                let productID = intProperty(kIOHIDProductIDKey as String, device: device)
                 records.append(
                     HIDRecord(
                         product: product,

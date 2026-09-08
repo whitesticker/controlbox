@@ -12,9 +12,10 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **Caps Lock as modifier.** Separate Mac pane: Caps Lock is a hold key that synthesizes a chosen modifier chord (default Control) for Control Box only, not a caps toggle. Off until the toggle is on. See [caps-lock-modifier.md](caps-lock-modifier.md).
 - [ ] **Smoother wheel scrolling.** Improve the existing Pointer & Scroll smooth-scrolling path so MX and generic mice feel closer to the trackpad (less stepped, less lag). See also [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md).
 - [ ] **MX4 gesture feel.** Haptic-pad swipes on MX4 are less smooth than the 3S gesture button. Measure HID++ XY vs CG fallback and match 3S feel without seizing the pointer.
-- [ ] **Logi Bolt.** MX 3S / 4 connected only through the USB receiver (`0xC548`) never attach: the mouse is a HID++ slot, not BLE product `0xB034` / `0xB042`. Open only the receiver vendor HID++ collection, walk slots by name, prefer BLE if both radios are up. Do not open the mouse collection. MX4 haptic XY cannot use nested report `0x02` on Bolt. Capture `C548` with `tools/hidpp-sniff.swift` when the dongle is plugged in. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
+- [x] **Logi Bolt talk.** MX 3S / 4 / Mechanical connected only through the USB receiver (`0xC548`) attach over vendor-HID++ slots. Pairing / unpair is **Add Device → Logi Bolt**. Do not open the mouse collection. MX4 haptic XY cannot use nested report `0x02` on Bolt. BLE and Bolt for the same unit are one device. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
+- [ ] **Devices sidebar grouping.** Group by type (Mouse, Gamepad, Remote, Keyboard, Other), then by brand when a type has more than one. Hide empty types. See [todo.md](todo.md) Logitech-related improvements.
 - [ ] **Generic mouse / Xbox / other TV remotes.** Not this version. Family sessions are the add path.
-- [ ] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, scroll) when the frontmost app changes, so one MX mouse can have a different profile in each app.
+- [ ] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, scroll) when the frontmost app changes, so one MX mouse can have a different profile in each app. Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md). Skill: `.cursor/skills/per-app-mouse-profiles/`.
 
 ## Feedback and UI
 

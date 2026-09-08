@@ -18,6 +18,27 @@ final class MXKeyboardSession: DeviceFamilySession {
         reader.stop()
     }
 
+    func attachBolt(
+        _ link: LogiBoltHIDPPLink,
+        name: String,
+        kind: DeviceKind,
+        address: String,
+        unitID: UInt32,
+        wpid: Int
+    ) -> Bool {
+        reader.attachBolt(link, name: name, kind: kind, address: address, unitID: unitID, wpid: wpid)
+    }
+
+    func detachBolt() {
+        reader.detachBolt()
+    }
+
+    var usesBluetoothHIDPP: Bool { reader.usesBluetoothHIDPP }
+
+    var usesBoltHIDPP: Bool { reader.usesBoltHIDPP }
+
+    var boltSlotID: String? { reader.boltSlotID }
+
     func setBacklightEnabled(_ enabled: Bool) {
         reader.setBacklightEnabled(enabled)
     }

@@ -105,7 +105,7 @@ struct SettingsGlyph: View {
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.22), radius: 0.4, y: 0.5)
             .padding(system ? 6.5 : 4.5)
-            .frame(width: 28, height: 28)
+            .frame(width: 30, height: 30)
             .modifier(SettingsGlyphGlass(tint: tint))
     }
 

@@ -12,6 +12,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var hapticFeedback: Bool?
     var profiles: [MappingProfile]
     var selectedProfileID: String
+    var unitID: UInt32?
+    var wirelessProductID: Int?
 
     var isAppleTVRemote: Bool { kind == .appleTVRemote }
     var isMXMaster: Bool { kind.isMXMaster }
@@ -29,6 +31,19 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
                 isMXMaster: isMXMaster,
                 isMXKeyboard: isMXKeyboard
             )
+    }
+
+    var logitechKey: LogitechDeviceKey {
+        LogitechDeviceKey(
+            name: name,
+            kind: kind,
+            address: address,
+            unitID: unitID,
+            wirelessProductID: wirelessProductID,
+            connection: DeviceIdentity.isBoltWPID(address) || id.hasPrefix("bolt-")
+                ? .bolt
+                : .bluetooth
+        )
     }
 
     static func make(from device: ConnectedBluetoothDevice, remembered: Bool = false) -> DeviceRecord {
@@ -54,7 +69,9 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             controlWhileFocused: false,
             hapticFeedback: device.deviceKind == .dualSense || device.deviceKind == .dualSenseEdge,
             profiles: [profile],
-            selectedProfileID: profile.id
+            selectedProfileID: profile.id,
+            unitID: device.unitID,
+            wirelessProductID: device.wirelessProductID
         )
     }
 }
@@ -67,11 +84,35 @@ struct SidebarDevice: Identifiable, Hashable {
     var isConnected: Bool
     var controlEnabled: Bool
     var remembered: Bool
+    var connection: DeviceConnection = .bluetooth
+    var unitID: UInt32? = nil
+    var wirelessProductID: Int? = nil
 
     var glyph: String { kind.paneGlyph }
+
+    var isBoltConnection: Bool { connection == .bolt }
+
+    var logitechKey: LogitechDeviceKey {
+        LogitechDeviceKey(
+            name: name,
+            kind: kind,
+            address: address,
+            unitID: unitID,
+            wirelessProductID: wirelessProductID,
+            connection: connection
+        )
+    }
 
     var statusTitle: String {
         if isConnected { return "Connected" }
         return "Not connected"
+    }
+
+    func rowCaption(showBrand: Bool) -> String {
+        if isConnected {
+            return "\(kind.brand) · \(connection.title)"
+        }
+        if showBrand { return kind.brand }
+        return statusTitle
     }
 }

@@ -9,6 +9,7 @@ struct ContentView: View {
     @Bindable var caffeinateCatalog: CaffeinateCatalog
     @Bindable var dockPreviewCatalog: DockPreviewCatalog
     @Bindable var capsLockCatalog: CapsLockCatalog
+    @Bindable var boltCatalog: LogiBoltCatalog
     @Environment(\.colorScheme) private var colorScheme
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
@@ -16,7 +17,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: sidebarSelection) {
-                Section("Mac") {
+                Section {
                     macRow(.displays)
                     macRow(.nightShift)
                     macRow(.displayArrangement)
@@ -27,22 +28,42 @@ struct ContentView: View {
                     macRow(.windowGrab)
                     macRow(.capsLock)
                     macRow(.dockPreview)
+                } header: {
+                    SidebarGroupHeader("Mac")
                 }
-                Section("Devices") {
+                Section {
                     if monitor.sidebarDevices.isEmpty {
                         Text("No devices yet")
+                            .font(SidebarType.row)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(monitor.sidebarDevices) { device in
-                            DeviceSidebarRow(device: device)
-                                .tag(SidebarItem.device(device.id))
+                        ForEach(DeviceSidebarType.allCases) { type in
+                            let devices = monitor.sidebarDevices
+                                .filter { $0.kind.sidebarType == type }
+                                .sorted {
+                                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                                }
+                            if !devices.isEmpty {
+                                Section {
+                                    let showBrand = Set(devices.map(\.kind.brand)).count > 1
+                                    ForEach(devices) { device in
+                                        DeviceSidebarRow(device: device, showBrand: showBrand)
+                                            .tag(SidebarItem.device(device.id))
+                                    }
+                                } header: {
+                                    SidebarTypeHeader(type.title)
+                                }
+                            }
                         }
                     }
+                } header: {
+                    SidebarGroupHeader("Devices")
                 }
-                Section("App") {
+                Section {
                     HStack(spacing: 8) {
                         SettingsGlyph(name: SidebarItem.permissions.glyph, tint: SidebarItem.permissions.tint)
                         Text(SidebarItem.permissions.title)
+                            .font(SidebarType.row)
                         Spacer(minLength: 8)
                         Circle()
                             .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
@@ -50,6 +71,8 @@ struct ContentView: View {
                     }
                     .tag(SidebarItem.permissions)
                     macRow(.settings)
+                } header: {
+                    SidebarGroupHeader("App")
                 }
             }
             .listStyle(.sidebar)
@@ -60,6 +83,7 @@ struct ContentView: View {
                         showAddDevice = true
                     } label: {
                         Label("Add Device…", systemImage: "plus")
+                            .font(SidebarType.row)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -69,9 +93,11 @@ struct ContentView: View {
                 }
                 .background(.bar)
             }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 300)
+            .navigationSplitViewColumnWidth(min: 232, ideal: 268, max: 320)
             .sheet(isPresented: $showAddDevice) {
-                AddDeviceSheet(monitor: monitor)
+                AddDeviceSheet(monitor: monitor, bolt: boltCatalog) { id in
+                    selection = .device(id)
+                }
             }
         } detail: {
             switch selection {
@@ -133,6 +159,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
             SettingsGlyph(name: item.glyph, tint: item.tint, system: item.systemGlyph)
             Text(item.title)
+                .font(SidebarType.row)
         }
         .tag(item)
     }
@@ -152,6 +179,7 @@ struct ContentView: View {
 
 private struct DeviceSidebarRow: View {
     let device: SidebarDevice
+    var showBrand = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -163,9 +191,10 @@ private struct DeviceSidebarRow: View {
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
+                    .font(SidebarType.row)
                     .lineLimit(1)
-                Text(device.statusTitle)
-                    .font(.caption)
+                Text(device.rowCaption(showBrand: showBrand))
+                    .font(SidebarType.caption)
                     .foregroundStyle(device.isConnected ? Palette.good : .secondary)
             }
             Spacer(minLength: 8)
@@ -173,6 +202,45 @@ private struct DeviceSidebarRow: View {
                 .fill(device.isConnected ? Palette.good : Color.secondary.opacity(0.55))
                 .frame(width: 8, height: 8)
         }
+    }
+}
+
+private enum SidebarType {
+    static let group = Font.system(size: 17, weight: .semibold, design: .rounded)
+    static let type = Font.system(size: 11, weight: .semibold, design: .rounded)
+    static let row = Font.system(size: 13.5, weight: .medium, design: .rounded)
+    static let caption = Font.system(size: 11, weight: .medium, design: .rounded)
+}
+
+private struct SidebarGroupHeader: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(SidebarType.group)
+            .foregroundStyle(.primary)
+            .textCase(nil)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+    }
+}
+
+private struct SidebarTypeHeader: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(SidebarType.type)
+            .foregroundStyle(.secondary)
+            .textCase(nil)
     }
 }
 

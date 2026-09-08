@@ -44,11 +44,11 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 
 ## Later
 
-- [ ] Logi Bolt (`0xC548`): HID++ slot walk so an already-paired MX / Mechanical attaches. Pairing lives on **Add Device → Logi Bolt** (own tab), not a sidebar row. See [logi-bolt-receiver.md](logi-bolt-receiver.md) / [roadmap.md](roadmap.md).
+- [x] Logi Bolt pair / unpair: **Add Device → Logi Bolt** lists Online / Not connected per receiver; Add discovers advertising devices, then mouse click string or keyboard passkey. Bolt-only MX / Mechanical talk uses the same vendor HID++ pipe. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
 - [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
-- [ ] Per-app mouse Control profiles (frontmost app switches mappings). Product item in [roadmap.md](roadmap.md).
+- [ ] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md). Product item in [roadmap.md](roadmap.md).
 
 
 
@@ -57,18 +57,18 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as a device.
 
 - [ ] **More Logitech devices** — probe HID++ features; not only MX 3/3S/4 / Mechanical product IDs.
-- [ ] **Logi Bolt — talk** — one session owns `C548` vendor HID++only; walk slots 1–6; prefer BLE if both radios are up; MX4 haptic from HID++ (not report `0x02`).
-- [ ] **Logi Bolt — pair** — **Add Device** sheet, separate **Logi Bolt** tab (discover / passkey / unpair). Occupied slots still appear under Mouse or Keyboard. Not Other. Not a Devices sidebar row.
+- [x] **Logi Bolt — talk** — one catalog owns `C548` vendor HID++ only; walk slots 1–6; prefer BLE if both radios are up; MX4 haptic from HID++ (not report `0x02`). Same Easy-Switch unit is one sidebar row.
+- [x] **Logi Bolt — pair** — **Add Device** sheet, Bluetooth / Logi Bolt panels (discover list / passkey / unpair). Occupied slots split Online / Not connected. Not Other. Not a Devices sidebar row.
 - [ ] **Unifying / Lightspeed** — same slot walk as Bolt; Unifying pairing can be another Add Device tab later.
 - [ ] **Restore original divert** — read flags before divert; put those back on quit / failed start (not a blanket `0x22`).
-- [ ] **One HID++ pipe, two addresses** — BLE = nested `0xFF43` on the mouse; Bolt = slot on `C548`.
+- [x] **One HID++ pipe, two addresses** — BLE = nested `0xFF43` on the mouse; Bolt = slot on `C548`. Same catalog pipe; readers do not open the dongle.
 - [ ] **Detect Options+ / LogiPluginService** — say so up front, not only after HID++ timeout.
 - [ ] **Software-ID lease on a shared dongle** — required when two sessions share `C548`.
-- [ ] **Per-app mouse profiles** — already on the roadmap.
+- [ ] **Per-app mouse profiles** — design in [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 - [ ] **SmartShift as a wheel setting** — firmware `0x2111`, not only remapping the Mode Shift button.
 - [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
 - [ ] **Smooth-scroll animation** — keep hi-res firmware; add a short pixel ease off the tap callback so notches feel closer to a trackpad.
-- [ ] **Devices sidebar by type, then brand** — sections Mouse / Gamepad / Remote / Keyboard / Other. Brand is a row caption until a type has two brands. Hide empty types. Bolt is a connection label (`Logitech · Bolt`), not a type.
+- [x] **Devices sidebar by type, then brand** — sections Mouse / Gamepad / Remote / Keyboard / Other. Brand is a row caption until a type has two brands. Hide empty types. Connection is a caption (`Logitech · Bluetooth` / `Logitech · Bolt`), not a type.
 
 ## CI
 

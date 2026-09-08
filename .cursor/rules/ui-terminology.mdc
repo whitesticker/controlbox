@@ -1,0 +1,28 @@
+---
+description: Teach official Apple HIG / SwiftUI UI terms when the user describes layout in everyday language
+alwaysApply: true
+---
+
+# UI terminology
+
+The user is learning official UI names. When they use vague language, **do the work they asked for**, then **correct the term in the reply** (one short mapping, not a lecture). Use Apple HIG / SwiftUI words in follow-ups.
+
+## Glossary (vague → official)
+
+| They say | Official term |
+|---|---|
+| main menu, side panel, side bar | **sidebar** (`NavigationSplitView` sidebar column) |
+| Mac / Devices / App labels | **section headers**; rows under them are **sidebar items** |
+| bigger/smaller fonts for hierarchy | **typographic hierarchy** (title, headline, body, caption) |
+| card | **card** (grouped surface); a row inside it is still a **list row** unless it is a **tile** |
+| tile vs line | **tile** (grid cell, icon + title); **list row** (full-width horizontal item) |
+| sub text under a name | **subtitle** / **secondary label** / **caption** |
+| group by type vs brand | **sections** grouped by **category** |
+| BLE / Bolt switcher thingy | **segmented control** (`Picker` + `.segmented`) |
+| Add Device panel / popup | **sheet** (modal); the window is the **sheet**, not a panel |
+| bottom bar next to Done | **footer**; Done is the **dismiss** action; a control to the left is a **leading** action |
+| Past devices | **disconnected** (not “history”) |
+| abrupt switch / jump | **layout jump**; if the window resizes, **intrinsic content size** changed. Prefer a **stable frame** + **content transition** (crossfade / slide) |
+| animation for size | **frame animation**; sheets should usually **keep one size** and animate **content**, not the window |
+
+Do not invent cute labels. Prefer HIG names in code comments and user-facing copy only when the UI already uses them.

@@ -10,7 +10,7 @@ One issue type per file. These are failures we already hit while working on Dual
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
 3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
 4. [todo.md](todo.md) — HID / MX fix list.
-5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page). MX Mechanical settings, System Monitor (top), and Dock Previews are shipped.
+5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page). MX Mechanical settings, System Monitor (top), and Dock Previews are shipped. Per-app mouse profiles: [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 
 HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This folder is incident notes, the MX4 working model, plus that list. Repeating timers and system-API polls are listed in [polling-loops.md](polling-loops.md).
 
@@ -50,6 +50,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [macbook-app-volume-system-lag.md](macbook-app-volume-system-lag.md) | Sequoia: moving a Sound slider freezes the whole Mac |
 | [audio-permission-stale.md](audio-permission-stale.md) | Permissions still asks after System Audio Recording is granted |
 | [mac-panes-gated-on-mx.md](mac-panes-gated-on-mx.md) | Window Grab and Pointer & Scroll stay off until an MX Master is attached |
+| [per-app-mouse-profiles.md](per-app-mouse-profiles.md) | One MX mouse should use a different Control profile per frontmost app (not shipped) |
 | [window-grab-only-own-app.md](window-grab-only-own-app.md) | Window grab moves Control Box but not Finder, Safari, or other apps |
 | [night-shift-hijack-hang.md](night-shift-hijack-hang.md) | App beachballs on launch while Night Shift take-over is on |
 | [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md) | Relaunch forces Dark while Night Shift take-over is on |

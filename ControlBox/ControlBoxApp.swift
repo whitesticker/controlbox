@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let caffeinateCatalog = CaffeinateCatalog()
     let dockPreviewCatalog = DockPreviewCatalog()
     let capsLockCatalog = CapsLockCatalog()
+    let boltCatalog = LogiBoltCatalog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LegacyPrefs.migrateIfNeeded()
@@ -39,7 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WindowGrab.isBusy || WindowShake.isBusy || AppSwitcherPreview.isBusy
                 || WindowGrab.grabChordHeld(ModifierChords.fromAppKit(NSEvent.modifierFlags))
         }
-        DispatchQueue.main.async { [monitor] in
+        DispatchQueue.main.async { [monitor, boltCatalog] in
+            monitor.attachBoltCatalog(boltCatalog)
             monitor.start()
         }
         if ScreenshotExport.isActive {
@@ -66,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppSwitcherPreview.stop()
         AppSwitcherPreviewOverlay.shared.hide()
         capsLockCatalog.invalidate()
+        boltCatalog.stopWatching()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -83,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func closeSessionWindows() {
-        for window in NSApp.windows where window.title == "Control Box" || window.title == "Calibration" {
+        for window in NSApp.windows where window.title == "Control Box" || window.title == "Calibration" || window.title == "Pair Logi Bolt" {
             window.close()
         }
     }
@@ -103,7 +106,8 @@ struct ControlBoxApp: App {
                 soundCatalog: appDelegate.soundCatalog,
                 caffeinateCatalog: appDelegate.caffeinateCatalog,
                 dockPreviewCatalog: appDelegate.dockPreviewCatalog,
-                capsLockCatalog: appDelegate.capsLockCatalog
+                capsLockCatalog: appDelegate.capsLockCatalog,
+                boltCatalog: appDelegate.boltCatalog
             )
                 .frame(minWidth: 860, minHeight: 620)
                 .preferredColorScheme(nil)
@@ -123,6 +127,14 @@ struct ControlBoxApp: App {
                 .onAppear { appDelegate.monitor.start() }
         }
         .defaultSize(width: 1280, height: 800)
+        .windowResizability(.contentMinSize)
+
+        Window("Pair Logi Bolt", id: "bolt-pairing") {
+            BoltPairingGuideWindow(catalog: appDelegate.boltCatalog)
+                .frame(minWidth: 560, minHeight: 520)
+                .preferredColorScheme(nil)
+        }
+        .defaultSize(width: 620, height: 560)
         .windowResizability(.contentMinSize)
 
         MenuBarExtra {

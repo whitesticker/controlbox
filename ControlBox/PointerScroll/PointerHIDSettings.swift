@@ -103,6 +103,8 @@ enum PointerHIDSettings {
         let usagePage = (IOHIDServiceClientCopyProperty(service, kIOHIDPrimaryUsagePageKey as CFString) as? NSNumber)?.intValue
         let usage = (IOHIDServiceClientCopyProperty(service, kIOHIDPrimaryUsageKey as CFString) as? NSNumber)?.intValue
         if usagePage == 0x0D { return false }
+        let productID = (IOHIDServiceClientCopyProperty(service, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue
+        if productID == MXMasterHIDDiscovery.boltReceiverProductID { return false }
         if usagePage == 0x01, usage == 0x02 { return true }
         if usagePage == 0x01, usage == 0x01 { return true }
         return false

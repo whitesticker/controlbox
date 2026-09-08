@@ -78,21 +78,31 @@ final class DualSenseMonitor {
         var seen = Set<String>()
         var items: [SidebarDevice] = []
         for device in connectedDevices where device.isSupported && device.isConnected {
-            seen.insert(device.id)
+            if items.contains(where: { DeviceIdentity.sameLogitech($0.logitechKey, device.logitechKey) }) {
+                continue
+            }
             let record = matchingRecord(for: device)
+            let id = record?.id ?? device.id
+            seen.insert(id)
             items.append(
                 SidebarDevice(
-                    id: record?.id ?? device.id,
+                    id: id,
                     name: record?.name ?? device.name,
                     address: record?.address ?? device.address,
                     kind: record?.kind ?? device.deviceKind,
                     isConnected: true,
                     controlEnabled: record?.controlEnabled ?? false,
-                    remembered: record?.remembered ?? false
+                    remembered: record?.remembered ?? false,
+                    connection: device.connection,
+                    unitID: record?.unitID ?? device.unitID,
+                    wirelessProductID: record?.wirelessProductID ?? device.wirelessProductID
                 )
             )
         }
         for record in deviceRecords where record.remembered && !seen.contains(record.id) {
+            if items.contains(where: { DeviceIdentity.sameLogitech($0.logitechKey, record.logitechKey) }) {
+                continue
+            }
             items.append(
                 SidebarDevice(
                     id: record.id,
@@ -101,7 +111,10 @@ final class DualSenseMonitor {
                     kind: record.kind,
                     isConnected: false,
                     controlEnabled: record.controlEnabled,
-                    remembered: true
+                    remembered: true,
+                    connection: record.logitechKey.connection,
+                    unitID: record.unitID,
+                    wirelessProductID: record.wirelessProductID
                 )
             )
         }
@@ -113,7 +126,8 @@ final class DualSenseMonitor {
             device.isSupported && !sidebarDevices.contains { row in
                 if row.id == device.id { return true }
                 if DeviceIdentity.same(row.address, device.address) { return true }
-                if device.deviceKind.isMXMaster { return false }
+                if DeviceIdentity.sameLogitech(row.logitechKey, device.logitechKey) { return true }
+                if device.deviceKind.isMXMaster || device.deviceKind.isMXKeyboard { return false }
                 return namesMatch(row.name, device.name)
             }
         }
@@ -121,6 +135,36 @@ final class DualSenseMonitor {
 
     var unsupportedDevices: [ConnectedBluetoothDevice] {
         connectedDevices.filter { !$0.isSupported && $0.isConnected }
+    }
+
+    var bluetoothConnectedDevices: [ConnectedBluetoothDevice] {
+        connectedDevices.filter { $0.isConnected && $0.connection != .bolt }.sorted(by: Self.bluetoothSort)
+    }
+
+    var bluetoothDisconnectedDevices: [ConnectedBluetoothDevice] {
+        let live = bluetoothConnectedDevices
+        return deviceRecords.compactMap { record -> ConnectedBluetoothDevice? in
+            guard record.remembered else { return nil }
+            if record.logitechKey.connection == .bolt { return nil }
+            if live.contains(where: { recordsMatch(record, $0) }) { return nil }
+            return ConnectedBluetoothDevice(
+                id: record.id,
+                name: record.name,
+                address: record.address,
+                deviceKind: record.kind,
+                detail: record.kind.title,
+                isConnected: false,
+                unitID: record.unitID,
+                wirelessProductID: record.wirelessProductID,
+                connection: record.logitechKey.connection
+            )
+        }
+        .sorted(by: Self.bluetoothSort)
+    }
+
+    private static func bluetoothSort(_ lhs: ConnectedBluetoothDevice, _ rhs: ConnectedBluetoothDevice) -> Bool {
+        if lhs.isSupported != rhs.isSupported { return lhs.isSupported }
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
     }
 
     private var pollTimer: Timer?
@@ -141,6 +185,7 @@ final class DualSenseMonitor {
     private let mx3Reader = LogitechMXMasterReader(model: MXMaster3Support.model)
     private let mx4Reader = LogitechMXMasterReader(model: MXMaster4Support.model)
     private let mouseScrollTap = MouseScrollTap()
+    private var boltCatalog: LogiBoltCatalog?
 
     private var mxReaders: [LogitechMXMasterReader] { [mx3Reader, mx4Reader] }
     private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV, keyboard] }
@@ -151,6 +196,10 @@ final class DualSenseMonitor {
         familySessions.forEach { $0.start() }
         mx3Reader.start()
         mx4Reader.start()
+        if let catalog = boltCatalog {
+            catalog.keepAlive = true
+            catalog.startWatching()
+        }
         loadDeviceRecords()
         macMouseSettings = MacMouseSettings.load(
             seedingFrom: deviceRecords.first(where: \.isMXMaster)?.selectedProfile
@@ -163,6 +212,7 @@ final class DualSenseMonitor {
         refreshAudioInputs()
         DispatchQueue.main.async { [weak self] in
             self?.refreshDevices()
+            self?.syncBoltTalk()
             self?.lastDeviceProbe = Date()
         }
 
@@ -230,6 +280,7 @@ final class DualSenseMonitor {
         familySessions.forEach { $0.stop() }
         mx3Reader.stop()
         mx4Reader.stop()
+        keyboard.detachBolt()
         mouseScrollTap.stop()
         WindowGrab.stop()
         WindowOrganizeHotkey.stop()
@@ -250,6 +301,110 @@ final class DualSenseMonitor {
         }
         attachPreferredController()
         persistDeviceRecords()
+    }
+
+    func attachBoltCatalog(_ catalog: LogiBoltCatalog) {
+        boltCatalog = catalog
+        catalog.keepAlive = true
+        catalog.onReceiversChanged = { [weak self] in
+            self?.handleBoltCatalogChanged()
+        }
+        if didStart {
+            catalog.startWatching()
+            handleBoltCatalogChanged()
+        }
+    }
+
+    private func handleBoltCatalogChanged() {
+        refreshDevices()
+        syncBoltTalk()
+    }
+
+    private func syncBoltTalk() {
+        guard let catalog = boltCatalog else { return }
+        if catalog.isTalkSuspended {
+            mx3Reader.detachBolt()
+            mx4Reader.detachBolt()
+            keyboard.detachBolt()
+            return
+        }
+        let online = catalog.receivers.flatMap(\.devices).filter { $0.online && $0.deviceKind.isSupported }
+        syncBoltMouse(mx3Reader, online.filter(\.deviceKind.isMXMaster3Family), catalog)
+        syncBoltMouse(mx4Reader, online.filter {
+            $0.deviceKind == .logitechMXMaster4 || $0.deviceKind == .logitechMXMaster
+        }, catalog)
+        syncBoltKeyboard(online.filter(\.deviceKind.isMXKeyboard), catalog)
+    }
+
+    private func syncBoltMouse(
+        _ reader: LogitechMXMasterReader,
+        _ candidates: [LogiBoltPairedDevice],
+        _ catalog: LogiBoltCatalog
+    ) {
+        if reader.usesBluetoothHIDPP {
+            reader.detachBolt()
+            return
+        }
+        guard let device = preferredBoltDevice(candidates, currentID: reader.boltSlotID) else {
+            reader.detachBolt()
+            return
+        }
+        let slotID = "\(device.receiverID)-\(device.slot)"
+        if reader.boltSlotID == slotID, reader.current.connected { return }
+        guard let link = catalog.talkLink(receiverID: device.receiverID, slot: device.slot) else {
+            reader.detachBolt()
+            return
+        }
+        if !reader.attachBolt(
+            link,
+            name: device.displayName,
+            kind: device.deviceKind,
+            address: device.identityAddress,
+            unitID: device.unitID,
+            wpid: device.wpid
+        ) {
+            catalog.releaseTalkLink(link)
+        }
+    }
+
+    private func syncBoltKeyboard(_ candidates: [LogiBoltPairedDevice], _ catalog: LogiBoltCatalog) {
+        if keyboard.usesBluetoothHIDPP {
+            keyboard.detachBolt()
+            return
+        }
+        guard let device = preferredBoltDevice(candidates, currentID: keyboard.boltSlotID) else {
+            keyboard.detachBolt()
+            return
+        }
+        let slotID = "\(device.receiverID)-\(device.slot)"
+        if keyboard.boltSlotID == slotID, keyboard.snapshot.connected { return }
+        guard let link = catalog.talkLink(receiverID: device.receiverID, slot: device.slot) else {
+            keyboard.detachBolt()
+            return
+        }
+        if !keyboard.attachBolt(
+            link,
+            name: device.displayName,
+            kind: device.deviceKind,
+            address: device.identityAddress,
+            unitID: device.unitID,
+            wpid: device.wpid
+        ) {
+            catalog.releaseTalkLink(link)
+        }
+    }
+
+    private func preferredBoltDevice(
+        _ candidates: [LogiBoltPairedDevice],
+        currentID: String?
+    ) -> LogiBoltPairedDevice? {
+        if let currentID, let current = candidates.first(where: { "\($0.receiverID)-\($0.slot)" == currentID }) {
+            return current
+        }
+        return candidates.sorted { lhs, rhs in
+            if lhs.receiverID != rhs.receiverID { return lhs.receiverID < rhs.receiverID }
+            return lhs.slot < rhs.slot
+        }.first
     }
 
     func setControlEnabled(_ enabled: Bool) {
@@ -392,7 +547,9 @@ final class DualSenseMonitor {
             kind: record.kind,
             address: record.address,
             name: record.name,
-            live: live
+            live: live,
+            unitID: record.unitID,
+            wpid: record.wirelessProductID
         )
     }
 
@@ -1109,10 +1266,12 @@ final class DualSenseMonitor {
 
     private func recordsMatch(_ record: DeviceRecord, _ device: ConnectedBluetoothDevice) -> Bool {
         if record.id == device.id { return true }
+        if DeviceIdentity.sameLogitech(record.logitechKey, device.logitechKey) { return true }
         if DeviceIdentity.same(record.address, device.address) { return true }
         guard record.kind == device.deviceKind else { return false }
         if record.kind.isMXMaster || record.kind.isMXKeyboard {
-            if DeviceIdentity.isConcrete(record.address), DeviceIdentity.isConcrete(device.address) {
+            if DeviceIdentity.looksLikeHardwareAddress(record.address),
+               DeviceIdentity.looksLikeHardwareAddress(device.address) {
                 return false
             }
             return namesMatch(record.name, device.name)
@@ -1161,12 +1320,26 @@ final class DualSenseMonitor {
     private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
         guard live.connected else { return nil }
         if let match = deviceRecords.first(where: {
-            isLiveMXDevice(kind: $0.kind, address: $0.address, name: $0.name, live: live)
+            isLiveMXDevice(
+                kind: $0.kind,
+                address: $0.address,
+                name: $0.name,
+                live: live,
+                unitID: $0.unitID,
+                wpid: $0.wirelessProductID
+            )
         }) {
             return match
         }
         if let device = connectedDevices.first(where: {
-            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+            isLiveMXDevice(
+                kind: $0.deviceKind,
+                address: $0.address,
+                name: $0.name,
+                live: live,
+                unitID: $0.unitID,
+                wpid: $0.wirelessProductID
+            )
         }) {
             ensureRecord(for: device.id)
             return matchingRecord(for: device) ?? deviceRecords.first { $0.id == device.id }
@@ -1174,13 +1347,26 @@ final class DualSenseMonitor {
         return nil
     }
 
-    private func isLiveMXDevice(kind: DeviceKind, address: String, name: String, live: MXMasterSnapshot) -> Bool {
+    private func isLiveMXDevice(
+        kind: DeviceKind,
+        address: String,
+        name: String,
+        live: MXMasterSnapshot,
+        unitID: UInt32? = nil,
+        wpid: Int? = nil
+    ) -> Bool {
         guard live.connected else { return false }
-        if DeviceIdentity.same(address, live.address) { return true }
-        if DeviceIdentity.isConcrete(address), DeviceIdentity.isConcrete(live.address) {
-            return false
-        }
-        return kind == live.kind && namesMatch(name, live.name)
+        return DeviceIdentity.sameLogitech(
+            LogitechDeviceKey(
+                name: name,
+                kind: kind,
+                address: address,
+                unitID: unitID,
+                wirelessProductID: wpid,
+                connection: .bluetooth
+            ),
+            live.logitechKey
+        )
     }
 
     private func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
@@ -1210,17 +1396,58 @@ final class DualSenseMonitor {
         if suppressedDeviceKeys.contains(suppressionKey(for: device)) { return }
         if let index = matchingRecordIndex(for: device) {
             deviceRecords[index].name = device.name
-            if isConcreteAddress(device.address) {
-                deviceRecords[index].address = device.address
+            if DeviceIdentity.looksLikeHardwareAddress(device.address)
+                || !DeviceIdentity.looksLikeHardwareAddress(deviceRecords[index].address) {
+                if DeviceIdentity.isConcrete(device.address) {
+                    deviceRecords[index].address = device.address
+                }
             }
             deviceRecords[index].kind = device.deviceKind
             deviceRecords[index].remembered = true
+            if deviceRecords[index].unitID == nil { deviceRecords[index].unitID = device.unitID }
+            if deviceRecords[index].wirelessProductID == nil {
+                deviceRecords[index].wirelessProductID = device.wirelessProductID
+            }
             return
         }
         deviceRecords.append(.make(from: device, remembered: true))
         if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
             applyMacMouseIfNeeded(&deviceRecords[index])
         }
+    }
+
+    private func collapseDuplicateLogitechRecords() {
+        var kept: [DeviceRecord] = []
+        var remapped: [String: String] = [:]
+        for record in deviceRecords {
+            if let index = kept.firstIndex(where: {
+                DeviceIdentity.sameLogitech($0.logitechKey, record.logitechKey)
+            }) {
+                remapped[record.id] = kept[index].id
+                kept[index] = mergeLogitechRecords(kept[index], record)
+            } else {
+                kept.append(record)
+            }
+        }
+        guard kept.map(\.id) != deviceRecords.map(\.id) else { return }
+        deviceRecords = kept
+        if let selectedDeviceID, let mapped = remapped[selectedDeviceID] {
+            self.selectedDeviceID = mapped
+        }
+    }
+
+    private func mergeLogitechRecords(_ lhs: DeviceRecord, _ rhs: DeviceRecord) -> DeviceRecord {
+        var keep = lhs.profiles.count >= rhs.profiles.count ? lhs : rhs
+        let other = keep.id == lhs.id ? rhs : lhs
+        keep.remembered = keep.remembered || other.remembered
+        keep.controlEnabled = keep.controlEnabled || other.controlEnabled
+        if keep.unitID == nil { keep.unitID = other.unitID }
+        if keep.wirelessProductID == nil { keep.wirelessProductID = other.wirelessProductID }
+        if DeviceIdentity.looksLikeHardwareAddress(other.address),
+           !DeviceIdentity.looksLikeHardwareAddress(keep.address) {
+            keep.address = other.address
+        }
+        return keep
     }
 
     private func updateSelectedRecord(_ mutate: (inout DeviceRecord) -> Void) {
@@ -1281,6 +1508,7 @@ final class DualSenseMonitor {
                 }
                 return next
             }
+            collapseDuplicateLogitechRecords()
         }
         if let id = UserDefaults.standard.string(forKey: Self.selectedDeviceDefaultsKey) {
             selectedDeviceID = id
@@ -1334,10 +1562,12 @@ final class DualSenseMonitor {
 
     private func refreshDevices() {
         var devices = BluetoothDeviceCatalog.availableDevices()
+        mergeBoltDevices(into: &devices)
         for reader in mxReaders {
             mergeLiveMX(reader.current, into: &devices)
         }
         mergeLiveKeyboard(keyboard.snapshot, into: &devices)
+        collapseConnectedLogitech(&devices)
         for index in devices.indices {
             if let record = matchingRecord(for: devices[index]) {
                 devices[index].id = record.id
@@ -1348,6 +1578,7 @@ final class DualSenseMonitor {
         for device in devices where device.isSupported && device.isConnected {
             rememberConnectedDevice(device)
         }
+        collapseDuplicateLogitechRecords()
 
         if let selectedDeviceID, sidebarDevices.contains(where: { $0.id == selectedDeviceID }) {
             ensureRecord(for: selectedDeviceID)
@@ -1382,11 +1613,14 @@ final class DualSenseMonitor {
     private func mergeLiveKeyboard(_ live: MXKeyboardSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
         guard live.connected else { return }
         if let index = devices.firstIndex(where: {
-            isLiveKeyboardDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+            isLiveKeyboardDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live, unitID: $0.unitID, wpid: $0.wirelessProductID)
         }) {
             devices[index].deviceKind = live.kind
             devices[index].isConnected = true
             devices[index].name = live.name
+            devices[index].connection = live.connection
+            devices[index].unitID = live.unitID == 0 ? devices[index].unitID : live.unitID
+            devices[index].wirelessProductID = live.wirelessProductID == 0 ? devices[index].wirelessProductID : live.wirelessProductID
             if DeviceIdentity.isConcrete(live.address) {
                 devices[index].address = live.address
             }
@@ -1400,7 +1634,10 @@ final class DualSenseMonitor {
                 address: DeviceIdentity.isConcrete(live.address) ? live.address : DeviceIdentity.hidFallback,
                 deviceKind: live.kind,
                 detail: live.status,
-                isConnected: true
+                isConnected: true,
+                unitID: live.unitID == 0 ? nil : live.unitID,
+                wirelessProductID: live.wirelessProductID == 0 ? nil : live.wirelessProductID,
+                connection: live.connection
             )
         )
     }
@@ -1409,24 +1646,35 @@ final class DualSenseMonitor {
         kind: DeviceKind,
         address: String,
         name: String,
-        live: MXKeyboardSnapshot
+        live: MXKeyboardSnapshot,
+        unitID: UInt32? = nil,
+        wpid: Int? = nil
     ) -> Bool {
         guard live.connected else { return false }
-        if DeviceIdentity.same(address, live.address) { return true }
-        if DeviceIdentity.isConcrete(address), DeviceIdentity.isConcrete(live.address) {
-            return false
-        }
-        return kind.isMXKeyboard && namesMatch(name, live.name)
+        return DeviceIdentity.sameLogitech(
+            LogitechDeviceKey(
+                name: name,
+                kind: kind,
+                address: address,
+                unitID: unitID,
+                wirelessProductID: wpid,
+                connection: .bluetooth
+            ),
+            live.logitechKey
+        )
     }
 
     private func mergeLiveMX(_ live: MXMasterSnapshot, into devices: inout [ConnectedBluetoothDevice]) {
         guard live.connected else { return }
         if let index = devices.firstIndex(where: {
-            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live)
+            isLiveMXDevice(kind: $0.deviceKind, address: $0.address, name: $0.name, live: live, unitID: $0.unitID, wpid: $0.wirelessProductID)
         }) {
             devices[index].deviceKind = live.kind
             devices[index].isConnected = true
             devices[index].name = live.name
+            devices[index].connection = live.connection
+            devices[index].unitID = live.unitID == 0 ? devices[index].unitID : live.unitID
+            devices[index].wirelessProductID = live.wirelessProductID == 0 ? devices[index].wirelessProductID : live.wirelessProductID
             if DeviceIdentity.isConcrete(live.address) {
                 devices[index].address = live.address
             }
@@ -1440,9 +1688,74 @@ final class DualSenseMonitor {
                 address: DeviceIdentity.isConcrete(live.address) ? live.address : DeviceIdentity.hidFallback,
                 deviceKind: live.kind,
                 detail: live.status,
-                isConnected: true
+                isConnected: true,
+                unitID: live.unitID == 0 ? nil : live.unitID,
+                wirelessProductID: live.wirelessProductID == 0 ? nil : live.wirelessProductID,
+                connection: live.connection
             )
         )
+    }
+
+    private func mergeBoltDevices(into devices: inout [ConnectedBluetoothDevice]) {
+        guard let catalog = boltCatalog else { return }
+        for receiver in catalog.receivers {
+            for slot in receiver.devices where slot.deviceKind.isSupported {
+                let bolt = slot.asConnectedDevice()
+                if let index = devices.firstIndex(where: { DeviceIdentity.sameLogitech($0.logitechKey, bolt.logitechKey) }) {
+                    devices[index].unitID = devices[index].unitID ?? bolt.unitID
+                    devices[index].wirelessProductID = devices[index].wirelessProductID ?? bolt.wirelessProductID
+                    if !devices[index].isConnected {
+                        devices[index].isConnected = bolt.isConnected
+                        devices[index].connection = bolt.connection
+                        devices[index].address = bolt.address
+                    }
+                } else {
+                    devices.append(bolt)
+                }
+            }
+        }
+    }
+
+    private func collapseConnectedLogitech(_ devices: inout [ConnectedBluetoothDevice]) {
+        var kept: [ConnectedBluetoothDevice] = []
+        for device in devices {
+            if let index = kept.firstIndex(where: { DeviceIdentity.sameLogitech($0.logitechKey, device.logitechKey) }) {
+                kept[index] = preferLogitechConnection(kept[index], device)
+            } else {
+                kept.append(device)
+            }
+        }
+        devices = kept
+    }
+
+    private func preferLogitechConnection(
+        _ lhs: ConnectedBluetoothDevice,
+        _ rhs: ConnectedBluetoothDevice
+    ) -> ConnectedBluetoothDevice {
+        let keep: ConnectedBluetoothDevice
+        let other: ConnectedBluetoothDevice
+        if lhs.connection == .bluetooth, lhs.isConnected {
+            keep = lhs
+            other = rhs
+        } else if rhs.connection == .bluetooth, rhs.isConnected {
+            keep = rhs
+            other = lhs
+        } else if lhs.isConnected {
+            keep = lhs
+            other = rhs
+        } else {
+            keep = rhs
+            other = lhs
+        }
+        var next = keep
+        next.unitID = keep.unitID ?? other.unitID
+        next.wirelessProductID = keep.wirelessProductID ?? other.wirelessProductID
+        next.isConnected = keep.isConnected || other.isConnected
+        if DeviceIdentity.looksLikeHardwareAddress(other.address),
+           !DeviceIdentity.looksLikeHardwareAddress(keep.address) {
+            next.address = other.address
+        }
+        return next
     }
 
     private func refreshAudioInputs() {

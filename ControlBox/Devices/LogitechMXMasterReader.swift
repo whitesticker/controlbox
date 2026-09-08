@@ -52,6 +52,20 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var batteryCharging = false
     var batteryFull = false
     var batteryStateDescription = "Unknown"
+    var connection = DeviceConnection.bluetooth
+    var unitID: UInt32 = 0
+    var wirelessProductID = 0
+
+    var logitechKey: LogitechDeviceKey {
+        LogitechDeviceKey(
+            name: name,
+            kind: kind,
+            address: address,
+            unitID: unitID == 0 ? nil : unitID,
+            wirelessProductID: wirelessProductID == 0 ? nil : wirelessProductID,
+            connection: connection
+        )
+    }
 }
 
 final class LogitechMXMasterReader {
@@ -91,6 +105,7 @@ final class LogitechMXMasterReader {
     private var hidppManager: IOHIDManager?
     private var mouseManager: IOHIDManager?
     private var hidppDevice: IOHIDDevice?
+    private var boltLink: LogiBoltHIDPPLink?
     private var queuedHIDPP: [IOHIDDevice] = []
     private let lock = NSLock()
     private var snapshot = MXMasterSnapshot()
@@ -245,6 +260,10 @@ final class LogitechMXMasterReader {
         naturalScrolling = true
         injectEnabled = false
         wheelsEnabled = false
+        if let link = boltLink {
+            link.onReport = nil
+            boltLink = nil
+        }
         for (id, buffer) in hidppBuffers {
             if let device = hidppDevice, ObjectIdentifier(device) == id {
                 IOHIDDeviceRegisterInputReportCallback(device, buffer, 64, nil, nil)
@@ -265,6 +284,98 @@ final class LogitechMXMasterReader {
         for buffer in hidppBuffers.values {
             buffer.deallocate()
         }
+    }
+
+    var usesBluetoothHIDPP: Bool { hidppDevice != nil && boltLink == nil }
+
+    var usesBoltHIDPP: Bool { boltLink != nil }
+
+    var boltSlotID: String? { boltLink.map { "\($0.receiverID)-\($0.slot)" } }
+
+    private var canWriteHIDPP: Bool { hidppDevice != nil || boltLink != nil }
+
+    @discardableResult
+    func attachBolt(
+        _ link: LogiBoltHIDPPLink,
+        name: String,
+        kind: DeviceKind,
+        address: String,
+        unitID: UInt32,
+        wpid: Int
+    ) -> Bool {
+        guard running else { return false }
+        guard model.acceptedKinds.contains(kind) || kind == model.kind else { return false }
+        if hidppDevice != nil { return false }
+        if boltLink?.id == link.id, snapshot.connected { return true }
+        detachBolt(restoreNative: boltLink != nil)
+        boltLink = link
+        link.onReport = { [weak self] report in
+            guard let self else { return }
+            if Thread.isMainThread {
+                self.handleReport(report)
+            } else {
+                DispatchQueue.main.async {
+                    self.handleReport(report)
+                }
+            }
+        }
+        hidppEpoch += 1
+        hidppQueue.removeAll()
+        pending = nil
+        reprogIndex = nil
+        nameIndex = nil
+        forceSensingIndex = nil
+        hiresWheelIndex = nil
+        thumbWheelIndex = nil
+        pointerScaleIndex = nil
+        dpiIndex = nil
+        batteryIndex = nil
+        stopBatteryTimer()
+        ready = false
+        lastAppliedOSDPI = -1
+        lastAppliedOSPointerSpeed = -1.0
+        consecutiveTimeouts = 0
+        deviceIndex = UInt8(link.slot)
+        lock.lock()
+        snapshot.kind = model.acceptedKinds.contains(kind) ? kind : model.kind
+        snapshot.name = name
+        snapshot.product = name
+        snapshot.address = address
+        snapshot.connected = true
+        snapshot.connection = .bolt
+        snapshot.unitID = unitID
+        snapshot.wirelessProductID = wpid
+        snapshot.status = "Talking to \(name) over Logi Bolt…"
+        lock.unlock()
+        probeDeviceIndices([UInt8(link.slot)])
+        return true
+    }
+
+    func detachBolt() {
+        detachBolt(restoreNative: true)
+    }
+
+    private func detachBolt(restoreNative: Bool) {
+        guard boltLink != nil else { return }
+        if restoreNative {
+            restoreNativeReporting()
+        }
+        boltLink?.onReport = nil
+        boltLink = nil
+        hidppEpoch += 1
+        hidppQueue.removeAll()
+        pending = nil
+        ready = false
+        stopBatteryTimer()
+        unfreezeCursor()
+        unlockCursor()
+        lock.lock()
+        snapshot = MXMasterSnapshot()
+        snapshot.kind = model.kind
+        snapshot.name = model.kind.title
+        snapshot.product = model.kind.title
+        snapshot.status = model.lookingStatus
+        lock.unlock()
     }
 
     func consumePendingGesture() -> DeviceButton? {
@@ -369,7 +480,7 @@ final class LogitechMXMasterReader {
     }
 
     private func applyOSPointerSettingsIfNeeded() {
-        guard let hidppDevice else { return }
+        guard boltLink == nil, let hidppDevice else { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
         guard dpi != lastAppliedOSDPI || desiredPointerSpeed != lastAppliedOSPointerSpeed else { return }
         PointerHIDSettings.apply(to: hidppDevice, dpi: dpi, pointerSpeed: desiredPointerSpeed)
@@ -718,6 +829,9 @@ final class LogitechMXMasterReader {
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
         guard model.matches(incoming) else { return }
+        if boltLink != nil {
+            detachBolt(restoreNative: true)
+        }
         if isSameDevice(incoming, hidppDevice) { return }
         if queuedHIDPP.contains(where: { isSameDevice(incoming, $0) }) { return }
         if hidppDevice == nil {
@@ -765,6 +879,9 @@ final class LogitechMXMasterReader {
         snapshot.product = product
         snapshot.address = DeviceIdentity.fromHID(device)
         snapshot.connected = true
+        snapshot.connection = .bluetooth
+        snapshot.unitID = 0
+        snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3, 4, 5, 6])
@@ -853,12 +970,17 @@ final class LogitechMXMasterReader {
             teardownHIDPP(current, keepQueued: true)
             hidppDevice = nil
         }
+        if boltLink != nil {
+            detachBolt(restoreNative: false)
+            setStatus(reason)
+            return
+        }
         setStatus(reason)
         scheduleRecover()
     }
 
     private func scheduleRecover() {
-        guard running, hidppManager != nil else { return }
+        guard running, hidppManager != nil, boltLink == nil else { return }
         recoverWork?.cancel()
         let delay: TimeInterval = recoverAttempts < 3 ? 1.0 : 5.0
         recoverAttempts += 1
@@ -870,7 +992,7 @@ final class LogitechMXMasterReader {
     }
 
     private func retryHIDPP() {
-        guard running, hidppManager != nil else { return }
+        guard running, hidppManager != nil, boltLink == nil else { return }
         if hidppDevice != nil { return }
         scanHIDPP()
         if hidppDevice == nil {
@@ -881,6 +1003,11 @@ final class LogitechMXMasterReader {
     private func failHIDPPAndTryNext(_ message: String) {
         hidppQueue.removeAll()
         pending = nil
+        if boltLink != nil {
+            detachBolt(restoreNative: false)
+            setStatus(message)
+            return
+        }
         if let current = hidppDevice {
             teardownHIDPP(current, keepQueued: false)
             hidppDevice = nil
@@ -935,7 +1062,7 @@ final class LogitechMXMasterReader {
     private func identifyDevice() {
         let fallbackName = hidppDevice.flatMap {
             IOHIDDeviceGetProperty($0, kIOHIDProductKey as CFString) as? String
-        } ?? "MX Master"
+        } ?? snapshot.name
         request(featureIndex: 0, function: 0, params: [0x00, 0x05]) { [weak self] data in
             guard let self else { return }
             if let data, let nameIndex = data.first, nameIndex != 0 {
@@ -1421,7 +1548,7 @@ final class LogitechMXMasterReader {
     }
 
     private func restoreNativeReporting() {
-        guard hidppDevice != nil else { return }
+        guard canWriteHIDPP else { return }
         hidppQueue.removeAll()
         pending = nil
         var cids = Set(controls.map(\.cid))
@@ -1440,7 +1567,7 @@ final class LogitechMXMasterReader {
     }
 
     private func sendHIDPP(featureIndex: UInt8, function: UInt8, params: [UInt8]) {
-        guard let hidppDevice else { return }
+        guard canWriteHIDPP else { return }
         swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
         let swID = swCounter
         var report = [UInt8](repeating: 0, count: 20)
@@ -1451,9 +1578,18 @@ final class LogitechMXMasterReader {
         for (offset, byte) in params.prefix(16).enumerated() {
             report[4 + offset] = byte
         }
+        writeHIDPPReport(report)
+    }
+
+    private func writeHIDPPReport(_ report: [UInt8]) {
+        if let boltLink {
+            boltLink.write(report)
+            return
+        }
+        guard let hidppDevice, !report.isEmpty else { return }
         _ = report.withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return kIOReturnError }
-            return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
+            return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(report[0]), base, report.count)
         }
     }
 
@@ -1500,7 +1636,7 @@ final class LogitechMXMasterReader {
     }
 
     private func pumpHIDPP() {
-        guard pending == nil, let hidppDevice, let call = hidppQueue.first else { return }
+        guard pending == nil, canWriteHIDPP, let call = hidppQueue.first else { return }
         swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
         let swID = swCounter
         pending = Pending(swID: swID, completion: { [weak self] data in
@@ -1519,11 +1655,8 @@ final class LogitechMXMasterReader {
         for (offset, byte) in call.params.prefix(16).enumerated() {
             report[4 + offset] = byte
         }
-        let kr = report.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return kIOReturnError }
-            return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
-        }
-        if model.tryShortHIDPPReport, call.params.count <= 3 {
+        writeHIDPPReport(report)
+        if model.tryShortHIDPPReport, call.params.count <= 3, boltLink == nil {
             var short = [UInt8](repeating: 0, count: 7)
             short[0] = 0x10
             short[1] = deviceIndex
@@ -1532,16 +1665,7 @@ final class LogitechMXMasterReader {
             for (offset, byte) in call.params.prefix(3).enumerated() {
                 short[4 + offset] = byte
             }
-            _ = short.withUnsafeBufferPointer { buffer in
-                guard let base = buffer.baseAddress else { return kIOReturnError }
-                return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, CFIndex(0x10), base, 7)
-            }
-        }
-        if model.tryShortHIDPPReport, kr != kIOReturnSuccess {
-            _ = report.withUnsafeBufferPointer { buffer in
-                guard let base = buffer.baseAddress else { return kIOReturnError }
-                return IOHIDDeviceSetReport(hidppDevice, kIOHIDReportTypeOutput, 0, base, 20)
-            }
+            writeHIDPPReport(short)
         }
         let epoch = hidppEpoch
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in

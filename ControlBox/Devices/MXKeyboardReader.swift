@@ -39,6 +39,7 @@ final class MXKeyboardReader {
     private var running = false
     private var hidppManager: IOHIDManager?
     private var hidppDevice: IOHIDDevice?
+    private var boltLink: LogiBoltHIDPPLink?
     private var queuedHIDPP: [IOHIDDevice] = []
     private var hidppBuffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
     private var hidppQueue: [(featureIndex: UInt8, function: UInt8, params: [UInt8], completion: (Data?) -> Void)] = []
@@ -88,11 +89,95 @@ final class MXKeyboardReader {
         }
         hidppManager = nil
         hidppDevice = nil
+        if let link = boltLink {
+            link.onReport = nil
+            boltLink = nil
+        }
         queuedHIDPP.removeAll()
         clearFeatureIndices()
         lock.lock()
         snapshot = MXKeyboardSnapshot()
         lock.unlock()
+    }
+
+    var usesBluetoothHIDPP: Bool { hidppDevice != nil && boltLink == nil }
+
+    var usesBoltHIDPP: Bool { boltLink != nil }
+
+    var boltSlotID: String? { boltLink.map { "\($0.receiverID)-\($0.slot)" } }
+
+    private var canWriteHIDPP: Bool { hidppDevice != nil || boltLink != nil }
+
+    @discardableResult
+    func attachBolt(
+        _ link: LogiBoltHIDPPLink,
+        name: String,
+        kind: DeviceKind,
+        address: String,
+        unitID: UInt32,
+        wpid: Int
+    ) -> Bool {
+        guard running else { return false }
+        guard kind.isMXKeyboard else { return false }
+        if hidppDevice != nil { return false }
+        if boltLink?.id == link.id {
+            lock.lock()
+            let connected = snapshot.connected
+            lock.unlock()
+            if connected { return true }
+        }
+        detachBolt(restoreStatus: boltLink != nil)
+        boltLink = link
+        link.onReport = { [weak self] report in
+            guard let self else { return }
+            if Thread.isMainThread {
+                self.handleReport(report)
+            } else {
+                DispatchQueue.main.async {
+                    self.handleReport(report)
+                }
+            }
+        }
+        hidppEpoch += 1
+        hidppQueue.removeAll()
+        pending = nil
+        clearFeatureIndices()
+        stopBatteryTimer()
+        consecutiveTimeouts = 0
+        deviceIndex = UInt8(link.slot)
+        lock.lock()
+        snapshot.kind = kind
+        snapshot.name = name
+        snapshot.product = name
+        snapshot.address = address
+        snapshot.connected = true
+        snapshot.hidppReady = false
+        snapshot.connection = .bolt
+        snapshot.unitID = unitID
+        snapshot.wirelessProductID = wpid
+        snapshot.status = "Talking to \(name) over Logi Bolt…"
+        lock.unlock()
+        probeDeviceIndices([UInt8(link.slot)])
+        return true
+    }
+
+    func detachBolt() {
+        detachBolt(restoreStatus: true)
+    }
+
+    private func detachBolt(restoreStatus: Bool) {
+        guard boltLink != nil else { return }
+        boltLink?.onReport = nil
+        boltLink = nil
+        hidppEpoch += 1
+        hidppQueue.removeAll()
+        pending = nil
+        stopBatteryTimer()
+        clearFeatureIndices()
+        lock.lock()
+        snapshot = MXKeyboardSnapshot()
+        lock.unlock()
+        _ = restoreStatus
     }
 
     func setBacklightEnabled(_ enabled: Bool) {
@@ -196,6 +281,9 @@ final class MXKeyboardReader {
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
         guard running else { return }
+        if boltLink != nil {
+            detachBolt()
+        }
         if isSameDevice(incoming, hidppDevice) { return }
         if hidppDevice == nil {
             beginProbe(incoming)
@@ -229,6 +317,9 @@ final class MXKeyboardReader {
         snapshot.address = DeviceIdentity.fromHID(device)
         snapshot.connected = true
         snapshot.hidppReady = false
+        snapshot.connection = .bluetooth
+        snapshot.unitID = 0
+        snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3])
@@ -521,6 +612,10 @@ final class MXKeyboardReader {
         pending = nil
         stopBatteryTimer()
         ioQueue.sync {}
+        if boltLink != nil {
+            detachBolt()
+            return
+        }
         if let current = hidppDevice {
             IOHIDDeviceUnscheduleFromRunLoop(current, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
             releaseReportBuffer(current)
@@ -547,7 +642,7 @@ final class MXKeyboardReader {
 
     private func scheduleRecover() {
         recoverWork?.cancel()
-        guard running else { return }
+        guard running, boltLink == nil else { return }
         let work = DispatchWorkItem { [weak self] in
             self?.scanHIDPP()
         }
@@ -573,7 +668,7 @@ final class MXKeyboardReader {
     }
 
     private func pumpHIDPP() {
-        guard pending == nil, let hidppDevice, let call = hidppQueue.first else { return }
+        guard pending == nil, canWriteHIDPP, let call = hidppQueue.first else { return }
         swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
         let swID = swCounter
         pending = Pending(swID: swID, featureIndex: call.featureIndex, completion: { [weak self] data in
@@ -592,11 +687,14 @@ final class MXKeyboardReader {
         for (offset, byte) in call.params.prefix(16).enumerated() {
             report[4 + offset] = byte
         }
-        let device = hidppDevice
-        ioQueue.async {
-            _ = report.withUnsafeBufferPointer { buffer in
-                guard let base = buffer.baseAddress else { return kIOReturnError }
-                return IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
+        if let boltLink {
+            boltLink.write(report)
+        } else if let device = hidppDevice {
+            ioQueue.async {
+                _ = report.withUnsafeBufferPointer { buffer in
+                    guard let base = buffer.baseAddress else { return kIOReturnError }
+                    return IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
+                }
             }
         }
         let epoch = hidppEpoch
