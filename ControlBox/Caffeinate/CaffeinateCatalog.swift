@@ -1,6 +1,7 @@
 import AppKit
 import ControlBoxCore
 import Foundation
+import IOKit.pwr_mgt
 import Observation
 
 enum CaffeinateDuration: Int, CaseIterable, Identifiable, Hashable {
@@ -111,6 +112,15 @@ final class CaffeinateCatalog {
         isActive = false
         duration = nil
         endDate = nil
+    }
+
+    @discardableResult
+    func sleepNow() -> Bool {
+        stop()
+        let connection = IOPMFindPowerManagement(mach_port_t(MACH_PORT_NULL))
+        guard connection != 0 else { return false }
+        defer { IOServiceClose(connection) }
+        return IOPMSleepSystem(connection) == kIOReturnSuccess
     }
 
     func invalidate() {

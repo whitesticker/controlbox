@@ -45,6 +45,7 @@ private final class CaffeinateMenuBarItem: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private let countdownItem = NSMenuItem()
     private let turnOffItem = NSMenuItem(title: "Turn Off", action: #selector(turnOff), keyEquivalent: "")
+    private let sleepNowItem = NSMenuItem(title: "Sleep Now", action: #selector(sleepNow), keyEquivalent: "")
     private var durationItems: [CaffeinateDuration: NSMenuItem] = [:]
     private var countdownTimer: Timer?
 
@@ -72,6 +73,9 @@ private final class CaffeinateMenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         turnOffItem.target = self
         menu.addItem(turnOffItem)
+        sleepNowItem.target = self
+        sleepNowItem.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: "Sleep Now")
+        menu.addItem(sleepNowItem)
         menu.addItem(.separator())
 
         let openItem = NSMenuItem(title: "Open Caffeinate…", action: #selector(openPane), keyEquivalent: "")
@@ -164,6 +168,15 @@ private final class CaffeinateMenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func turnOff() {
         catalog.stop()
+    }
+
+    @objc private func sleepNow() {
+        guard !catalog.sleepNow() else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn’t Put This Mac to Sleep"
+        alert.informativeText = "macOS did not accept the sleep request."
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     @objc private func openPane() {

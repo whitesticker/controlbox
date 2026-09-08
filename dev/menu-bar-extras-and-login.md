@@ -12,7 +12,7 @@ Permissions has a **Launch at Login** toggle (`SMAppService.mainApp.register` / 
 
 Each pane has **Show in menu bar**, off until turned on. Separate `NSStatusItem` with a genuine `NSMenu` (same pattern as System Monitor: hosted slider rows, native Open / Hide items), not an `NSPopover`. Hide from the extra does not quit. Catalogs live on the app delegate so sliders keep working after the window closes.
 
-Caffeinate’s extra is a native duration menu (not sliders). While a session is on, the first row is a countdown. The cup icon is hollow when idle and hollow-with-coffee plus steam while keeping the Mac awake.
+Caffeinate’s extra is a native duration menu (not sliders). While a session is on, the first row is a countdown. **Sleep Now** stops the active assertion and calls `IOPMSleepSystem`. The cup icon is hollow when idle and hollow-with-coffee plus steam while keeping the Mac awake.
 
 Brightness writes the built-in panel immediately. External DDC writes are coalesced on a background queue. Listing displays does DDC reads off the main thread so the pane slider does not hitch.
 
