@@ -53,7 +53,9 @@ struct DeviceProfilePane: View {
                         )
                         keyboardSettingsSection
                     } else {
-                        if record.isMXMaster {
+                        if record.isMXMaster,
+                           record.kind != .logitechMouse
+                            || monitor.mxSnapshot(for: record.id).hidppCapabilities.easySwitch {
                             easySwitchSection(
                                 hosts: monitor.mxMasterSnapshot.easySwitchHosts,
                                 noun: "mouse",
@@ -75,7 +77,7 @@ struct DeviceProfilePane: View {
                             }
                         }
 
-                        if record.isMXMaster {
+                        if record.isMXMaster, showsMXProfiles(for: record) {
                             mxProfilesSections(for: record)
                         } else if record.isGamepad || record.isAppleTVRemote {
                             controllerProfilesSections(for: record)
@@ -1296,12 +1298,11 @@ struct DeviceProfilePane: View {
     private func mxButtonsFooter(for record: DeviceRecord) -> Text {
         if record.kind.isMXMaster3Family {
             return footerBullets(
-                "Gesture is the only Gestures button: hold and move, or tap to Click."
+                "Gesture is the thumb button: hold and move, or tap to Click."
             )
         }
         return footerBullets(
-            "Haptic is the only Gestures button: hold and move, or tap to Click.",
-            "Side is the extra thumb button (default: Mission Control)."
+            "Haptic is the force pad. Gesture is the thumb button. Both can be Gestures."
         )
     }
 
@@ -1361,7 +1362,7 @@ struct DeviceProfilePane: View {
                         selectRow(for: record)
                     } else if button.canOwnGestures {
                         mxActionRow(
-                            label(for: button, kind: record.kind),
+                            mxLabel(for: button, record: record),
                             button: button,
                             record: record
                         )
@@ -1369,7 +1370,7 @@ struct DeviceProfilePane: View {
                         let mapped = record.selectedProfile.bindings[button]
                             ?? (button.isMXScrollDirection ? .scroll : .none)
                         actionRow(
-                            label(for: button, kind: record.kind),
+                            mxLabel(for: button, record: record),
                             button: button,
                             current: mapped
                         )
@@ -1459,12 +1460,16 @@ struct DeviceProfilePane: View {
     private func mxProfilesSections(for record: DeviceRecord) -> some View {
         let groups = buttonGroups(for: record)
         let buttonGroup = groups.first(where: { $0.id == "buttons" })
-        let gestureButtons = buttonGroup?.buttons.filter(\.canOwnGestures) ?? []
+        let gestureButtons = buttonGroup?.buttons.filter {
+            isGestureCapable($0, for: record)
+        } ?? []
         let availableButtons = Set(buttonGroup?.buttons ?? [])
         let mainButtonOrder: [DeviceButton] = [.mxMiddle, .mxBack, .mxForward, .mxSmartShift]
-        let mainButtons = mainButtonOrder.filter { availableButtons.contains($0) }
+        let mainButtons = mainButtonOrder.filter {
+            availableButtons.contains($0) && !gestureButtons.contains($0)
+        }
         let otherButtons = buttonGroup?.buttons.filter {
-            !$0.canOwnGestures && !mainButtonOrder.contains($0)
+            !gestureButtons.contains($0) && !mainButtonOrder.contains($0)
         } ?? []
 
         Section {
@@ -1475,7 +1480,7 @@ struct DeviceProfilePane: View {
             }
             if !gestureButtons.isEmpty {
                 devicePageListRow {
-                    mxProfileMappingBox("Gesture button", buttons: gestureButtons, record: record)
+                    mxProfileMappingBox("Gesture-capable controls", buttons: gestureButtons, record: record)
                 }
             }
             if !otherButtons.isEmpty {
@@ -1515,9 +1520,9 @@ struct DeviceProfilePane: View {
 
             ForEach(buttons, id: \.self) { button in
                 VStack(spacing: 0) {
-                    if button.canOwnGestures {
+                    if isGestureCapable(button, for: record) {
                         mxActionRow(
-                            label(for: button, kind: record.kind),
+                            mxLabel(for: button, record: record),
                             button: button,
                             record: record
                         )
@@ -1525,7 +1530,7 @@ struct DeviceProfilePane: View {
                         let mapped = record.selectedProfile.bindings[button]
                             ?? (button.isMXScrollDirection ? .scroll : .none)
                         actionRow(
-                            label(for: button, kind: record.kind),
+                            mxLabel(for: button, record: record),
                             button: button,
                             current: mapped
                         )
@@ -1943,12 +1948,27 @@ struct DeviceProfilePane: View {
     private func buttonGroups(for record: DeviceRecord) -> [DeviceButtonGroup] {
         if record.isMXKeyboard { return [] }
         if record.isMXMaster {
+            if record.kind == .logitechMouse {
+                let live = monitor.mxSnapshot(for: record.id)
+                return DeviceButton.mxMasterGroups.compactMap { group in
+                    let buttons: [DeviceButton]
+                    if group.id == "thumb-wheel" {
+                        buttons = live.hidppCapabilities.thumbWheel ? group.buttons : []
+                    } else {
+                        let standard = group.buttons.filter(live.availableButtons.contains)
+                        let dynamic = DeviceButton.mxExtraButtons.filter(live.availableButtons.contains)
+                        buttons = standard + dynamic
+                    }
+                    guard !buttons.isEmpty else { return nil }
+                    return DeviceButtonGroup(id: group.id, title: group.title, buttons: buttons)
+                }
+            }
             if record.kind.isMXMaster3Family {
                 return DeviceButton.mxMasterGroups.map { group in
                     DeviceButtonGroup(
                         id: group.id,
                         title: group.title,
-                        buttons: group.buttons.filter { $0 != .mxSide }
+                        buttons: group.buttons.filter { $0 != .mxHaptic }
                     )
                 }
             }
@@ -1956,6 +1976,34 @@ struct DeviceProfilePane: View {
         }
         if record.isAppleTVRemote { return DeviceButton.appleTVGroups }
         return DeviceButton.dualSenseGroups
+    }
+
+    private func showsMXProfiles(for record: DeviceRecord) -> Bool {
+        guard record.kind == .logitechMouse else { return true }
+        let live = monitor.mxSnapshot(for: record.id)
+        return live.hidppCapabilities.reprogrammableControls
+            || live.hidppCapabilities.thumbWheel
+            || !live.availableButtons.isEmpty
+    }
+
+    private func isGestureCapable(_ button: DeviceButton, for record: DeviceRecord) -> Bool {
+        guard button.canOwnGestures else { return false }
+        if button == .mxHaptic, record.kind != .logitechMouse, !record.kind.isMXMaster3Family {
+            return true
+        }
+        if button == .mxSide || button == .mxSmartShift, record.kind != .logitechMouse {
+            return true
+        }
+        let live = monitor.mxSnapshot(for: record.id)
+        if live.connected {
+            return live.gestureCapableButtons.contains(button)
+        }
+        return record.selectedProfile.mxGestureOwners.contains(button) || button == .mxHaptic
+    }
+
+    private func mxLabel(for button: DeviceButton, record: DeviceRecord) -> String {
+        monitor.mxSnapshot(for: record.id).controlTitles[button]
+            ?? label(for: button, kind: record.kind)
     }
 
     private func label(for button: DeviceButton, kind: DeviceKind = .unsupported) -> String {
@@ -1967,8 +2015,8 @@ struct DeviceProfilePane: View {
         case .clickSelect: return "Select"
         case .volumeUp: return "Volume +"
         case .volumeDown: return "Volume −"
-        case .mxHaptic: return kind.mxGestureControlTitle
-        case .mxSide: return "Side"
+        case .mxHaptic: return "Haptic button"
+        case .mxSide: return "Gesture button"
         default: return button.title
         }
     }

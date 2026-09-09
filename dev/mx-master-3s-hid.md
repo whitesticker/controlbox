@@ -20,19 +20,19 @@ There is also an `AppleUserHIDEventService` copy of the same product. Prefer the
 
 ## Master 3 vs 3S
 
-Solaar and logiops list the **same** Reprog V4 CIDs on both mice. Quiet clicks and Bolt vs Unifying do not change divert or gesture. One module (`MXMaster3Support`) covers both; the sidebar still labels 3 vs 3S from product ID. Master 3 itself has not been on this Mac.
+Solaar and logiops list the **same** Reprog V4 CIDs on both mice. Quiet clicks and Bolt vs Unifying do not change divert or gesture. One shared Logitech mouse module probes both; `LogitechMouseRegistry` labels 3 vs 3S from product ID. Master 3 itself has not been on this Mac.
 
 ## Gestures
 
-3S has no haptic pad and no CID `0x01A0`. The thumb **gesture button** is CID `0x00C3`. Hold it and move; a tap is Click. Control Box still binds that control as `.mxHaptic` so the shared gesture engine / ControlEngine stay unchanged. UI copy says Gesture, not Haptic.
+On 3S, CID `0x00C3` is the **gesture button** (owner `.mxSide`). There is no haptic button. MX4 uses the same CID for the gesture button and CID `0x01A0` for the **haptic button**.
 
-Divert flags are the same hold-only pair as MX4 (`0x33`). No persist, no force-raw-XY, no Force Sensing `0x19C0`.
+Divert flags are the same hold-only pair as MX4 (`0x33`). No persist, no force-raw-XY, no Force Sensing `0x19C0`. Divert that CID once at attach even if `getCidReporting` fails — 3S has no native pad fallback. MagSpeed writes can clear Reprog, so the dedicated CID is re-diverted after SmartShift.
 
 ## Code split
 
-- `MXMaster3Support` covers Master 3 and 3S (same CIDs). `MXMaster4Support` is the haptic-pad mouse.
-- `LogitechMXMasterReader` is the shared HID++ pipe + pointer/wheel/hold-to-swipe engine.
-- Discovery picks one model from connected product IDs. One mouse at a time.
+- `LogitechMouseRegistry` stores the 3/3S identity fallback and the MX4 haptic quirks as data; both run through `LogitechMouseReader`.
+- `LogitechMouseReader` is the shared HID++ pipe + pointer/wheel/hold-to-swipe engine.
+- A pool of readers claims one HID++ endpoint each so 3S and 4 (and other HID++ mice) can stay attached at once.
 
 ## Related
 

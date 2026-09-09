@@ -12,8 +12,10 @@ Hardware layout is in [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md). Th
 | Wheel / thumb wheel | Main wheel always scrolls vertically. Free Spin / Ratchet and SmartShift sensitivity are on Calibration (`0x2111`). Thumb wheel has one per-profile mode, default Horizontal Scroll; travel uses Calibration thumb-wheel sensitivity. Smooth scrolling + one wheel speed slider for native mouse scroll. |
 | Haptic pad tap | The Gestures **Click** action (window preset: Mission Control). |
 | Haptic pad hold 100ms + move | Hold-to-swipe. Left/right and up are live DockSwipe. Down is discrete App Exposé. |
+| Gesture button tap | Same Gestures **Click** as the pad (window preset). |
+| Gesture button hold 100ms + move | Hold-to-swipe from HID++ `rawXYEvent` only. No pointer pin. |
 
-**Gestures is haptic-pad only.** Click-as-gesture on Back / Forward / etc. is parked. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+Both default to Gestures. Other controls are offered only when their live Reprog descriptor advertises divertable raw XY. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
 
 ## Pointer speed plus DPI
 
@@ -33,13 +35,13 @@ Pointer and wheel speed live under Mac → Pointer & Scroll (Control Box interce
 ## Default MX profile
 
 - Haptic → Gestures, preset **Window navigation**
+- Gesture button (CID `0x00C3`) → Gestures, preset **Window navigation**
 - Back → browser back
 - Forward → browser forward
-- Side → Mission Control
 - Wheel / thumb directions → Scroll (native)
-- Summary: “Haptic pad is Gestures. Back and Forward are browser buttons. Side is Mission Control.”
+- Summary: “Haptic button is the pad. Gesture button is the thumb button. Both default to Gestures.”
 
-Haptic presets:
+Haptic / Gesture presets:
 
 | Preset | Click | Up | Down | Left | Right |
 |---|---|---|---|---|---|
@@ -48,9 +50,7 @@ Haptic presets:
 | App navigation | Switch app | Mission Control (live) | App Exposé | Next app | Previous app |
 | Custom | Whatever is assigned to click / four directions | | | | |
 
-Profiles only offer **Gestures** on the Haptic row. Other MX buttons use the normal action picker.
-
-Saved profiles that still have Gestures on a non-haptic button are rewritten on load (`restrictGesturesToHapticPad`): Back → browser back, Forward → browser forward, others → none.
+Profiles offer **Gestures** on **Gesture-capable controls** (live Reprog raw XY). Defaults are Haptic and Gesture. Left/right stay native.
 
 ## Pointer path
 
@@ -58,24 +58,22 @@ Saved profiles that still have Gestures on a non-haptic button are rewritten on 
 
 That factor is applied in two places:
 
-1. HID++ feature `0x2205` (8.8 scale) in `LogitechMXMasterReader.sendSensorSettingsIfNeeded`.
+1. HID++ feature `0x2205` (8.8 scale) in `LogitechMouseReader.sendSensorSettingsIfNeeded`.
 2. OS properties `HIDPointerResolution` (lower = faster) and `HIDPointerAcceleration` / mouse acceleration in `PointerHIDSettings.swift`, including matching `IOHIDServiceClient`s.
 
 50% at 1000 DPI is 1×. Do not clamp resolution to LinearMouse’s 1995 ceiling; that left high DPI too fast.
 
 ## Haptic path
 
-While the haptic pad is held (HID button 7 / `0x40` on report `0x02`):
+While the haptic pad is held (HID button 7 / `0x40` on report `0x02`, plus the shared click-probe other-mouse events):
 
-1. Freeze the cursor (`CGAssociateMouseAndMouseCursorPosition(0)`) and swallow mouse-move events so pointer motion does not cancel DockSwipe.
-2. Accumulate 12-bit X then 12-bit Y from that same report (`handleNativeMouseReport`).
+1. Freeze the cursor (`CGAssociateMouseAndMouseCursorPosition(0)`) and swallow mouse-move and haptic other-mouse events so pointer motion does not cancel DockSwipe.
+2. Accumulate 12-bit X then 12-bit Y from that same report (`handleNativeMouseReport`) into one hid delta.
 3. Scale each sample with `MappingProfile.gestureSpeedFactor(dpi)` — `1000 / dpi` only.
 4. Publish `gestureOwner = .mxHaptic`, `gestureActive`, `gestureX` / `gestureY` on the control frame.
-5. `ControlEngine.processGesture` runs `HoldGesture` only when the owner is haptic **and** that binding is Gestures.
+5. `ControlEngine.processGesture` runs `HoldGesture` when the owner is haptic and that control is a Gestures owner.
 
-HID++ diverted raw XY (`handleRawXY`) uses the same scaler when that pipe exists. HID++ is not required for BLE press or swipe.
-
-HID usages `0x30` / `0x31` also accumulate only while the live owner is haptic, so a second XY stream cannot mix in.
+HID++ diverted raw XY (`handleRawXY`) uses the same accumulator. Divert `0x01A0` once at attach; do not re-divert from the poll loop. Drop the first raw-XY sample on the haptic pad (OpenLogi contact jump). Native report `0x02` feeds that same hid delta only while the live owner is the haptic button.
 
 Without the DPI term, 2000 DPI felt like twice the swipe of 1000 DPI. At 1000 DPI the haptic bar felt right; other DPI values now match that physical travel. See [haptic-swipe-scales-with-dpi.md](haptic-swipe-scales-with-dpi.md).
 
@@ -83,19 +81,31 @@ Without the DPI term, 2000 DPI felt like twice the swipe of 1000 DPI. At 1000 DP
 
 `HoldGesture` in ControlBoxCore is the only place that decides tap vs swipe, axis, Spaces, Mission Control, App Exposé, media skip, and volume.
 
-The MX reader only captures pad down + raw XY and a pinned cursor. It does not know about media vs window navigation.
+The MX reader captures press + XY. Only the haptic pad pins the cursor.
 
 ### Pipeline
 
+Haptic button:
+
 ```
-report 0x02 (bit 0x40 + 12-bit XY)
-        → LogitechMXMasterReader (pin cursor, scale XY)
+report 0x02 (bit 0x40 + 12-bit XY) and HID++ rawXYEvent
+        → LogitechMouseReader (pin cursor, scale XY)
         → ControlFrameBuilder (owner / active / X / Y)
         → ControlEngine.processGesture
         → HoldGesture (arm, axis, live DockSwipe or discrete action)
 ```
 
-`setGestureOwners` intersects the profile’s owners with `{.mxHaptic}`. The reader will not start a session for Back or any other click.
+Gesture button (OpenLogi):
+
+```
+HID++ diverted-buttons + rawXYEvent (CID 0x00C3, flags 0x33)
+        → LogitechMouseReader (no pin; swallow mouseMoved for 80ms after firmware XY)
+        → ControlFrameBuilder
+        → ControlEngine.processGesture
+        → HoldGesture
+```
+
+`setGestureOwners` maps each owner to its CID. Dedicated `0x00C3` always diverts; raw XY is only while `.mxSide` owns Gestures. The reader will not start a non-haptic hold from a CG other-mouse event.
 
 ## Tap vs swipe
 
@@ -140,29 +150,30 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 - Do not apply pointer speed or OS tracking pixels to haptic X/Y.
 - Do not omit the DPI term from haptic scaling. 50% “1× HID” without `1000 / dpi` is only true at 1000 DPI.
 - Do not open or seize the standard mouse collection (`0x01` / `0x02`) just to watch buttons. Parse left / right / wheel from report `0x02` on the HID++ device; share one `CGEvent` tap across readers ([mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md)).
-- Do not divert MX4 Side `0x00C3` with gesture flags `0x33`. That CID is a click on MX4 (`0x03`). On 3S the same CID is the gesture button.
+- Divert MX4 **gesture button** `0x00C3` with `0x33` when it owns Gestures (OpenLogi raw XY). Do not pin the pointer. The **haptic button** `0x01A0` keeps `0x33` plus pin. Do not treat `0x00C3` as Side. See [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md).
 - Do not send Reprog persist or force-raw-XY. Clear divert with `0x22`.
 - Do not call `IOBluetoothDevice.pairedDevices()`.
 - Do not treat Bolt receiver `C548` as this mouse.
 - Do not switch Mission Control back to a hotkey-only path. Live follow is intentional.
 - Do not add a user-facing Acceleration slider.
 - Do not `DispatchQueue.main.async` every BLE mouse report `0x02`; that floods the main thread. HID++ report `0x11` can hop to main; `0x02` is handled on the callback thread.
-- Do not put Gestures back on Back / Forward / left / right / middle. Laser XY is not the pad. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+- Do not default Gestures onto Back / Forward / middle. Laser XY is not the pad; capability-gated ownership is allowed when firmware advertises raw XY. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+- Do not re-divert the haptic CID from `setGestureOwners` on every poll. Attach-time `divertKnownButtons` is enough; a flickering eligible set undiverts the pad while Back/Forward stay up.
 - Do not HID++-divert `0x0050` / `0x0051` / `0x0052` to invent a second pad.
 
 ## Code map
 
 | File | Role |
 |---|---|
-| `ControlBox/LogitechMXMasterReader.swift` | HID++, report `0x02` buttons + wheel + haptic XY, shared click probe, freeze cursor, 100ms tap classify. Gesture owners clamped to haptic. |
-| `ControlBox/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
-| `ControlBox/ProfilesPane.swift` | Gestures picker only on Haptic. |
-| `ControlBox/MXMasterCalibrationView.swift` | Calibration sidebar: On this mouse = DPI. |
+| `ControlBox/Devices/Logitech/Mouse/LogitechMouseReader.swift` | HID++, report `0x02` buttons + wheel + haptic XY, shared click probe, freeze cursor, 100ms tap classify. Gesture owners come from each control’s raw-XY capability; left/right stay native. |
+| `ControlBox/Mac/PointerScroll/PointerHIDSettings.swift` | OS pointer resolution + acceleration from pointer slider + DPI |
+| `ControlBox/Devices/UI/ProfilesPane.swift` | Gestures picker on Gesture-capable controls. |
+| `ControlBox/Devices/Logitech/Mouse/MXMasterCalibrationView.swift` | Calibration: live clicks. DPI lives in Mouse Settings. |
 | `ControlBox/DualSenseMonitor.swift` | Pushes sliders + DPI into the reader. Sanitizes saved profiles on load. |
 | `ControlBox/ControlFrameBuilder.swift` | `gestureOwner` / `gestureActive` / `gestureX` / `gestureY` from the MX snapshot |
-| `Packages/ControlBoxCore/.../MappingProfile.swift` | `pointerSpeedFactor`, `gestureSpeedFactor`, haptic-only `mxGestureOwners` |
+| `Packages/ControlBoxCore/.../MappingProfile.swift` | `pointerSpeedFactor`, `gestureSpeedFactor`, per-control `mxGestureOwners` |
 | `Packages/ControlBoxCore/.../HoldGesture.swift` | 100ms arm, axis lock, live Spaces/MC, discrete App Exposé / media skip, volume |
-| `Packages/ControlBoxCore/.../ControlEngine.swift` | Starts `HoldGesture` only for haptic + Gestures |
+| `Packages/ControlBoxCore/.../ControlEngine.swift` | Starts `HoldGesture` for any Gestures owner |
 | `Packages/ControlBoxCore/.../DockSwipe.swift` | Absolute dock-swipe events |
 | `Packages/ControlBoxCore/.../SystemNavigation.swift` | Core Dock / symbolic hotkeys for MC and App Exposé |
 | `Packages/ControlBoxCore/.../GestureSet.swift` | Presets and click / up / down / left / right slots |
@@ -175,4 +186,5 @@ Downward DockSwipe does not open App Exposé on this Mac (darwin 25.5 / macOS 26
 - [hidpp-divert-steals-pointer.md](hidpp-divert-steals-pointer.md)
 - [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md)
 - [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md)
+- [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md)
 - [focused-host-still-injects.md](focused-host-still-injects.md)

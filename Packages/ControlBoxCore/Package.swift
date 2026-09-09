@@ -23,6 +23,10 @@ let package = Package(
                 .linkedFramework("IOKit"),
                 .linkedFramework("ScreenCaptureKit")
             ]
+        ),
+        .testTarget(
+            name: "ControlBoxCoreTests",
+            dependencies: ["ControlBoxCore"]
         )
     ]
 )

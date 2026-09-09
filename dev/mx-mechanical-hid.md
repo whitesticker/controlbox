@@ -12,7 +12,7 @@ This family is settings-only: backlight, lighting effect, battery saving, batter
 | MX Mechanical Mini | `0xB367` | Keyboard `0x01` / `0x06` | Vendor HID++ is **nested** on this same device (report `0x11`). |
 | USB Receiver (Bolt) | `0xC548` | `0xFF00` plus keyboard / mouse | **Not** the keyboard. Do not open it. Slots: [logi-bolt-receiver.md](logi-bolt-receiver.md). |
 
-`0xB366` is this keyboard, not MX Master 4. `MXMaster4Support.productIDs` must stay `[0xB042, 0x4069]`.
+`0xB366` is this keyboard, not MX Master 4. `LogitechMouseRegistry.master4ProductIDs` must stay `[0xB042, 0x4069]`.
 
 There is no separate `0xFF00` collection. Match product IDs only. Do not treat non-`0x10` / `0x11` reports as HID++.
 

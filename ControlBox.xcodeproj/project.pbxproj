@@ -25,8 +25,8 @@
 			membershipExceptions = (
 				AppIcon.iconset,
 				Info.plist,
-				SystemMonitor/LICENSE,
-				SystemMonitor/NOTICE.md,
+				Mac/SystemMonitor/LICENSE,
+				Mac/SystemMonitor/NOTICE.md,
 			);
 			target = A10000000000000000000006 /* ControlBox */;
 		};
@@ -234,7 +234,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.43;
+				MARKETING_VERSION = 0.1.44;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whitesticker.controlbox;
 				PRODUCT_NAME = ControlBox;
 				REGISTER_APP_GROUPS = NO;
@@ -273,7 +273,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.43;
+				MARKETING_VERSION = 0.1.44;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whitesticker.controlbox;
 				PRODUCT_NAME = ControlBox;
 				REGISTER_APP_GROUPS = NO;

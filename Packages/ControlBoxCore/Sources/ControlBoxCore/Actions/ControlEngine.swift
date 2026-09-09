@@ -121,7 +121,8 @@ public final class ControlEngine: @unchecked Sendable {
             && button != .clickSelectLong
             && button != .volumeUp
             && button != .volumeDown
-            && !usesTriggerTabs(button) {
+            && !usesTriggerTabs(button)
+            && profile.gestureSet(for: button) == nil {
             let wasPressed = previousButtons[button] ?? false
             if pressed != wasPressed {
                 let action = resolvedAction(for: button)
@@ -511,8 +512,8 @@ public final class ControlEngine: @unchecked Sendable {
 
     private func processGesture(_ frame: ControlFrame, injectAll: Bool) {
         let resolved = resolveGesture(frame)
-        let mappedAsGestures = profile.bindings[resolved.owner] == .gestures
-            || (resolved.owner == .mxHaptic && profile.mxGestureOwners.contains(.mxHaptic))
+        let mappedAsGestures = resolved.owner.canOwnGestures
+            && profile.mxGestureOwners.contains(resolved.owner)
         let holding = resolved.active
             && resolved.owner.canOwnGestures
             && mappedAsGestures
@@ -557,9 +558,17 @@ public final class ControlEngine: @unchecked Sendable {
             touchGesture.reset()
         }
 
+        let owner: DeviceButton
+        if let live = frame.gestureOwner {
+            owner = live
+        } else if frame.buttons[.mxSide] == true, frame.buttons[.mxHaptic] != true {
+            owner = .mxSide
+        } else {
+            owner = .mxHaptic
+        }
         return (
-            frame.gestureOwner ?? .mxHaptic,
-            frame.gestureActive,
+            owner,
+            frame.gestureActive || frame.buttons[owner] == true,
             frame.gestureX,
             frame.gestureY
         )

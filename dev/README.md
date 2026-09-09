@@ -6,9 +6,11 @@ One issue type per file. These are failures we already hit while working on Dual
 
 0. [mx-master-3s-hid.md](mx-master-3s-hid.md) — current 3S hardware: BLE `0xB034`, nested `0xFF43` / `0x11`, CID `0x00C3`.
 
-1. [mx-master-4-pointer-and-haptic.md](mx-master-4-pointer-and-haptic.md) — current working model: sliders, defaults, haptic pipeline, what not to do.
+0a. [logitech-generic-hidpp.md](logitech-generic-hidpp.md) — safe generic discovery, capabilities, identity, dynamic controls, and reporting ownership.
+
+1. [mx-master-4-pointer-and-haptic.md](mx-master-4-pointer-and-haptic.md) — current working model: sliders, defaults, haptic vs gesture-button pipelines, what not to do.
 2. [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — BLE hardware: report `0x02` button 7, nested HID++ `0x11`.
-3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — why Gestures is haptic-only; what we tried on Back.
+3. [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) — raw-XY capability gating and the earlier Back-gesture failures.
 4. [todo.md](todo.md) — HID / MX fix list.
 5. [roadmap.md](roadmap.md) — product backlog (mic, HUD, MX Keys remapping, window management, onboarding, product page, settings export, Pointer & Scroll vs System Settings). MX Mechanical settings, System Monitor (top), Dock Previews, per-app mouse profiles, SmartShift, and thumb-wheel sensitivity are shipped. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md), [mx-smartshift.md](mx-smartshift.md).
 
@@ -21,7 +23,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [bluetooth-paired-devices-heap-corruption.md](bluetooth-paired-devices-heap-corruption.md) | App crashes on launch or while listing devices |
 | [hid-open-seize-dual-mouse.md](hid-open-seize-dual-mouse.md) | Crash or dead input with two Logitech mice |
 | [hidpp-divert-steals-pointer.md](hidpp-divert-steals-pointer.md) | Pointer dies until the mouse is power-cycled |
-| [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) | Haptic / back / forward / Side do not light up |
+| [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) | Haptic / back / forward / gesture button do not light up |
+| [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md) | MX4 gesture button swipe freezes the pointer or hitches |
 | [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md) | MX4 left / right / wheel stay idle in Calibration |
 | [focused-host-still-injects.md](focused-host-still-injects.md) | Gestures still run the Mac while Control Box is focused |
 | [adhoc-signing-resets-tcc.md](adhoc-signing-resets-tcc.md) | Accessibility / Input Monitoring must be re-added every build |
@@ -41,8 +44,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [app-switcher-window-preview.md](app-switcher-window-preview.md) | Application switcher has no window cards |
 | [caps-lock-modifier.md](caps-lock-modifier.md) | Caps Lock toggles caps instead of acting as a modifier |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
-| [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gestures is haptic-pad only (enforcement) |
-| [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Click-as-gesture on Back is parked (why) |
+| [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gesture ownership follows each control’s raw-XY capability |
+| [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md) | Earlier Back-gesture failures and current safety limits |
 | [ddc-identity-from-wrong-framebuffer.md](ddc-identity-from-wrong-framebuffer.md) | Displays lists an extra monitor; a named slider does not drive that panel |
 | [arrangement-duplicate-combo.md](arrangement-duplicate-combo.md) | Display Arrangement lists the same monitors as two groups |
 | [process-tap-exclusive.md](process-tap-exclusive.md) | Per-app volume does nothing while FineTune or another tap mixer is open |

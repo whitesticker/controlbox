@@ -37,7 +37,7 @@ jobs:
       - name: Do not seize Logitech HID
         run: |
           hits="$(git grep -n 'kIOHIDOptionsTypeSeizeDevice' -- '*.swift' \
-            | grep -v 'ControlBox/Devices/AppleTVRemoteHIDReader.swift' || true)"
+            | grep -v 'ControlBox/Devices/AppleTVRemote/AppleTVRemoteHIDReader.swift' || true)"
           if [ -n "$hits" ]; then
             echo "$hits"
             echo '::error::Seize is only allowed on the Apple TV remote reader'
@@ -51,6 +51,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Xcode version
         run: xcodebuild -version
+      - name: Test ControlBoxCore
+        run: swift test --package-path Packages/ControlBoxCore
       - name: Build Control Box (unsigned)
         run: |
           xcodebuild \

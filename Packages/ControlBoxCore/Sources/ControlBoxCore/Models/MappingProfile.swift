@@ -303,6 +303,9 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             bindings[button] = Self.fallbackMXClickAction(for: button)
             return
         }
+        if button == .mxHaptic, action != .gestures {
+            clearLegacyMXGestureBindings()
+        }
         bindings[button] = action
         if action != .gestures {
             gestureSets?[button] = nil
@@ -314,34 +317,53 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    /// Hold-to-swipe is the haptic pad only. Click-as-gesture on Back / etc. is parked.
+    /// Retained as a persistence migration entry point. Gesture ownership is
+    /// now per raw-XY-capable control; only the legacy single MX gesture map
+    /// still needs projecting onto the dedicated control.
     public mutating func restrictGesturesToHapticPad() {
-        let hasLegacyHapticGesture = bindings[.mxGesture] != nil
-            || bindings[.mxGestureUp] != nil
-            || bindings[.mxGestureDown] != nil
-            || bindings[.mxGestureLeft] != nil
-            || bindings[.mxGestureRight] != nil
-        for button in bindings.keys where button != .mxHaptic && bindings[button] == .gestures {
-            bindings[button] = Self.fallbackMXClickAction(for: button)
-        }
-        if let sets = gestureSets {
-            let kept = sets.filter { $0.key == .mxHaptic }
-            gestureSets = kept.isEmpty ? nil : kept
-        }
-        if bindings[.mxHaptic] == nil,
-           hasLegacyHapticGesture || gestureSets?[.mxHaptic] != nil {
+        let hasLegacyHapticGesture = hasLegacyHapticGestureBindings
+        if hasLegacyHapticGesture {
+            if bindings[.mxHaptic] == nil || bindings[.mxHaptic] == .gestures {
+                var sets = gestureSets ?? [:]
+                if sets[.mxHaptic] == nil {
+                    sets[.mxHaptic] = GestureSet(
+                        preset: .custom,
+                        click: bindings[.mxGesture] ?? .missionControl,
+                        up: bindings[.mxGestureUp] ?? .missionControl,
+                        down: bindings[.mxGestureDown] ?? .appExpose,
+                        left: bindings[.mxGestureLeft] ?? .spaceLeft,
+                        right: bindings[.mxGestureRight] ?? .spaceRight
+                    )
+                }
+                gestureSets = sets
+                bindings[.mxHaptic] = .gestures
+            }
+            clearLegacyMXGestureBindings()
+        } else if bindings[.mxHaptic] == nil,
+                  gestureSets?[.mxHaptic] != nil {
             bindings[.mxHaptic] = .gestures
         }
     }
 
+    private mutating func clearLegacyMXGestureBindings() {
+        bindings[.mxGesture] = nil
+        bindings[.mxGestureUp] = nil
+        bindings[.mxGestureDown] = nil
+        bindings[.mxGestureLeft] = nil
+        bindings[.mxGestureRight] = nil
+    }
+
     public var mxGestureOwners: Set<DeviceButton> {
-        if bindings[.mxHaptic] == .gestures || gestureSets?[.mxHaptic] != nil {
-            return [.mxHaptic]
-        }
-        if bindings[.mxGesture] != nil || bindings[.mxGestureUp] != nil {
-            return [.mxHaptic]
-        }
-        return []
+        var candidates: Set<DeviceButton> = [
+            .mxMiddle, .mxBack, .mxForward, .mxSmartShift, .mxModeShift,
+            .mxHaptic, .mxSide
+        ]
+        candidates.formUnion(DeviceButton.mxExtraButtons)
+        var owners = Set(bindings.compactMap { button, action in
+            candidates.contains(button) && action == .gestures ? button : nil
+        })
+        owners.formUnion((gestureSets ?? [:]).keys.filter(candidates.contains))
+        return owners
     }
 
     public func gestureSet(for button: DeviceButton) -> GestureSet? {
@@ -350,7 +372,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if bindings[button] == .gestures {
             return .named(Self.defaultGesturePreset(for: button))
         }
-        if button == .mxHaptic, (gestureSets ?? [:]).isEmpty {
+        if button == .mxHaptic, hasLegacyHapticGestureBindings {
             return GestureSet(
                 preset: .custom,
                 click: bindings[.mxGesture] ?? .missionControl,
@@ -361,6 +383,14 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             )
         }
         return nil
+    }
+
+    private var hasLegacyHapticGestureBindings: Bool {
+        bindings[.mxGesture] != nil
+            || bindings[.mxGestureUp] != nil
+            || bindings[.mxGestureDown] != nil
+            || bindings[.mxGestureLeft] != nil
+            || bindings[.mxGestureRight] != nil
     }
 
     public func action(forGesture slot: GestureSlot, owner: DeviceButton) -> ControlAction {
@@ -537,10 +567,16 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     /// Saved DualSense profiles that never bound the finger rows get the
     /// new 1-finger / 2-finger Gestures defaults. Pointer/scroll touchpad
     /// profiles are left alone.
-    /// MX4 extra thumb button (CID `0x00C3`) is missing on older saved profiles.
-    public mutating func ensureMX4SideButton() {
+    /// Logitech Gesture button (CID `0x00C3`) on 3 / 3S / 4. Persisted as `mxSide`.
+    /// Older MX4 profiles may already have a click action; only fill a missing row.
+    public mutating func ensureThumbGestureButton() {
         if bindings[.mxSide] != nil { return }
-        bindings[.mxSide] = .missionControl
+        bindings[.mxSide] = .gestures
+        var sets = gestureSets ?? [:]
+        if sets[.mxSide] == nil {
+            sets[.mxSide] = sets[.mxHaptic] ?? .named(.windowNavigation)
+        }
+        gestureSets = sets
     }
 
     public mutating func ensureDualSenseTouchGestures() {
@@ -646,7 +682,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         if isMXMaster {
             return MappingProfile(
                 name: name,
-                summary: "Gesture / Haptic is Gestures. Back and Forward are browser buttons.",
+                summary: "Gesture button is Gestures. MX4 Haptic button is the pad. Back and Forward are browser buttons.",
                 bindings: mxMasterBindings,
                 pointerSpeed: 0.21,
                 hapticGestureSpeed: 0.5,
@@ -655,7 +691,10 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 naturalScrolling: false,
                 sensorDPI: defaultSensorDPI,
                 smoothScrolling: true,
-                gestureSets: [.mxHaptic: .named(.windowNavigation)],
+                gestureSets: [
+                    .mxHaptic: .named(.windowNavigation),
+                    .mxSide: .named(.windowNavigation)
+                ],
                 windowMoveEnabled: true,
                 windowResizeEnabled: true,
                 windowMoveFlags: defaultWindowMoveFlags,
@@ -698,7 +737,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
 
 private let mxMasterBindings: [DeviceButton: ControlAction] = [
     .mxHaptic: .gestures,
-    .mxSide: .missionControl,
+    .mxSide: .gestures,
     .mxBack: .browserBack,
     .mxForward: .browserForward,
     .mxSmartShift: .rightOptionKey

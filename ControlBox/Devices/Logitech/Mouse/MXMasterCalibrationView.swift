@@ -18,7 +18,7 @@ struct MXMasterCalibrationView: View {
                     .fill(snapshot.connected ? Palette.good : Palette.bad)
                     .frame(width: 10, height: 10)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(snapshot.connected ? snapshot.name : "Waiting for MX Master")
+                    Text(snapshot.connected ? snapshot.name : waitingTitle)
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                     if snapshot.connected, DeviceIdentity.isConcrete(snapshot.address) {
                         Text(DeviceIdentity.format(snapshot.address))
@@ -54,7 +54,11 @@ struct MXMasterCalibrationView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     VStack(spacing: 14) {
-                        CalibrationCard(title: "Haptic capture") {
+                        CalibrationCard(
+                            title: snapshot.kind == .logitechMouse
+                                ? "Gesture capture"
+                                : "Haptic capture"
+                        ) {
                             GestureSwipeStage(snapshot: snapshot)
                                 .padding(2)
                         }
@@ -82,6 +86,12 @@ struct MXMasterCalibrationView: View {
             return snapshot.liveGesture?.title ?? "\(snapshot.kind.mxGestureControlTitle) held"
         }
         return "Connected"
+    }
+
+    private var waitingTitle: String {
+        snapshot.kind == .logitechMouse
+            ? "Waiting for Logitech mouse"
+            : "Waiting for MX Master"
     }
 }
 
@@ -120,8 +130,12 @@ private struct MXLiveClicksContent: View {
             MXCalibrationGroup(title: "Main buttons") {
                 MXValueRow(label: "Left", value: state(snapshot.left))
                 MXValueRow(label: "Right", value: state(snapshot.right))
-                MXValueRow(label: "Middle", value: state(snapshot.middle))
-                MXValueRow(label: "Mode shift", value: state(snapshot.smartShift))
+                if shows(.mxMiddle) {
+                    MXValueRow(label: "Middle", value: state(snapshot.middle))
+                }
+                if shows(.mxSmartShift) {
+                    MXValueRow(label: "Mode shift", value: state(snapshot.smartShift))
+                }
             }
 
             MXCalibrationGroup(title: "Scroll wheel") {
@@ -129,45 +143,76 @@ private struct MXLiveClicksContent: View {
                 MXValueRow(label: "Down", value: state(snapshot.wheelDown))
             }
 
-            MXCalibrationGroup(title: "Thumb wheel") {
-                MXValueRow(label: "Left", value: state(snapshot.thumbLeft))
-                MXValueRow(label: "Right", value: state(snapshot.thumbRight))
-            }
-
-            MXCalibrationGroup(title: "Thumb buttons") {
-                if !snapshot.kind.isMXMaster3Family {
-                    MXValueRow(label: "Side", value: state(snapshot.side))
-                }
-                MXValueRow(label: "Back", value: state(snapshot.back))
-                MXValueRow(label: "Forward", value: state(snapshot.forward))
-                MXValueRow(
-                    label: snapshot.kind.mxGestureControlTitle,
-                    value: state(snapshot.haptic || snapshot.gestureDown)
-                )
-                ForEach(snapshot.extras) { extra in
-                    MXValueRow(label: extra.title, value: state(extra.down))
+            if !isGeneric || snapshot.hidppCapabilities.thumbWheel {
+                MXCalibrationGroup(title: "Thumb wheel") {
+                    MXValueRow(label: "Left", value: state(snapshot.thumbLeft))
+                    MXValueRow(label: "Right", value: state(snapshot.thumbRight))
                 }
             }
 
-            MXCalibrationGroup(
-                title: snapshot.kind.isMXMaster3Family ? "Thumb gesture" : "Haptic gesture"
-            ) {
-                MXValueRow(
-                    label: snapshot.kind.isMXMaster3Family ? "Gesture button" : "Haptic pad",
-                    value: state(snapshot.haptic || snapshot.gestureDown)
-                )
-                MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
-                MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
-                MXValueRow(
-                    label: "Delta",
-                    value: String(
-                        format: "%+.0f, %+.0f",
-                        snapshot.gestureDX,
-                        snapshot.gestureDY
+            if !isGeneric || !snapshot.availableButtons.isEmpty {
+                MXCalibrationGroup(title: "Thumb buttons") {
+                    if shows(.mxSide) {
+                        MXValueRow(label: "Gesture button", value: state(snapshot.side))
+                    }
+                    if shows(.mxBack) {
+                        MXValueRow(label: "Back", value: state(snapshot.back))
+                    }
+                    if shows(.mxForward) {
+                        MXValueRow(label: "Forward", value: state(snapshot.forward))
+                    }
+                    if shows(.mxHaptic) {
+                        MXValueRow(
+                            label: "Haptic button",
+                            value: state(snapshot.haptic)
+                        )
+                    }
+                    ForEach(snapshot.extras) { extra in
+                        MXValueRow(label: extra.title, value: state(extra.down))
+                    }
+                }
+            }
+
+            if !isGeneric || !snapshot.gestureCapableButtons.isEmpty {
+                MXCalibrationGroup(
+                    title: gestureGroupTitle
+                ) {
+                    MXValueRow(
+                        label: gestureControlLabel,
+                        value: state(snapshot.haptic || snapshot.gestureDown)
                     )
-                )
+                    MXValueRow(label: "Live swipe", value: snapshot.liveGesture?.title ?? "—")
+                    MXValueRow(label: "Last", value: snapshot.lastGesture?.title ?? "—")
+                    MXValueRow(
+                        label: "Delta",
+                        value: String(
+                            format: "%+.0f, %+.0f",
+                            snapshot.gestureDX,
+                            snapshot.gestureDY
+                        )
+                    )
+                }
             }
         }
+    }
+
+    private var isGeneric: Bool {
+        snapshot.kind == .logitechMouse
+    }
+
+    private var gestureGroupTitle: String {
+        if snapshot.kind.isMXMaster3Family { return "Thumb gesture" }
+        return isGeneric ? "Gesture capture" : "Haptic gesture"
+    }
+
+    private var gestureControlLabel: String {
+        if snapshot.kind.isMXMaster3Family { return "Gesture button" }
+        return isGeneric ? "Gesture control" : "Haptic button"
+    }
+
+    private func shows(_ button: DeviceButton) -> Bool {
+        if snapshot.kind.isMXMaster3Family, button == .mxHaptic { return false }
+        return !isGeneric || snapshot.availableButtons.contains(button)
     }
 
     private func state(_ pressed: Bool) -> String {
@@ -363,7 +408,7 @@ private struct MXMasterMouseView: View {
                         pressed: snapshot.side,
                         in: CGRect(x: w * 0.06, y: h * 0.56, width: w * 0.18, height: h * 0.075),
                         radius: 10,
-                        title: "Side"
+                        title: "Gesture button"
                     )
                 }
                 glowRegion(
@@ -511,7 +556,11 @@ private struct GestureSwipeStage: View {
             compass
 
             VStack(spacing: 4) {
-                Text(snapshot.kind.isMXMaster3Family ? "GESTURE SWIPE" : "HAPTIC SWIPE")
+                Text(
+                    snapshot.kind.isMXMaster3Family || snapshot.kind == .logitechMouse
+                        ? "GESTURE SWIPE"
+                        : "HAPTIC SWIPE"
+                )
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(0.8)
                     .foregroundStyle(Palette.secondaryText(colorScheme))
@@ -665,28 +714,55 @@ private struct MXMouseSettingsContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                dpiSlider
-                Text("Written to the sensor over HID++. Pointer speed stays the same.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-                Divider()
-                ratchetPicker
-                ratchetSensitivitySlider
-                Text("Free Spin and Ratchet are written to this mouse. Sensitivity only applies in Ratchet.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-                Divider()
-                thumbWheelSlider
-                Text("Scales HID++ thumb-wheel travel. Pointer & Scroll wheel speed stays on the main wheel.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
-                Toggle("Invert thumb wheel", isOn: thumbInvertBinding)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                Text("Written to this mouse. Does not change the main wheel or the trackpad.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Palette.secondaryText(colorScheme))
+                if showsDPI {
+                    dpiSlider
+                    Text("Written to the sensor over HID++. Pointer speed stays the same.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
+                if showsDPI && showsSmartShift { Divider() }
+                if showsSmartShift {
+                    ratchetPicker
+                    ratchetSensitivitySlider
+                    Text("Free Spin and Ratchet are written to this mouse. Sensitivity only applies in Ratchet.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
+                if (showsDPI || showsSmartShift) && showsThumbWheel { Divider() }
+                if showsThumbWheel {
+                    thumbWheelSlider
+                    Text("Scales HID++ thumb-wheel travel. Pointer & Scroll wheel speed stays on the main wheel.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                    Toggle("Invert thumb wheel", isOn: thumbInvertBinding)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                    Text("Written to this mouse. Does not change the main wheel or the trackpad.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                }
+                if !showsDPI && !showsSmartShift && !showsThumbWheel {
+                    Text("This mouse does not report adjustable firmware settings.")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+    }
+
+    private var usesCapabilityGating: Bool {
+        snapshot.kind == .logitechMouse
+    }
+
+    private var showsDPI: Bool {
+        !usesCapabilityGating
+            || (snapshot.hidppCapabilities.adjustableDPI && snapshot.availableDPI.count >= 2)
+    }
+
+    private var showsSmartShift: Bool {
+        !usesCapabilityGating || snapshot.hidppCapabilities.smartShift
+    }
+
+    private var showsThumbWheel: Bool {
+        !usesCapabilityGating || snapshot.hidppCapabilities.thumbWheel
     }
 
     private var dpiLevels: [Int] {

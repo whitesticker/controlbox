@@ -46,8 +46,8 @@ Control Box stays on your Mac. Nothing is uploaded.
 |---|---|
 | **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. Per-app **profile tiles** follow the frontmost app, same as MX mice. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. Per-app **profile tiles** follow the frontmost app. |
-| **MX Master 3 / 3S** | Extra buttons plus thumb **Gesture** (tap = click, hold + move = swipe). Per-app **profile tiles** follow the frontmost app. Thumb wheel is one mode (scroll, tabs, volume, desktops, …). Free Spin / Ratchet, DPI, thumb-wheel sensitivity, and invert are on **Mouse Settings**. Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
-| **MX Master 4** | Extra buttons including **Side**, **Haptic** pad. Same per-app profiles, thumb-wheel modes, and Mouse Settings as 3 / 3S. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
+| **MX Master 3 / 3S** | Extra buttons plus the **gesture button** (tap = click, hold + move = swipe). Per-app **profile tiles** follow the frontmost app. Thumb wheel is one mode (scroll, tabs, volume, desktops, …). Free Spin / Ratchet, DPI, thumb-wheel sensitivity, and invert are on **Mouse Settings**. Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
+| **MX Master 4** | Extra buttons including the **gesture button** and **haptic button**. Same per-app profiles, thumb-wheel modes, and Mouse Settings as 3 / 3S. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
 | **MX Mechanical / Mini** | Backlight, lighting effect, battery saving, battery %. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
 | **Logi Bolt** | Add Device → Logi Bolt: pair, unpair, and talk on the USB receiver. Do not list the dongle itself. |
 
@@ -80,7 +80,7 @@ open .derived/Build/Products/Release/ControlBox.app
 
 Debug builds are signed with the Apple Development identity so Accessibility and Input Monitoring persist across rebuilds.
 
-GitHub Actions compiles the same scheme unsigned (`CODE_SIGNING_ALLOWED=NO`) and does not upload the app. There is no test target yet; CI is a compile check plus greps for `pairedDevices()`, ad-hoc signing, and Logitech HID seize.
+GitHub Actions compiles the same scheme unsigned (`CODE_SIGNING_ALLOWED=NO`) and runs ControlBoxCore unit tests. It does not upload the app. Constraint greps cover `pairedDevices()`, ad-hoc signing, and Logitech HID seize.
 
 ## Privacy
 

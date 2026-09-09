@@ -66,21 +66,29 @@ enum ControlFrameBuilder {
     }
 
     static func make(from snapshot: MXMasterSnapshot) -> ControlFrame {
-        let buttons: [DeviceButton: Bool] = [
-            .mxBack: snapshot.back,
-            .mxForward: snapshot.forward,
-            .mxSmartShift: snapshot.smartShift,
-            .mxModeShift: snapshot.modeShift,
+        func captured(_ button: DeviceButton, native: Bool) -> Bool {
+            if let state = snapshot.capturedButtonStates[button] {
+                return state
+            }
+            return snapshot.kind != .logitechMouse ? native : false
+        }
+        var buttons: [DeviceButton: Bool] = [
+            .mxBack: captured(.mxBack, native: snapshot.back),
+            .mxForward: captured(.mxForward, native: snapshot.forward),
+            .mxSmartShift: captured(.mxSmartShift, native: snapshot.smartShift),
+            .mxModeShift: captured(.mxModeShift, native: snapshot.modeShift),
             .mxHaptic: snapshot.haptic,
             .mxLeft: snapshot.left,
             .mxRight: snapshot.right,
-            .mxMiddle: snapshot.middle,
+            .mxMiddle: captured(.mxMiddle, native: snapshot.middle),
             .mxWheelUp: snapshot.wheelUp,
             .mxWheelDown: snapshot.wheelDown,
             .mxThumbLeft: snapshot.thumbLeft,
             .mxThumbRight: snapshot.thumbRight,
-            .mxSide: snapshot.side
+            .mxSide: captured(.mxSide, native: snapshot.side)
         ]
+        buttons.merge(snapshot.capturedButtonStates) { _, captured in captured }
+        buttons[.mxHaptic] = snapshot.haptic
         return ControlFrame(
             buttons: buttons,
             scrollY: snapshot.pendingScrollY,

@@ -21,4 +21,4 @@ Cache Accessibility for 1 s. Skip MX HID++ / OS pointer writes when DPI and spee
 
 Keep analog `process` at 120 Hz. Do not put IOKit walks or AX prompts on that path. Do not publish IMU or live clicks onto the device settings Form.
 
-Code: `DualSenseMonitor.swift`, `DualSenseSession.swift`, `LogitechMXMasterReader.swift`, `EventPoster.swift`. Related: [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md).
+Code: `DualSenseMonitor.swift`, `DualSenseSession.swift`, `LogitechMouseReader.swift`, `EventPoster.swift`. Related: [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md).

@@ -1,4 +1,5 @@
 import Foundation
+import ControlBoxCore
 import IOKit.hid
 
 /// HID++ 2.0 client for MX Mechanical / Mini. Settings only: backlight,
@@ -15,12 +16,6 @@ final class MXKeyboardReader {
     private static let modeShift: UInt16 = 3
     private static let modeMask: UInt16 = 0b11 << 3
     private static let batteryInterval: TimeInterval = 300
-
-    private struct Pending {
-        let swID: UInt8
-        let featureIndex: UInt8
-        let completion: (Data?) -> Void
-    }
 
     private struct BacklightConfig {
         var enabled: Bool
@@ -42,11 +37,7 @@ final class MXKeyboardReader {
     private var boltLink: LogiBoltHIDPPLink?
     private var queuedHIDPP: [IOHIDDevice] = []
     private var hidppBuffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
-    private var hidppQueue: [(featureIndex: UInt8, function: UInt8, params: [UInt8], completion: (Data?) -> Void)] = []
-    private var pending: Pending?
-    private var hidppEpoch = 0
-    private var swCounter: UInt8 = 0x07
-    private var deviceIndex: UInt8 = 0xFF
+    private var featureCatalog = LogitechHIDPPFeatureCatalog()
     private var batteryIndex: UInt8?
     private var backlightIndex: UInt8?
     private var nameIndex: UInt8?
@@ -77,9 +68,7 @@ final class MXKeyboardReader {
         effectWriteWork?.cancel()
         effectWriteWork = nil
         stopBatteryTimer()
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
         ioQueue.sync {}
         if let hidppDevice {
             IOHIDDeviceUnscheduleFromRunLoop(hidppDevice, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
@@ -109,7 +98,37 @@ final class MXKeyboardReader {
 
     var boltSlotID: String? { boltLink.map { "\($0.receiverID)-\($0.slot)" } }
 
+    var hidppCapabilities: LogitechHIDPPCapabilities { featureCatalog.capabilities }
+
     private var canWriteHIDPP: Bool { hidppDevice != nil || boltLink != nil }
+
+    private lazy var hidppClient: LogitechHIDPP2Client = {
+        let client = LogitechHIDPP2Client(
+            initialSoftwareID: 0x07,
+            replyMatchPolicy: .softwareIDOrFeatureEvent,
+            canWrite: { [weak self] in self?.canWriteHIDPP == true },
+            write: { [weak self] report in
+                self?.writeHIDPPReport(report)
+            }
+        )
+        client.onReply = { [weak self] in
+            self?.consecutiveTimeouts = 0
+        }
+        client.onTimeout = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            let ready = self.snapshot.hidppReady
+            self.lock.unlock()
+            guard !ready else { return }
+            self.consecutiveTimeouts += 1
+            if self.consecutiveTimeouts >= 3 {
+                self.failHIDPPAndTryNext(
+                    "HID++ timed out. LogiPluginService can block this even after Options+ is removed."
+                )
+            }
+        }
+        return client
+    }()
 
     @discardableResult
     func attachBolt(
@@ -141,13 +160,11 @@ final class MXKeyboardReader {
                 }
             }
         }
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
         clearFeatureIndices()
         stopBatteryTimer()
         consecutiveTimeouts = 0
-        deviceIndex = UInt8(link.slot)
+        hidppClient.deviceIndex = UInt8(link.slot)
         lock.lock()
         snapshot.kind = kind
         snapshot.name = name
@@ -173,9 +190,7 @@ final class MXKeyboardReader {
         guard boltLink != nil else { return }
         boltLink?.onReport = nil
         boltLink = nil
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
         stopBatteryTimer()
         clearFeatureIndices()
         lock.lock()
@@ -303,9 +318,7 @@ final class MXKeyboardReader {
     }
 
     private func beginProbe(_ device: IOHIDDevice) {
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
         clearFeatureIndices()
         stopBatteryTimer()
         hidppDevice = device
@@ -372,7 +385,7 @@ final class MXKeyboardReader {
             failHIDPPAndTryNext("No HID++ reply from the keyboard. LogiPluginService can block this even after Options+ is removed.")
             return
         }
-        deviceIndex = index
+        hidppClient.deviceIndex = index
         request(featureIndex: 0, function: 0, params: [0x00, 0x01]) { [weak self] data in
             guard let self else { return }
             if data != nil {
@@ -461,24 +474,13 @@ final class MXKeyboardReader {
     }
 
     private func applyBattery(_ data: Data?) {
-        guard let data, !data.isEmpty else { return }
-        let percent = Int(data[0])
-        let status = data.count > 2 ? data[2] : 0
-        let charging = status == 1 || status == 4
-        let full = status == 3 || (percent >= 95 && (status == 2 || status == 3))
-        let description: String
-        switch status {
-        case 1, 4: description = "Charging"
-        case 2: description = "Almost full"
-        case 3: description = full ? "Full" : "Almost full"
-        default: description = "Discharging"
-        }
+        guard let reading = LogitechUnifiedBatteryReading(payload: data) else { return }
         publish {
             $0.batteryAvailable = true
-            $0.batteryPercent = percent
-            $0.batteryCharging = charging
-            $0.batteryFull = full
-            $0.batteryStateDescription = description
+            $0.batteryPercent = reading.percentage
+            $0.batteryCharging = reading.isCharging
+            $0.batteryFull = reading.isFull
+            $0.batteryStateDescription = reading.stateDescription
         }
     }
 
@@ -587,9 +589,10 @@ final class MXKeyboardReader {
         request(
             featureIndex: 0,
             function: 0,
-            params: [UInt8(feature >> 8), UInt8(feature & 0xFF)]
-        ) { data in
+            params: LogitechHIDPP2.featureLookupParameters(feature)
+        ) { [weak self] data in
             if let index = data?.first, index != 0 {
+                self?.featureCatalog[feature] = index
                 completion(index)
             } else {
                 completion(nil)
@@ -673,9 +676,7 @@ final class MXKeyboardReader {
     }
 
     private func failHIDPPAndTryNext(_ message: String) {
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
         stopBatteryTimer()
         ioQueue.sync {}
         if boltLink != nil {
@@ -717,6 +718,7 @@ final class MXKeyboardReader {
     }
 
     private func clearFeatureIndices() {
+        featureCatalog.removeAll()
         batteryIndex = nil
         backlightIndex = nil
         nameIndex = nil
@@ -732,81 +734,40 @@ final class MXKeyboardReader {
     }
 
     private func request(featureIndex: UInt8, function: UInt8, params: [UInt8], completion: @escaping (Data?) -> Void) {
-        hidppQueue.append((featureIndex, function, params, completion))
-        pumpHIDPP()
+        hidppClient.request(
+            featureIndex: featureIndex,
+            function: function,
+            parameters: params,
+            completion: completion
+        )
     }
 
-    private func pumpHIDPP() {
-        guard pending == nil, canWriteHIDPP, let call = hidppQueue.first else { return }
-        swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
-        let swID = swCounter
-        pending = Pending(swID: swID, featureIndex: call.featureIndex, completion: { [weak self] data in
-            guard let self else { return }
-            if !self.hidppQueue.isEmpty {
-                self.hidppQueue.removeFirst()
-            }
-            call.completion(data)
-            self.pumpHIDPP()
-        })
-        var report = [UInt8](repeating: 0, count: 20)
-        report[0] = 0x11
-        report[1] = deviceIndex
-        report[2] = call.featureIndex
-        report[3] = (call.function << 4) | (swID & 0x0F)
-        for (offset, byte) in call.params.prefix(16).enumerated() {
-            report[4 + offset] = byte
-        }
+    private func writeHIDPPReport(_ report: [UInt8]) {
         if let boltLink {
             boltLink.write(report)
         } else if let device = hidppDevice {
             ioQueue.async {
                 _ = report.withUnsafeBufferPointer { buffer in
                     guard let base = buffer.baseAddress else { return kIOReturnError }
-                    return IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, CFIndex(0x11), base, 20)
+                    return IOHIDDeviceSetReport(
+                        device,
+                        kIOHIDReportTypeOutput,
+                        CFIndex(report[0]),
+                        base,
+                        report.count
+                    )
                 }
-            }
-        }
-        let epoch = hidppEpoch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self,
-                  self.hidppEpoch == epoch,
-                  let pending = self.pending,
-                  pending.swID == swID
-            else { return }
-            self.pending = nil
-            pending.completion(nil)
-            self.lock.lock()
-            let ready = self.snapshot.hidppReady
-            self.lock.unlock()
-            guard !ready else { return }
-            self.consecutiveTimeouts += 1
-            if self.consecutiveTimeouts >= 3 {
-                self.failHIDPPAndTryNext("HID++ timed out. LogiPluginService can block this even after Options+ is removed.")
             }
         }
     }
 
     private func handleReport(_ report: [UInt8]) {
-        guard report.count >= 4 else { return }
-        guard report[0] == 0x10 || report[0] == 0x11 else { return }
-        if report[2] == 0x8F {
-            if let pending {
-                self.pending = nil
-                pending.completion(nil)
-            }
+        let result = hidppClient.handle(report)
+        guard case let .event(incoming) = result else {
             return
         }
-        let featureIndex = report[2]
-        let swID = report[3] & 0x0F
-        let payload = Data(report.dropFirst(4))
-        if let pending, pending.swID == swID || (swID == 0 && pending.featureIndex == featureIndex) {
-            self.pending = nil
-            consecutiveTimeouts = 0
-            pending.completion(payload)
-            return
-        }
-        if let batteryIndex, featureIndex == batteryIndex {
-            applyBattery(payload)
+        if let batteryIndex, incoming.featureIndex == batteryIndex {
+            applyBattery(incoming.payload)
         }
     }
 

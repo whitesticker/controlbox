@@ -35,4 +35,4 @@ Do not walk past `dcpext` and recursively search `DisplayAttributes`. Do not tre
 
 Iterator order on this Mac interleaves framebuffer then that port’s proxy. That is why MonitorControl’s last-framebuffer rule works here. An ioreg dump that looks like sibling subtrees is not the same as `IORegistryEntryCreateIterator` order.
 
-Code: `Packages/ControlBoxCore/Sources/ControlBoxCore/Arm64DDC.swift`, `DisplayBrightness.swift`.
+Code: `Packages/ControlBoxCore/Sources/ControlBoxCore/Mac/Display/Arm64DDC.swift`, `DisplayBrightness.swift`.

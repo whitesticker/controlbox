@@ -6,7 +6,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 
 - [x] **DualSense touchpad gestures.** 1-finger and 2-finger are separate Gestures (window navigation / media by default). Same hold-to-swipe engine as the MX gesture button.
 - [ ] **Microphone.** Capture and use the DualSense and Apple TV remote mics on macOS (Bluetooth HID-only today; USB DualSense jack is untested).
-- [x] **MX Master 4 extra button.** MX4 Side is CID `0x00C3` (frontmost thumb button under the roller). Calibration and mappings show it; default is Mission Control.
+- [x] **MX Master 4 extra button.** MX4 **gesture button** is CID `0x00C3` (same thumb button as 3S). Default is Gestures. The force pad is the **haptic button**.
 - [x] **MX Mechanical settings.** Device family for MX Mechanical (`0xB366`) and Mini (`0xB367`): backlight, lighting effect, battery saving, battery %. See [mx-mechanical-hid.md](mx-mechanical-hid.md). Key remapping and MX Keys are still open.
 - [ ] **Keyboard key remap pane.** A device-page remap UI for MX Keys / Mechanical (and later other keyboards). Divert only bound keys; Mechanical settings (backlight) are already shipped. See also [todo.md](todo.md).
 - [x] **Caps Lock as modifier.** Separate Mac pane: Caps Lock is a hold key that synthesizes a chosen modifier chord (default Control) for Control Box only, not a caps toggle. Off until the toggle is on. See [caps-lock-modifier.md](caps-lock-modifier.md).
@@ -18,7 +18,7 @@ Open product work after the multi-device MVP. HID incident notes stay in [README
 - [x] **Per-app mouse profiles.** Switch Control mappings (buttons, gestures, thumb-wheel mode) when the frontmost app changes. MX device page **profile tiles**; known browsers and editors start from a preset. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 - [x] **MX thumb-wheel sensitivity.** Calibration **On this mouse**: per-mouse scale of diverted HID++ `0x2150` thumb travel. Independent of Pointer & Scroll wheel speed. See [mx-smartshift.md](mx-smartshift.md).
 - [x] **MX Free Spin / Ratchet.** Calibration **On this mouse**: segmented **Free Spin** / **Ratchet** plus a SmartShift sensitivity slider. Firmware `0x2111`, fallback `0x2110`. See [mx-smartshift.md](mx-smartshift.md).
-- [ ] **MX4 Side as a Gestures owner.** On MX Master 4, **Side** is the thumb gesture button (CID `0x00C3`, same family as 3S). **Haptic** stays the force-sensing pad. Both should be allowed to own Gestures (hold-to-swipe). Today only haptic can. Do not put Gestures back on Back / Forward. Related: [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+- [x] **MX4 Gesture as a Gestures owner.** On MX Master 4, **Gesture button** is the thumb button (CID `0x00C3`, same as 3S). **Haptic button** stays the force-sensing pad. Both default to Gestures. Divert `0x33` and do not pin. Related: [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md), [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md).
 - [x] **DualSense and Remote per-app profiles.** Same **profile tiles** treatment as MX mice: Default plus per-app button and gesture mappings that follow the frontmost app. Analog, Pointer & Scroll, and Calibration remain device-level outside Profiles; DualSense Tab repeat is on Calibration. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 
 ## App settings

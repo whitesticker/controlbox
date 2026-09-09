@@ -58,6 +58,12 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var batteryCharging = false
     var batteryFull = false
     var batteryStateDescription = "Unknown"
+    var hidppCapabilities = LogitechHIDPPCapabilities.none
+    var availableButtons: Set<DeviceButton> = []
+    var gestureCapableButtons: Set<DeviceButton> = []
+    var dynamicButtons: [DeviceButton: Bool] = [:]
+    var capturedButtonStates: [DeviceButton: Bool] = [:]
+    var controlTitles: [DeviceButton: String] = [:]
     var connection = DeviceConnection.bluetooth
     var unitID: UInt32 = 0
     var wirelessProductID = 0
@@ -98,6 +104,10 @@ struct MXMasterSnapshot: Equatable, Sendable {
             && batteryCharging == other.batteryCharging
             && batteryFull == other.batteryFull
             && batteryStateDescription == other.batteryStateDescription
+            && hidppCapabilities == other.hidppCapabilities
+            && availableButtons == other.availableButtons
+            && gestureCapableButtons == other.gestureCapableButtons
+            && controlTitles == other.controlTitles
             && connection == other.connection
             && unitID == other.unitID
             && wirelessProductID == other.wirelessProductID
@@ -110,11 +120,11 @@ struct MXMasterSnapshot: Equatable, Sendable {
     }
 }
 
-final class LogitechMXMasterReader {
-    private let model: MXMasterHIDModel
+final class LogitechMouseReader {
+    private var model = LogitechMouseRegistry.generic
+    private let discoveryClaimID = UUID()
 
-    init(model: MXMasterHIDModel) {
-        self.model = model
+    init() {
         snapshot.kind = model.kind
         snapshot.name = model.kind.title
         snapshot.product = model.kind.title
@@ -124,19 +134,12 @@ final class LogitechMXMasterReader {
         gestureCIDs = [model.gestureCID]
     }
 
-    private struct Pending {
-        let swID: UInt8
-        let countsTowardTimeouts: Bool
-        let dropsPipeOnError: Bool
-        let completion: (Data?) -> Void
+    private var isGenericModel: Bool {
+        model.kind == .logitechMouse
     }
 
-    private struct ControlInfo {
-        var cid: UInt16
-        var task: UInt16
-        var divertable: Bool
-        var rawXY: Bool
-        var forceRawXY: Bool
+    private var isHapticPanel: Bool {
+        model.nativeHapticButtonBit != nil || model.gestureCID == 0x01A0
     }
 
     private struct DivertJob {
@@ -150,18 +153,14 @@ final class LogitechMXMasterReader {
     private var mouseManager: IOHIDManager?
     private var hidppDevice: IOHIDDevice?
     private var boltLink: LogiBoltHIDPPLink?
-    private var queuedHIDPP: [IOHIDDevice] = []
     private let lock = NSLock()
     private var snapshot = MXMasterSnapshot()
-    private var pending: Pending?
-    private var swCounter: UInt8 = 0x0B
-    private var deviceIndex: UInt8 = 0xFF
     private var reprogIndex: UInt8?
     private var nameIndex: UInt8?
     private var gestureCID: UInt16 = 0x01A0
     private var hapticCID: UInt16 = 0x01A0
     private var gestureCIDs: Set<UInt16> = [0x01A0]
-    private var gestureOwnerButtons: Set<DeviceButton> = [.mxHaptic]
+    private var gestureOwnerButtons: Set<DeviceButton> = [.mxHaptic, .mxSide]
     private var holdSources: [DeviceButton: Set<String>] = [:]
     private var activeGestureCID: UInt16?
     private var lastHapticBit = false
@@ -173,13 +172,20 @@ final class LogitechMXMasterReader {
     private var recoverWork: DispatchWorkItem?
     private var hapticReleaseWork: DispatchWorkItem?
     private var hapticDownAt: Date?
-    private var controls: [ControlInfo] = []
+    private var controls: [LogitechHIDPPControlDescriptor] = []
     private var extraCIDs: [UInt16: String] = [:]
+    private var dynamicButtonByCID: [UInt16: DeviceButton] = [:]
+    private var originalReportingByCID: [UInt16: LogitechHIDPPCIDReportingState] = [:]
+    private var ownedReportingCIDs = Set<UInt16>()
+    private var confirmedReportingCIDs = Set<UInt16>()
+    private var routingGeneration = 0
+    private var pendingRestoreRouteID: String?
     private var gestureOrigin = CGPoint.zero
     private var gestureDelta = CGSize.zero
     private var pointerOrigin = CGPoint.zero
     private var pointerDelta = CGSize.zero
     private var usingRawXY = false
+    private var lastFirmwareXYAt = Date.distantPast
     private var cursorLocked = false
     private var cursorFrozen = false
     private var ready = false
@@ -188,9 +194,15 @@ final class LogitechMXMasterReader {
     private var thumbPulseUntil = Date.distantPast
     private var lastGestureAt = Date.distantPast
     private var hidppBuffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
+    private var featureCatalog = LogitechHIDPPFeatureCatalog()
     private var hiresWheelIndex: UInt8?
+    private var originalHiresWheelMode: UInt8?
+    private var ownsHiresWheelMode = false
     private var thumbWheelIndex: UInt8?
     private var didReadThumbWheelInfo = false
+    private var originalThumbWheelRouting: (mode: UInt8, invert: UInt8)?
+    private var ownsThumbWheelRouting = false
+    private var wheelRoutingGeneration = 0
     private var forceSensingIndex: UInt8?
     private var pointerScaleIndex: UInt8?
     private var dpiIndex: UInt8?
@@ -215,18 +227,19 @@ final class LogitechMXMasterReader {
     private var lastWheelConfig: (divert: Bool, invert: Bool, highRes: Bool)?
     private var consecutiveTimeouts = 0
     private var easySwitchLoadAttempts = 0
-    private var hidppEpoch = 0
-    private var hidppQueue: [(
-        featureIndex: UInt8,
-        function: UInt8,
-        params: [UInt8],
-        countsTowardTimeouts: Bool,
-        allowShortReport: Bool,
-        dropsPipeOnError: Bool,
-        completion: (Data?) -> Void
-    )] = []
+    private var managed = false
     var naturalScrolling = true
-    var injectEnabled = false
+    var onIdentityChanged: (() -> Void)?
+    var injectEnabled = false {
+        didSet {
+            if injectEnabled != oldValue, isGenericModel {
+                updateGenericControlRouting()
+                lastWheelConfig = nil
+                applyWheelRouting()
+            }
+        }
+    }
+    private var capturedButtons = Set<DeviceButton>()
     var wheelsEnabled = false {
         didSet {
             if wheelsEnabled != oldValue {
@@ -249,7 +262,10 @@ final class LogitechMXMasterReader {
             value.lastGesture = nil
         }
         if value.gestureHeld || value.haptic || value.gestureDown {
-            let live = Self.liveDelta(hid: gestureDelta, pointer: pointerDelta)
+            let live = LogitechGestureMotion.liveDelta(
+                hid: gestureDelta,
+                pointer: pointerDelta
+            )
             value.liveGesture = Self.classify(delta: live, tapLimit: Self.pointerSwipeDistance)
             value.gestureDX = live.width
             value.gestureDY = live.height
@@ -275,8 +291,8 @@ final class LogitechMXMasterReader {
         hapticDownAt = nil
         lastHapticBit = false
         lastNativeButtons = 0
-        holdSources.removeAll()
-        hidppEpoch += 1
+        clearGestureOwnership()
+        hidppClient.cancelAll()
         unfreezeCursor()
         unlockCursor()
         restoreNativeReporting()
@@ -295,13 +311,19 @@ final class LogitechMXMasterReader {
         }
         hidppManager = nil
         mouseManager = nil
+        if let hidppDevice {
+            LogitechHIDPPDiscovery.release(hidppDevice, owner: discoveryClaimID)
+        }
         hidppDevice = nil
-        queuedHIDPP.removeAll()
         ready = false
-        pending = nil
+        featureCatalog.removeAll()
         hiresWheelIndex = nil
+        originalHiresWheelMode = nil
+        ownsHiresWheelMode = false
         thumbWheelIndex = nil
         didReadThumbWheelInfo = false
+        originalThumbWheelRouting = nil
+        ownsThumbWheelRouting = false
         forceSensingIndex = nil
         pointerScaleIndex = nil
         dpiIndex = nil
@@ -319,7 +341,6 @@ final class LogitechMXMasterReader {
         lastAppliedOSPointerSpeed = -1.0
         lastWheelConfig = nil
         consecutiveTimeouts = 0
-        hidppQueue.removeAll()
         desiredDPI = MappingProfile.defaultSensorDPI
         desiredPointerSpeed = 0.5
         lastHapticBit = false
@@ -362,7 +383,90 @@ final class LogitechMXMasterReader {
 
     var boltSlotID: String? { boltLink.map { "\($0.receiverID)-\($0.slot)" } }
 
+    var hidppCapabilities: LogitechHIDPPCapabilities { featureCatalog.capabilities }
+
+    var hidppControls: [LogitechHIDPPControlDescriptor] { controls }
+
     private var canWriteHIDPP: Bool { hidppDevice != nil || boltLink != nil }
+
+    private var currentRouteID: String? {
+        if let boltLink {
+            return "bolt:\(boltLink.id)"
+        }
+        if let hidppDevice {
+            return "direct:\(LogitechHIDPPDiscovery.endpointKey(for: hidppDevice))"
+        }
+        return nil
+    }
+
+    private func clearDiscoveredControls(preservingRestore: Bool = false) {
+        controls.removeAll()
+        extraCIDs.removeAll()
+        dynamicButtonByCID.removeAll()
+        pressed.removeAll()
+        confirmedReportingCIDs.removeAll()
+        if !preservingRestore {
+            originalReportingByCID.removeAll()
+            ownedReportingCIDs.removeAll()
+        }
+        lock.lock()
+        snapshot.left = false
+        snapshot.right = false
+        snapshot.middle = false
+        snapshot.back = false
+        snapshot.forward = false
+        snapshot.smartShift = false
+        snapshot.modeShift = false
+        snapshot.haptic = false
+        snapshot.side = false
+        snapshot.availableButtons = []
+        snapshot.gestureCapableButtons = []
+        snapshot.dynamicButtons = [:]
+        snapshot.capturedButtonStates = [:]
+        snapshot.controlTitles = [:]
+        snapshot.extras = []
+        lock.unlock()
+    }
+
+    private func clearGestureOwnership() {
+        routingGeneration += 1
+        hapticCID = model.gestureCID
+        gestureCID = model.gestureCID
+        gestureOwnerButtons = [.mxHaptic]
+        holdSources.removeAll()
+        activeGestureCID = nil
+        gestureCIDs = model.requiresGestureCID ? [model.gestureCID] : []
+    }
+
+    private lazy var hidppClient: LogitechHIDPP2Client = {
+        let client = LogitechHIDPP2Client(
+            initialSoftwareID: 0x0B,
+            replyMatchPolicy: .softwareIDOnly,
+            canWrite: { [weak self] in self?.canWriteHIDPP == true },
+            shortReportsEnabled: { [weak self] in
+                guard let self else { return false }
+                return self.model.tryShortHIDPPReport && self.boltLink == nil
+            },
+            write: { [weak self] report in
+                self?.writeHIDPPReport(report)
+            }
+        )
+        client.onReply = { [weak self] in
+            self?.consecutiveTimeouts = 0
+        }
+        client.onTimeout = { [weak self] metadata in
+            guard let self, self.ready, metadata.options.countsTowardTimeouts else { return }
+            self.consecutiveTimeouts += 1
+            if self.consecutiveTimeouts >= 3 {
+                self.notePipeDropped("HID++ timed out. Retrying…")
+            }
+        }
+        client.onError = { [weak self] metadata in
+            guard let self, self.ready, metadata?.options.dropsPipeOnError ?? true else { return }
+            self.notePipeDropped("HID++ error. Retrying…")
+        }
+        return client
+    }()
 
     @discardableResult
     func attachBolt(
@@ -374,10 +478,23 @@ final class LogitechMXMasterReader {
         wpid: Int
     ) -> Bool {
         guard running else { return false }
-        guard model.acceptedKinds.contains(kind) || kind == model.kind else { return false }
+        let resolvedModel = LogitechMouseRegistry.model(
+            productID: wpid,
+            product: name,
+            kind: kind
+        )
+        guard resolvedModel.acceptedKinds.contains(kind) || kind == resolvedModel.kind else {
+            return false
+        }
+        let routeID = "bolt:\(link.id)"
+        if let pendingRestoreRouteID, pendingRestoreRouteID != routeID {
+            return false
+        }
         if hidppDevice != nil { return false }
         if boltLink?.id == link.id, snapshot.connected { return true }
         detachBolt(restoreNative: boltLink != nil)
+        model = resolvedModel
+        clearGestureOwnership()
         boltLink = link
         link.onReport = { [weak self] report in
             guard let self else { return }
@@ -389,15 +506,22 @@ final class LogitechMXMasterReader {
                 }
             }
         }
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
+        let preservingRestore = pendingRestoreRouteID == routeID
+        clearDiscoveredControls(preservingRestore: preservingRestore)
         reprogIndex = nil
         nameIndex = nil
         forceSensingIndex = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
         didReadThumbWheelInfo = false
+        if !preservingRestore {
+            originalHiresWheelMode = nil
+            ownsHiresWheelMode = false
+            originalThumbWheelRouting = nil
+            ownsThumbWheelRouting = false
+        }
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
@@ -411,7 +535,7 @@ final class LogitechMXMasterReader {
         lastAppliedOSDPI = -1
         lastAppliedOSPointerSpeed = -1.0
         consecutiveTimeouts = 0
-        deviceIndex = UInt8(link.slot)
+        hidppClient.deviceIndex = UInt8(link.slot)
         lock.lock()
         snapshot.kind = model.acceptedKinds.contains(kind) ? kind : model.kind
         snapshot.name = name
@@ -439,13 +563,13 @@ final class LogitechMXMasterReader {
         }
         boltLink?.onReport = nil
         boltLink = nil
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
         ready = false
         stopBatteryTimer()
         unfreezeCursor()
         unlockCursor()
+        clearGestureOwnership()
         lock.lock()
         snapshot = MXMasterSnapshot()
         snapshot.kind = model.kind
@@ -472,16 +596,168 @@ final class LogitechMXMasterReader {
     }
 
     func setGestureOwners(_ buttons: Set<DeviceButton>) {
-        let owners = buttons.intersection([.mxHaptic])
-        gestureOwnerButtons = owners
-        var cids = Set(owners.flatMap { self.cids(for: $0) })
-        cids.subtract(Self.nativeClickCIDs)
-        guard cids != gestureCIDs else { return }
+        var eligible: Set<DeviceButton> = [.mxHaptic, .mxSide, .mxSmartShift]
+        eligible.formUnion(controls.compactMap { control in
+            control.canOwnGestures ? button(for: control.cid) : nil
+        })
+        eligible.subtract([.mxLeft, .mxRight])
+        let owners = buttons.intersection(eligible)
+        if owners.isEmpty, buttons.contains(.mxHaptic) {
+            gestureOwnerButtons = [.mxHaptic]
+        } else if owners.isEmpty, buttons.contains(.mxSide) {
+            gestureOwnerButtons = [.mxSide]
+        } else {
+            gestureOwnerButtons = owners
+        }
+        var cids = Set(gestureOwnerButtons.flatMap { self.cids(for: $0) })
+        if model.requiresGestureCID {
+            cids.insert(model.gestureCID)
+        }
+        if gestureOwnerButtons.contains(.mxSide) {
+            cids.insert(0x00C3)
+        }
+        cids.subtract(Self.primaryClickCIDs)
+        let previous = gestureCIDs
+        guard cids != previous else { return }
         gestureCIDs = cids
-        if let haptic = cids.first(where: { $0 == hapticCID }) {
+        if cids.contains(model.gestureCID) {
+            gestureCID = model.gestureCID
+        } else if let haptic = cids.first(where: { $0 == hapticCID || $0 == 0x01A0 }) {
             gestureCID = haptic
         } else {
             gestureCID = cids.first ?? hapticCID
+        }
+        updateGestureReporting(previous: previous, current: cids)
+    }
+
+    func setCapturedButtons(_ buttons: Set<DeviceButton>) {
+        guard buttons != capturedButtons else { return }
+        capturedButtons = buttons
+        if isGenericModel {
+            updateGenericControlRouting()
+        } else {
+            updateKnownClickRouting()
+        }
+    }
+
+    private func updateKnownClickRouting() {
+        guard !isGenericModel,
+              ready,
+              let reprogIndex,
+              let middle = controls.first(where: { $0.cid == 0x0052 && $0.isDivertable })
+        else {
+            return
+        }
+        routingGeneration += 1
+        let generation = routingGeneration
+        if capturedButtons.contains(.mxMiddle) {
+            let job = DivertJob(
+                cid: middle.cid,
+                flags: gestureOwnerButtons.contains(.mxMiddle) && middle.canOwnGestures
+                    ? Self.gestureReportingFlags
+                    : Self.buttonReportingFlags,
+                remap: 0,
+                highFlags: 0
+            )
+            divert(jobs: [job], reprogIndex: reprogIndex, generation: generation) {}
+        } else {
+            restoreReporting([middle.cid], reprogIndex: reprogIndex) {}
+        }
+    }
+
+    func setManaged(_ managed: Bool) {
+        guard managed != self.managed else { return }
+        self.managed = managed
+        guard isGenericModel else { return }
+        if managed {
+            sendSensorSettingsIfNeeded()
+            applyOSPointerSettingsIfNeeded()
+            sendSmartShiftIfNeeded()
+            updateGenericControlRouting()
+            lastWheelConfig = nil
+            applyWheelRouting()
+        } else {
+            updateGenericControlRouting()
+            lastWheelConfig = nil
+            applyWheelRouting()
+        }
+    }
+
+    private func updateGestureReporting(previous: Set<UInt16>, current: Set<UInt16>) {
+        guard ready, let reprogIndex else { return }
+        if isGenericModel {
+            updateGenericControlRouting()
+            return
+        }
+        routingGeneration += 1
+        let generation = routingGeneration
+        var jobs = current.subtracting(previous).map { cid in
+            DivertJob(
+                cid: cid,
+                flags: Self.gestureReportingFlags,
+                remap: 0,
+                highFlags: cid == model.gestureCID ? model.analyticsReportingFlags : 0
+            )
+        }
+        let removed = previous.subtracting(current)
+        let keepCaptured = removed.filter { cid in
+            button(for: cid).map(capturedButtons.contains) == true
+        }
+        jobs.append(contentsOf: keepCaptured.map { cid in
+            DivertJob(
+                cid: cid,
+                flags: Self.buttonReportingFlags,
+                remap: 0,
+                highFlags: 0
+            )
+        })
+        let restore = removed.subtracting(keepCaptured)
+        restoreReporting(Array(restore), reprogIndex: reprogIndex) { [weak self] in
+            guard let self, self.routingGeneration == generation else { return }
+            self.divert(
+                jobs: jobs,
+                reprogIndex: reprogIndex,
+                generation: generation
+            ) {}
+        }
+    }
+
+    private func updateGenericControlRouting() {
+        guard isGenericModel, ready, let reprogIndex else { return }
+        routingGeneration += 1
+        let generation = routingGeneration
+        let routable = controls.filter {
+            $0.isDivertable
+                && !Self.primaryClickCIDs.contains($0.cid)
+                && !Self.wheelCIDs.contains($0.cid)
+                && button(for: $0.cid) != nil
+        }
+        let desired = routable.filter { control in
+            injectEnabled
+                && button(for: control.cid).map(capturedButtons.contains) == true
+        }
+        let desiredCIDs = Set(desired.map(\.cid))
+        let jobs = desired.map { control -> DivertJob in
+            let button = button(for: control.cid)
+            return DivertJob(
+                cid: control.cid,
+                flags: button.map(gestureOwnerButtons.contains) == true && control.canOwnGestures
+                    ? Self.gestureReportingFlags
+                    : Self.buttonReportingFlags,
+                remap: 0,
+                highFlags: control.cid == model.gestureCID
+                    ? model.analyticsReportingFlags
+                    : 0
+            )
+        }
+        let restore = ownedReportingCIDs.subtracting(desiredCIDs)
+        restoreReporting(Array(restore), reprogIndex: reprogIndex) { [weak self] in
+            guard let self, self.routingGeneration == generation else { return }
+            self.divert(
+                jobs: jobs,
+                reprogIndex: reprogIndex,
+                generation: generation
+            ) {}
         }
     }
 
@@ -541,6 +817,7 @@ final class LogitechMXMasterReader {
 
     private func sendSensorSettingsIfNeeded() {
         guard ready else { return }
+        if isGenericModel, !managed { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
         var changed = false
         if let dpiIndex, dpi != lastSentDPI {
@@ -571,6 +848,7 @@ final class LogitechMXMasterReader {
 
     private func sendSmartShiftIfNeeded() {
         guard ready else { return }
+        if isGenericModel, !managed { return }
         guard let featureIndex = smartShiftEnhancedIndex ?? smartShiftIndex else { return }
         let mode = desiredRatchetMode
         let sensitivity = MappingProfile.clampSmartShiftSensitivity(desiredSmartShiftSensitivity)
@@ -591,15 +869,17 @@ final class LogitechMXMasterReader {
         ) { [weak self] _ in
             guard let self else { return }
             // MagSpeed writes can clear diverted reporting. Put the thumb
-            // wheel back on HID++ without tearing the pipe down.
+            // wheel and the dedicated gesture CID back without tearing the pipe down.
             self.lastWheelConfig = nil
             self.applyWheelRouting()
+            self.restoreDedicatedGestureReporting()
         }
         lastSentSmartShift = (mode, sensitivity)
         publishMotionSettings()
     }
 
     private func applyOSPointerSettingsIfNeeded() {
+        if isGenericModel, !managed { return }
         guard boltLink == nil, let hidppDevice else { return }
         let dpi = MappingProfile.nearestDPI(desiredDPI, in: dpiValues)
         guard dpi != lastAppliedOSDPI || desiredPointerSpeed != lastAppliedOSPointerSpeed else { return }
@@ -616,6 +896,7 @@ final class LogitechMXMasterReader {
         snapshot.smartShiftSupported = smartShiftEnhancedIndex != nil || smartShiftIndex != nil
         snapshot.ratchetMode = desiredRatchetMode
         snapshot.smartShiftSensitivity = desiredSmartShiftSensitivity
+        snapshot.hidppCapabilities = featureCatalog.capabilities
         lock.unlock()
     }
 
@@ -625,7 +906,14 @@ final class LogitechMXMasterReader {
             unlockCursor()
             return
         }
-        pinCursor(forceWarp: false)
+        let owner = snapshot.liveGestureOwner ?? .mxHaptic
+        if pinsPointer(for: owner) {
+            pinCursor(forceWarp: false)
+        } else if let live = snapshot.liveGestureOwner,
+                  !cids(for: live).contains(where: pressed.contains) {
+            finishHapticNow()
+            return
+        }
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
@@ -678,18 +966,21 @@ final class LogitechMXMasterReader {
 
     private func startHIDPP() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        IOHIDManagerSetDeviceMatchingMultiple(mgr, model.hidManagerMatches() as CFArray)
+        IOHIDManagerSetDeviceMatchingMultiple(
+            mgr,
+            LogitechMouseRegistry.hidManagerMatches() as CFArray
+        )
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(mgr, { context, _, _, device in
             guard let context else { return }
-            let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
+            let reader = Unmanaged<LogitechMouseReader>.fromOpaque(context)
             DispatchQueue.main.async {
                 reader.takeUnretainedValue().attachHIDPP(device)
             }
         }, pointer)
         IOHIDManagerRegisterDeviceRemovalCallback(mgr, { context, _, _, device in
             guard let context else { return }
-            let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context)
+            let reader = Unmanaged<LogitechMouseReader>.fromOpaque(context)
             DispatchQueue.main.async {
                 reader.takeUnretainedValue().detachHIDPP(device)
             }
@@ -713,9 +1004,9 @@ final class LogitechMXMasterReader {
             let leftDesc = IOHIDDeviceGetProperty(lhs, kIOHIDReportDescriptorKey as CFString) != nil
             let rightDesc = IOHIDDeviceGetProperty(rhs, kIOHIDReportDescriptorKey as CFString) != nil
             if leftDesc != rightDesc { return leftDesc && !rightDesc }
-            return isLikelyMXMaster(lhs) && !isLikelyMXMaster(rhs)
+            return false
         }
-        for device in devices where model.matches(device) {
+        for device in devices where LogitechMouseRegistry.matches(device) {
             attachHIDPP(device)
         }
     }
@@ -737,7 +1028,7 @@ final class LogitechMXMasterReader {
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterInputValueCallback(mgr, { context, _, _, value in
             guard let context else { return }
-            Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue().handleMouseValue(value)
+            Unmanaged<LogitechMouseReader>.fromOpaque(context).takeUnretainedValue().handleMouseValue(value)
         }, pointer)
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -755,7 +1046,9 @@ final class LogitechMXMasterReader {
     fileprivate func shouldSwallowPointerEvent(_ type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-            return activeGestureCID != nil || cursorFrozen
+            if cursorFrozen { return true }
+            return activeGestureCID != nil
+                && Date().timeIntervalSince(lastFirmwareXYAt) < 0.08
         case .leftMouseDown, .leftMouseUp:
             return gestureOwnerButtons.contains(.mxLeft)
         case .rightMouseDown, .rightMouseUp:
@@ -804,10 +1097,10 @@ final class LogitechMXMasterReader {
                     snapshot.haptic = down
                     logs.append((model.gestureControlTitle, down))
                 }
-            } else if button == 7, model.acceptedKinds.contains(.logitechMXMaster4) {
+            } else if button == 7 {
                 if snapshot.side != down {
                     snapshot.side = down
-                    logs.append(("Side", down))
+                    logs.append(("Gesture button", down))
                 }
             }
         case .scrollWheel:
@@ -850,12 +1143,32 @@ final class LogitechMXMasterReader {
         }
     }
 
+    private func gestureOwner(forOtherMouse event: CGEvent) -> DeviceButton? {
+        switch event.getIntegerValueField(.mouseEventButtonNumber) {
+        case 2: return .mxMiddle
+        case 3: return .mxBack
+        case 4: return .mxForward
+        case 5, 6:
+            return model.nativeHapticButtonBit != nil ? .mxHaptic : nil
+        case 7:
+            return .mxSide
+        default: return nil
+        }
+    }
+
     private func isGestureOwner(_ button: DeviceButton) -> Bool {
         gestureOwnerButtons.contains(button)
     }
 
+    /// Haptic pad still pins the cursor. The MX **gesture button** uses firmware
+    /// raw XY (OpenLogi) and must not pin.
+    private func pinsPointer(for owner: DeviceButton) -> Bool {
+        owner == .mxHaptic
+    }
+
     private func addHoldSource(_ owner: DeviceButton, _ source: String) {
         guard isGestureOwner(owner) else { return }
+        if !pinsPointer(for: owner), source != "hidpp" { return }
         var sources = holdSources[owner] ?? []
         sources.insert(source)
         holdSources[owner] = sources
@@ -876,29 +1189,36 @@ final class LogitechMXMasterReader {
     private func beginGesture(owner: DeviceButton) {
         guard isGestureOwner(owner) else { return }
         cancelHapticRelease()
+        let pin = pinsPointer(for: owner)
         if activeGestureCID != nil {
-            pinCursor(forceWarp: false)
+            if pin {
+                pinCursor(forceWarp: false)
+            }
             lock.lock()
             snapshot.gestureDown = true
             snapshot.gestureHeld = true
             if owner == .mxHaptic { snapshot.haptic = true }
+            if owner == .mxSide { snapshot.side = true }
             lock.unlock()
             return
         }
         activeGestureCID = cids(for: owner).first ?? model.gestureCID
         usingRawXY = true
-        ignoreNextRawXY = false
+        ignoreNextRawXY = pin && isHapticPanel
         hapticDownAt = Date()
         gestureDelta = .zero
         pointerDelta = .zero
         gestureOrigin = CGEvent(source: nil)?.location ?? .zero
         pointerOrigin = gestureOrigin
-        pinCursor(forceWarp: true)
+        if pin {
+            pinCursor(forceWarp: true)
+        }
         lock.lock()
         snapshot.gestureDown = true
         snapshot.gestureHeld = true
         snapshot.liveGestureOwner = owner
         if owner == .mxHaptic { snapshot.haptic = true }
+        if owner == .mxSide { snapshot.side = true }
         lock.unlock()
         noteLastEvent("\(owner.title) gesture down")
     }
@@ -910,6 +1230,29 @@ final class LogitechMXMasterReader {
         lock.unlock()
         guard current == nil || current == owner else { return }
         finishHapticNow()
+    }
+
+    private func cancelActiveGesture() {
+        cancelHapticRelease()
+        activeGestureCID = nil
+        holdSources.removeAll()
+        hapticDownAt = nil
+        lock.lock()
+        snapshot.liveGestureOwner = nil
+        snapshot.liveGesture = nil
+        snapshot.gestureDown = lastHapticBit
+        snapshot.gestureHeld = false
+        snapshot.haptic = lastHapticBit
+        snapshot.gestureDX = 0
+        snapshot.gestureDY = 0
+        lock.unlock()
+        unfreezeCursor()
+        unlockCursor()
+        gestureDelta = .zero
+        pointerDelta = .zero
+        pointerOrigin = .zero
+        usingRawXY = false
+        lastFirmwareXYAt = .distantPast
     }
 
     private func applyHapticEdge(down: Bool) {
@@ -937,23 +1280,19 @@ final class LogitechMXMasterReader {
     }
 
     private func attachHIDPP(_ incoming: IOHIDDevice) {
-        guard model.matches(incoming) else { return }
-        if boltLink != nil {
-            detachBolt(restoreNative: true)
+        guard LogitechMouseRegistry.matches(incoming) else { return }
+        if boltLink != nil { return }
+        let routeID = "direct:\(LogitechHIDPPDiscovery.endpointKey(for: incoming))"
+        if let pendingRestoreRouteID, pendingRestoreRouteID != routeID {
+            return
         }
         if isSameDevice(incoming, hidppDevice) { return }
-        if queuedHIDPP.contains(where: { isSameDevice(incoming, $0) }) { return }
-        if hidppDevice == nil {
-            beginProbe(incoming)
+        guard hidppDevice == nil,
+              LogitechHIDPPDiscovery.claim(incoming, owner: discoveryClaimID)
+        else {
             return
         }
-        if isLikelyMXMaster(incoming), let current = hidppDevice, !isLikelyMXMaster(current) {
-            queuedHIDPP.insert(current, at: 0)
-            teardownHIDPP(current, keepQueued: true)
-            beginProbe(incoming)
-            return
-        }
-        queuedHIDPP.append(incoming)
+        beginProbe(incoming)
     }
 
     private func isSameDevice(_ lhs: IOHIDDevice, _ rhs: IOHIDDevice?) -> Bool {
@@ -962,15 +1301,25 @@ final class LogitechMXMasterReader {
     }
 
     private func beginProbe(_ device: IOHIDDevice) {
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        model = LogitechMouseRegistry.model(of: device)
+        let routeID = "direct:\(LogitechHIDPPDiscovery.endpointKey(for: device))"
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
+        let preservingRestore = pendingRestoreRouteID == routeID
+        clearDiscoveredControls(preservingRestore: preservingRestore)
+        clearGestureOwnership()
         reprogIndex = nil
         nameIndex = nil
         forceSensingIndex = nil
         hiresWheelIndex = nil
         thumbWheelIndex = nil
         didReadThumbWheelInfo = false
+        if !preservingRestore {
+            originalHiresWheelMode = nil
+            ownsHiresWheelMode = false
+            originalThumbWheelRouting = nil
+            ownsThumbWheelRouting = false
+        }
         pointerScaleIndex = nil
         dpiIndex = nil
         batteryIndex = nil
@@ -989,7 +1338,7 @@ final class LogitechMXMasterReader {
         applyOSPointerSettingsIfNeeded()
         let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? model.kind.title
         lock.lock()
-        snapshot.kind = model.resolvedKind(of: device)
+        snapshot.kind = LogitechMouseRegistry.resolvedKind(of: device)
         snapshot.name = product
         snapshot.product = product
         snapshot.address = DeviceIdentity.fromHID(device)
@@ -1015,7 +1364,7 @@ final class LogitechMXMasterReader {
             64,
             { context, _, _, _, _, report, length in
                 guard let context, length > 0 else { return }
-                let reader = Unmanaged<LogitechMXMasterReader>.fromOpaque(context).takeUnretainedValue()
+                let reader = Unmanaged<LogitechMouseReader>.fromOpaque(context).takeUnretainedValue()
                 if report[0] == 0x02 {
                     reader.handleNativeMouseReport(report, length: length)
                     return
@@ -1034,12 +1383,13 @@ final class LogitechMXMasterReader {
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
     }
 
-    private func teardownHIDPP(_ device: IOHIDDevice, keepQueued: Bool) {
+    private func teardownHIDPP(_ device: IOHIDDevice) {
         releaseReportBuffer(device)
         IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         _ = IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        if !keepQueued {
-            queuedHIDPP.removeAll { isSameDevice(device, $0) }
+        let routeID = "direct:\(LogitechHIDPPDiscovery.endpointKey(for: device))"
+        if pendingRestoreRouteID != routeID {
+            LogitechHIDPPDiscovery.release(device, owner: discoveryClaimID)
         }
     }
 
@@ -1052,18 +1402,19 @@ final class LogitechMXMasterReader {
     }
 
     private func detachHIDPP(_ incoming: IOHIDDevice) {
-        queuedHIDPP.removeAll { isSameDevice(incoming, $0) }
         if !isSameDevice(incoming, hidppDevice) {
             releaseReportBuffer(incoming)
             return
         }
-        teardownHIDPP(incoming, keepQueued: false)
+        restoreNativeReporting()
+        teardownHIDPP(incoming)
         stopBatteryTimer()
         unfreezeCursor()
         hidppDevice = nil
         ready = false
-        pending = nil
-        hidppQueue.removeAll()
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
+        clearGestureOwnership()
         unlockCursor()
         lock.lock()
         snapshot = MXMasterSnapshot()
@@ -1071,19 +1422,21 @@ final class LogitechMXMasterReader {
         snapshot.name = model.kind.title
         snapshot.status = "\(model.kind.title) disconnected"
         lock.unlock()
-        probeNextHIDPP(failed: "MX Master disconnected")
+        setStatus("\(model.kind.title) disconnected")
+        scheduleRecover()
     }
 
     private func notePipeDropped(_ reason: String) {
         guard running else { return }
+        restoreNativeReporting()
         ready = false
         consecutiveTimeouts = 0
-        hidppEpoch += 1
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
+        clearGestureOwnership()
         stopBatteryTimer()
         if let current = hidppDevice {
-            teardownHIDPP(current, keepQueued: true)
+            teardownHIDPP(current)
             hidppDevice = nil
         }
         if boltLink != nil {
@@ -1117,39 +1470,19 @@ final class LogitechMXMasterReader {
     }
 
     private func failHIDPPAndTryNext(_ message: String) {
-        hidppQueue.removeAll()
-        pending = nil
+        hidppClient.cancelAll()
+        featureCatalog.removeAll()
         if boltLink != nil {
             detachBolt(restoreNative: false)
             setStatus(message)
             return
         }
         if let current = hidppDevice {
-            teardownHIDPP(current, keepQueued: false)
+            teardownHIDPP(current)
             hidppDevice = nil
-        }
-        probeNextHIDPP(failed: message)
-    }
-
-    private func probeNextHIDPP(failed message: String) {
-        if let next = popBestQueued() {
-            beginProbe(next)
-            return
         }
         setStatus(message)
         scheduleRecover()
-    }
-
-    private func popBestQueued() -> IOHIDDevice? {
-        if let index = queuedHIDPP.firstIndex(where: isLikelyMXMaster) {
-            return queuedHIDPP.remove(at: index)
-        }
-        guard !queuedHIDPP.isEmpty else { return nil }
-        return queuedHIDPP.removeFirst()
-    }
-
-    private func isLikelyMXMaster(_ device: IOHIDDevice) -> Bool {
-        model.matches(device)
     }
 
     private func probeDeviceIndices(_ indices: [UInt8]) {
@@ -1157,7 +1490,7 @@ final class LogitechMXMasterReader {
             failHIDPPAndTryNext("No HID++ reply from the mouse. LogiPluginService can block this even after Options+ is removed.")
             return
         }
-        deviceIndex = index
+        hidppClient.deviceIndex = index
         request(featureIndex: 0, function: 0, params: [0x00, 0x01]) { [weak self] data in
             guard let self else { return }
             if data != nil {
@@ -1183,7 +1516,9 @@ final class LogitechMXMasterReader {
             guard let self else { return }
             if let data, let nameIndex = data.first, nameIndex != 0 {
                 self.nameIndex = nameIndex
-            } else if DeviceSupport.isMXMasterName(fallbackName) {
+                self.featureCatalog[LogitechHIDPPFeatureID.deviceName] = nameIndex
+            } else if !self.model.requiresMXMasterName
+                        || DeviceSupport.isMXMasterName(fallbackName) {
                 self.nameIndex = nil
                 self.lookupReprogThen {
                     self.finishSetup(named: fallbackName)
@@ -1208,7 +1543,7 @@ final class LogitechMXMasterReader {
         if lengthIndex == 0 {
             request(featureIndex: nameIndex, function: 0, params: []) { [weak self] data in
                 guard let self, let length = data?.first, length > 0 else {
-                    self?.finishSetup(named: "MX Master")
+                    self?.finishSetup(named: self?.fallbackProductName ?? "MX Master")
                     return
                 }
                 self.readName(lengthIndex: Int(length), assembled: "")
@@ -1221,7 +1556,7 @@ final class LogitechMXMasterReader {
         }
         request(featureIndex: nameIndex, function: 1, params: [UInt8(assembled.utf8.count)]) { [weak self] data in
             guard let self, let data else {
-                self?.finishSetup(named: assembled.isEmpty ? "MX Master" : assembled)
+                self?.finishSetup(named: assembled.isEmpty ? self?.fallbackProductName ?? "MX Master" : assembled)
                 return
             }
             let chunk = data.filter { $0 != 0 }
@@ -1232,21 +1567,104 @@ final class LogitechMXMasterReader {
 
     private func finishSetup(named: String) {
         let trimmed = named.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isMX = DeviceSupport.isMXMasterName(trimmed)
+        let accepted = !model.requiresMXMasterName || DeviceSupport.isMXMasterName(trimmed)
         lock.lock()
         if let hidppDevice {
-            snapshot.kind = model.resolvedKind(of: hidppDevice)
+            snapshot.kind = LogitechMouseRegistry.resolvedKind(of: hidppDevice)
         }
         snapshot.name = trimmed.isEmpty ? snapshot.kind.title : trimmed
         snapshot.product = snapshot.name
-        snapshot.connected = isMX
-        snapshot.status = isMX ? "Connected" : "Logitech device is not \(snapshot.kind.title)"
+        snapshot.connected = accepted
+        snapshot.status = accepted ? "Connected" : "Logitech device is not \(snapshot.kind.title)"
         lock.unlock()
-        guard isMX else {
+        guard accepted else {
             failHIDPPAndTryNext("Logitech device is not an MX Master")
             return
         }
-        enableHiddenFeaturesThenDivert()
+        loadDeviceIdentity { [weak self] in
+            guard let self else { return }
+            self.restorePendingCIDReporting { [weak self] in
+                guard let self else { return }
+                if self.model.enablesHiddenFeatures {
+                    self.enableHiddenFeaturesThenDivert()
+                } else {
+                    self.enumerateAndDivert(index: 0, count: -1)
+                }
+            }
+        }
+    }
+
+    private var fallbackProductName: String {
+        let name = snapshot.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? model.kind.title : name
+    }
+
+    private func loadDeviceIdentity(completion: @escaping () -> Void) {
+        lookupFeature(
+            LogitechHIDPPFeatureID.deviceInformation,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] index in
+            guard let self, let index else {
+                completion()
+                return
+            }
+            self.request(
+                featureIndex: index,
+                function: 0,
+                params: [],
+                countsTowardTimeouts: false,
+                allowShortReport: false,
+                dropsPipeOnError: false
+            ) { [weak self] data in
+                defer { completion() }
+                guard let self, let data, data.count >= 5 else { return }
+                let unitID = UInt32(data[1]) << 24
+                    | UInt32(data[2]) << 16
+                    | UInt32(data[3]) << 8
+                    | UInt32(data[4])
+                guard unitID != 0 else { return }
+                self.lock.lock()
+                self.snapshot.unitID = unitID
+                self.lock.unlock()
+                self.onIdentityChanged?()
+            }
+        }
+    }
+
+    private func restorePendingCIDReporting(completion: @escaping () -> Void) {
+        guard pendingRestoreRouteID == currentRouteID,
+              !ownedReportingCIDs.isEmpty,
+              let reprogIndex
+        else {
+            clearPendingRestoreIfComplete()
+            completion()
+            return
+        }
+        restoreReporting(
+            ownedReportingCIDs.sorted(),
+            reprogIndex: reprogIndex
+        ) { [weak self] in
+            guard let self else { return }
+            if self.ownedReportingCIDs.isEmpty {
+                self.clearPendingRestoreIfComplete()
+                completion()
+            } else {
+                self.setStatus("Restoring previous mouse reporting…")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.restorePendingCIDReporting(completion: completion)
+                }
+            }
+        }
+    }
+
+    private func clearPendingRestoreIfComplete() {
+        if ownedReportingCIDs.isEmpty,
+           !ownsHiresWheelMode,
+           !ownsThumbWheelRouting {
+            pendingRestoreRouteID = nil
+        }
     }
 
     private func enableHiddenFeaturesThenDivert() {
@@ -1271,6 +1689,7 @@ final class LogitechMXMasterReader {
             guard let self else { return }
             if let index = data?.first, index != 0 {
                 self.reprogIndex = index
+                self.featureCatalog[LogitechHIDPPFeatureID.reprogrammableControlsV4] = index
                 completion()
                 return
             }
@@ -1313,7 +1732,12 @@ final class LogitechMXMasterReader {
             request(featureIndex: reprogIndex, function: 0, params: []) { [weak self] data in
                 let total = Int(data?.first ?? 0)
                 if total <= 0 {
-                    self?.setStatus("No reprogrammable controls. Quit Logi Options+ and reconnect the mouse.")
+                    if self?.isGenericModel == true {
+                        self?.reprogIndex = nil
+                        self?.enumerateAndDivert(index: 0, count: 0)
+                    } else {
+                        self?.setStatus("No reprogrammable controls. Quit Logi Options+ and reconnect the mouse.")
+                    }
                     return
                 }
                 self?.controls.removeAll()
@@ -1335,12 +1759,11 @@ final class LogitechMXMasterReader {
             let task = data.count >= 4 ? Self.be16(data, 2) : 0
             let flagsLow = data.count > 4 ? data[4] : 0
             let flagsHigh = data.count > 8 ? data[8] : 0
-            let info = ControlInfo(
+            let info = LogitechHIDPPControlDescriptor(
                 cid: cid,
                 task: task,
-                divertable: flagsLow & 0x20 != 0,
-                rawXY: flagsHigh & 0x01 != 0,
-                forceRawXY: flagsHigh & 0x02 != 0
+                flagsLow: flagsLow,
+                flagsHigh: flagsHigh
             )
             self.controls.append(info)
             self.enumerateAndDivert(index: index + 1, count: count)
@@ -1348,18 +1771,86 @@ final class LogitechMXMasterReader {
     }
 
     private func chooseGestureCID() {
-        hapticCID = model.gestureCID
-        gestureCID = model.gestureCID
-        gestureCIDs = [model.gestureCID]
+        dynamicButtonByCID.removeAll()
+        let dynamicControls = controls
+            .filter {
+                knownButton(for: $0.cid) == nil
+                    && $0.isDivertable
+                    && !Self.wheelCIDs.contains($0.cid)
+            }
+            .sorted { $0.cid < $1.cid }
+        for (control, button) in zip(dynamicControls, DeviceButton.mxExtraButtons) {
+            dynamicButtonByCID[control.cid] = button
+        }
+
+        if model.requiresGestureCID {
+            hapticCID = model.gestureCID
+            gestureCID = model.gestureCID
+            gestureCIDs = [model.gestureCID]
+        } else if let haptic = controls.first(where: {
+            $0.cid == 0x01A0 && $0.canOwnGestures
+        }) {
+            hapticCID = haptic.cid
+            gestureCID = haptic.cid
+            gestureCIDs = [haptic.cid]
+        } else if let discovered = controls.first(where: {
+            $0.cid == model.gestureCID && $0.canOwnGestures
+        }) ?? controls.first(where: {
+            Self.knownGestureCIDs.contains($0.cid) && $0.canOwnGestures
+        }) {
+            hapticCID = discovered.cid
+            gestureCID = discovered.cid
+            gestureCIDs = [discovered.cid]
+        } else {
+            gestureCIDs = []
+        }
         extraCIDs.removeAll()
         for control in controls {
             extraCIDs[control.cid] = title(for: control.cid, task: control.task)
                 + String(format: " (%04X)", control.cid)
         }
+        var availableButtons = Set(controls.compactMap { button(for: $0.cid) })
+        var gestureCapableButtons = Set(controls.compactMap { control in
+            control.canOwnGestures ? button(for: control.cid) : nil
+        })
+        var controlTitles: [DeviceButton: String] = [:]
+        for control in controls {
+            if let button = button(for: control.cid), controlTitles[button] == nil {
+                controlTitles[button] = dynamicButtonByCID[control.cid] == nil
+                    ? title(for: control.cid, task: control.task)
+                    : extraCIDs[control.cid]
+            }
+        }
+        if isHapticPanel || controls.contains(where: { $0.cid == 0x01A0 }) {
+            availableButtons.insert(.mxHaptic)
+            gestureCapableButtons.insert(.mxHaptic)
+            controlTitles[.mxHaptic] = DeviceButton.mxHaptic.title
+        }
+        if controls.contains(where: { $0.cid == 0x00C4 }) {
+            availableButtons.insert(.mxSmartShift)
+            gestureCapableButtons.insert(.mxSmartShift)
+            if controlTitles[.mxSmartShift] == nil {
+                controlTitles[.mxSmartShift] = DeviceButton.mxSmartShift.title
+            }
+        }
+        if controls.contains(where: { $0.cid == 0x00C3 })
+            || (model.requiresGestureCID && !isHapticPanel) {
+            availableButtons.insert(.mxSide)
+            gestureCapableButtons.insert(.mxSide)
+            controlTitles[.mxSide] = DeviceButton.mxSide.title
+        }
+        lock.lock()
+        snapshot.availableButtons = availableButtons
+        snapshot.gestureCapableButtons = gestureCapableButtons
+        snapshot.controlTitles = controlTitles
+        snapshot.hidppCapabilities = featureCatalog.capabilities
+        lock.unlock()
         applyPressed(pressed)
         let listed = controls.map { String(format: "%04X", $0.cid) }.joined(separator: " ")
-        let found = controls.contains(where: { $0.cid == model.gestureCID })
-        noteLastEvent(found ? "CIDs \(listed)" : String(format: "no %04X in table: %@", model.gestureCID, listed))
+        let found = !gestureCIDs.isEmpty
+        noteLastEvent(found || !model.requiresGestureCID
+            ? "CIDs \(listed)"
+            : String(format: "no %04X in table: %@", model.gestureCID, listed))
     }
 
     private func armForceSensingThenDivert() {
@@ -1390,23 +1881,52 @@ final class LogitechMXMasterReader {
 
     private func divertKnownButtons() {
         guard let reprogIndex else { return }
-        var jobs: [DivertJob] = [
-            DivertJob(
-                cid: model.gestureCID,
-                flags: Self.gestureReportingFlags,
-                remap: 0,
-                highFlags: model.analyticsReportingFlags
+        var jobs: [DivertJob] = []
+        if !isGenericModel {
+            jobs.append(
+                DivertJob(
+                    cid: model.gestureCID,
+                    flags: Self.gestureReportingFlags,
+                    remap: 0,
+                    highFlags: model.analyticsReportingFlags
+                )
             )
-        ]
-        for control in controls where control.divertable {
+            if model.gestureCID != 0x00C3 {
+                jobs.append(
+                    DivertJob(
+                        cid: 0x00C3,
+                        flags: gestureOwnerButtons.contains(.mxSide)
+                            ? Self.gestureReportingFlags
+                            : Self.buttonReportingFlags,
+                        remap: 0,
+                        highFlags: 0
+                    )
+                )
+            }
+            for cid in gestureCIDs where cid != model.gestureCID && cid != 0x00C3 {
+                jobs.append(
+                    DivertJob(
+                        cid: cid,
+                        flags: Self.gestureReportingFlags,
+                        remap: 0,
+                        highFlags: 0
+                    )
+                )
+            }
+        }
+        for control in controls where control.isDivertable && !isGenericModel {
             if Self.nativeClickCIDs.contains(control.cid) { continue }
             if Self.wheelCIDs.contains(control.cid) { continue }
+            if control.cid == model.gestureCID { continue }
+            if control.cid == 0x00C3 { continue }
             if gestureCIDs.contains(control.cid) { continue }
             if model.extraButtonCIDs.contains(control.cid) {
                 jobs.append(DivertJob(cid: control.cid, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0))
                 continue
             }
-            if control.rawXY { continue }
+            if !model.divertsUnknownButtons { continue }
+            if isGenericModel, button(for: control.cid) == nil { continue }
+            if control.supportsRawXY, !isGenericModel { continue }
             jobs.append(DivertJob(cid: control.cid, flags: Self.buttonReportingFlags, remap: 0, highFlags: 0))
         }
         divert(jobs: jobs, reprogIndex: reprogIndex) { [weak self] in
@@ -1416,6 +1936,8 @@ final class LogitechMXMasterReader {
             self.recoverAttempts = 0
             self.recoverWork?.cancel()
             self.recoverWork = nil
+            self.updateGenericControlRouting()
+            self.updateKnownClickRouting()
             self.confirmGestureReporting()
             self.lookupMotionFeatures {
                 self.lastWheelConfig = nil
@@ -1431,18 +1953,48 @@ final class LogitechMXMasterReader {
         }
     }
 
+    private func restoreDedicatedGestureReporting() {
+        guard !isGenericModel, model.requiresGestureCID, ready, let reprogIndex else { return }
+        var jobs = [
+            DivertJob(
+                cid: model.gestureCID,
+                flags: Self.gestureReportingFlags,
+                remap: 0,
+                highFlags: model.analyticsReportingFlags
+            )
+        ]
+        if model.gestureCID != 0x00C3 {
+            jobs.append(
+                DivertJob(
+                    cid: 0x00C3,
+                    flags: gestureOwnerButtons.contains(.mxSide)
+                        ? Self.gestureReportingFlags
+                        : Self.buttonReportingFlags,
+                    remap: 0,
+                    highFlags: 0
+                )
+            )
+        }
+        divert(jobs: jobs, reprogIndex: reprogIndex) {}
+    }
+
     private func confirmGestureReporting() {
         guard let reprogIndex else { return }
+        guard !isGenericModel else {
+            setStatus("Connected")
+            return
+        }
+        let cid = model.gestureCID
         request(
             featureIndex: reprogIndex,
             function: 2,
             params: [
-                UInt8(model.gestureCID >> 8),
-                UInt8(model.gestureCID & 0xFF)
+                UInt8(cid >> 8),
+                UInt8(cid & 0xFF)
             ]
         ) { [weak self] data in
             guard let self else { return }
-            let cidHex = String(format: "%04X", self.model.gestureCID)
+            let cidHex = String(format: "%04X", cid)
             if let data, !data.isEmpty {
                 let hex = data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
                 self.noteLastEvent("\(cidHex) reporting \(hex)")
@@ -1453,21 +2005,137 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func divert(jobs: [DivertJob], reprogIndex: UInt8, completion: @escaping () -> Void) {
+    private func divert(
+        jobs: [DivertJob],
+        reprogIndex: UInt8,
+        generation: Int? = nil,
+        completion: @escaping () -> Void
+    ) {
+        if let generation, generation != routingGeneration {
+            completion()
+            return
+        }
         guard let job = jobs.first else {
             completion()
             return
         }
-        var params: [UInt8] = [
-            UInt8(job.cid >> 8), UInt8(job.cid & 0xFF),
-            job.flags,
-            UInt8(job.remap >> 8), UInt8(job.remap & 0xFF)
-        ]
-        if job.highFlags != 0 {
-            params.append(job.highFlags)
+        captureOriginalReporting(cid: job.cid, reprogIndex: reprogIndex) { [weak self] captured in
+            guard let self else { return }
+            if let generation, generation != self.routingGeneration {
+                completion()
+                return
+            }
+            // 3S has no native pad. Skipping divert when getCidReporting fails
+            // leaves CID 0x00C3 undiverted while Back/Forward still work.
+            let dedicated = !self.isGenericModel
+                && (job.cid == self.model.gestureCID || job.cid == 0x00C3)
+            guard captured || dedicated else {
+                self.divert(
+                    jobs: Array(jobs.dropFirst()),
+                    reprogIndex: reprogIndex,
+                    generation: generation,
+                    completion: completion
+                )
+                return
+            }
+            if captured {
+                self.ownedReportingCIDs.insert(job.cid)
+            }
+            let params = LogitechHIDPP2.cidReportingParameters(
+                cid: job.cid,
+                flags: job.flags,
+                remap: job.remap,
+                highFlags: job.highFlags
+            )
+            self.request(
+                featureIndex: reprogIndex,
+                function: 3,
+                params: params,
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { [weak self] data in
+                guard let self else { return }
+                if data != nil {
+                    self.confirmedReportingCIDs.insert(job.cid)
+                }
+                self.divert(
+                    jobs: Array(jobs.dropFirst()),
+                    reprogIndex: reprogIndex,
+                    generation: generation,
+                    completion: completion
+                )
+            }
         }
-        request(featureIndex: reprogIndex, function: 3, params: params) { [weak self] _ in
-            self?.divert(jobs: Array(jobs.dropFirst()), reprogIndex: reprogIndex, completion: completion)
+    }
+
+    private func captureOriginalReporting(
+        cid: UInt16,
+        reprogIndex: UInt8,
+        completion: @escaping (Bool) -> Void
+    ) {
+        if originalReportingByCID[cid] != nil {
+            completion(true)
+            return
+        }
+        request(
+            featureIndex: reprogIndex,
+            function: 2,
+            params: [UInt8(cid >> 8), UInt8(cid & 0xFF)],
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] data in
+            guard let self,
+                  let state = LogitechHIDPPCIDReportingState(payload: data),
+                  state.cid == cid
+            else {
+                completion(false)
+                return
+            }
+            self.originalReportingByCID[cid] = state
+            completion(true)
+        }
+    }
+
+    private func restoreReporting(
+        _ cids: [UInt16],
+        reprogIndex: UInt8,
+        completion: @escaping () -> Void
+    ) {
+        guard let cid = cids.first else {
+            completion()
+            return
+        }
+        guard let original = originalReportingByCID[cid] else {
+            ownedReportingCIDs.remove(cid)
+            restoreReporting(
+                Array(cids.dropFirst()),
+                reprogIndex: reprogIndex,
+                completion: completion
+            )
+            return
+        }
+        request(
+            featureIndex: reprogIndex,
+            function: 3,
+            params: original.restoreParameters,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] data in
+            guard let self else { return }
+            if data != nil {
+                self.ownedReportingCIDs.remove(cid)
+                self.confirmedReportingCIDs.remove(cid)
+                self.originalReportingByCID[cid] = nil
+                self.pressed.remove(cid)
+                self.applyPressed(self.pressed)
+            }
+            self.restoreReporting(
+                Array(cids.dropFirst()),
+                reprogIndex: reprogIndex,
+                completion: completion
+            )
         }
     }
 
@@ -1481,16 +2149,20 @@ final class LogitechMXMasterReader {
         request(
             featureIndex: 0,
             function: 0,
-            params: [UInt8(id >> 8), UInt8(id & 0xFF)],
+            params: LogitechHIDPP2.featureLookupParameters(id),
             countsTowardTimeouts: countsTowardTimeouts,
             allowShortReport: allowShortReport,
             dropsPipeOnError: dropsPipeOnError
-        ) { data in
+        ) { [weak self] data in
             guard let data, data.count >= 1 else {
                 completion(nil)
                 return
             }
-            completion(data[0] == 0 && id != 0 ? nil : data[0])
+            let index = data[0] == 0 && id != 0 ? nil : data[0]
+            if let index {
+                self?.featureCatalog[id] = index
+            }
+            completion(index)
         }
     }
 
@@ -1499,8 +2171,14 @@ final class LogitechMXMasterReader {
             guard let self else { return }
             if let featureSet {
                 self.request(featureIndex: featureSet, function: 0, params: []) { [weak self] data in
-                    let count = Int(data?.first ?? 0) + 1
-                    self?.readFeatureSlots(setIndex: featureSet, slot: 0, count: min(count, 48), then: completion)
+                    let slots = LogitechHIDPP2.featureSetIndices(
+                        count: Int(data?.first ?? 0)
+                    )
+                    self?.readFeatureSlots(
+                        setIndex: featureSet,
+                        slots: slots,
+                        then: completion
+                    )
                 }
             } else {
                 self.lookupMotionFeaturesByID(then: completion)
@@ -1508,16 +2186,21 @@ final class LogitechMXMasterReader {
         }
     }
 
-    private func readFeatureSlots(setIndex: UInt8, slot: Int, count: Int, then completion: @escaping () -> Void) {
-        if slot >= count {
+    private func readFeatureSlots(
+        setIndex: UInt8,
+        slots: [UInt8],
+        then completion: @escaping () -> Void
+    ) {
+        guard let slot = slots.first else {
             lookupMotionFeaturesByID(then: completion)
             return
         }
-        request(featureIndex: setIndex, function: 1, params: [UInt8(slot)]) { [weak self] data in
+        request(featureIndex: setIndex, function: 1, params: [slot]) { [weak self] data in
             guard let self else { return }
             if let data, data.count >= 2 {
                 let id = Self.be16(data, 0)
-                let index = UInt8(slot)
+                let index = slot
+                self.featureCatalog[id] = index
                 switch id {
                 case 0x2121: self.hiresWheelIndex = index
                 case 0x2150: self.thumbWheelIndex = index
@@ -1531,7 +2214,11 @@ final class LogitechMXMasterReader {
                 default: break
                 }
             }
-            self.readFeatureSlots(setIndex: setIndex, slot: slot + 1, count: count, then: completion)
+            self.readFeatureSlots(
+                setIndex: setIndex,
+                slots: Array(slots.dropFirst()),
+                then: completion
+            )
         }
     }
 
@@ -1717,25 +2404,14 @@ final class LogitechMXMasterReader {
     }
 
     private func applyBattery(_ data: Data?) {
-        guard let data, !data.isEmpty else { return }
-        let percent = Int(data[0])
-        let status = data.count > 2 ? data[2] : 0
-        let charging = status == 1 || status == 4
-        let full = status == 3 || (percent >= 95 && (status == 2 || status == 3))
-        let description: String
-        switch status {
-        case 1, 4: description = "Charging"
-        case 2: description = "Almost full"
-        case 3: description = full ? "Full" : "Almost full"
-        default: description = "Discharging"
-        }
+        guard let reading = LogitechUnifiedBatteryReading(payload: data) else { return }
         lock.lock()
         snapshot.batterySupported = true
         snapshot.batteryAvailable = true
-        snapshot.batteryPercent = percent
-        snapshot.batteryCharging = charging
-        snapshot.batteryFull = full
-        snapshot.batteryStateDescription = description
+        snapshot.batteryPercent = reading.percentage
+        snapshot.batteryCharging = reading.isCharging
+        snapshot.batteryFull = reading.isFull
+        snapshot.batteryStateDescription = reading.stateDescription
         lock.unlock()
     }
 
@@ -1758,6 +2434,32 @@ final class LogitechMXMasterReader {
     private func applyWheelRouting() {
         guard ready else { return }
         guard hiresWheelIndex != nil || thumbWheelIndex != nil else { return }
+        if pendingRestoreRouteID == currentRouteID,
+           ownsHiresWheelMode || ownsThumbWheelRouting {
+            wheelRoutingGeneration += 1
+            let generation = wheelRoutingGeneration
+            restoreWheelRouting(generation: generation) { [weak self] in
+                guard let self, self.wheelRoutingGeneration == generation else { return }
+                self.clearPendingRestoreIfComplete()
+                self.lastWheelConfig = nil
+                if self.ownsHiresWheelMode || self.ownsThumbWheelRouting {
+                    self.setStatus("Restoring previous wheel reporting…")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.applyWheelRouting()
+                    }
+                    return
+                }
+                if self.managed {
+                    self.applyWheelRouting()
+                }
+            }
+            return
+        }
+        if isGenericModel, !managed {
+            wheelRoutingGeneration += 1
+            restoreWheelRouting(generation: wheelRoutingGeneration)
+            return
+        }
         // Leave the main wheel on native HID so a CGEvent tap can reverse and
         // scale it. Only the thumb wheel stays on HID++ (it often has no HID axis).
         // High-res bit is Logitech “smooth scrolling”: many small steps per notch.
@@ -1771,35 +2473,158 @@ final class LogitechMXMasterReader {
             return
         }
         lastWheelConfig = (divertThumb, invertThumb, highRes)
+        wheelRoutingGeneration += 1
+        let generation = wheelRoutingGeneration
         if let hiresWheelIndex {
             let flags: UInt8 = highRes ? 0b0000_0010 : 0
-            request(
-                featureIndex: hiresWheelIndex,
-                function: 2,
-                params: [flags],
-                countsTowardTimeouts: false,
-                dropsPipeOnError: false
-            ) { [weak self] _ in
-                self?.applyThumbRouting(divert: divertThumb, invert: invertThumb)
-                self?.readThumbWheelInfoIfNeeded()
+            applyHiresWheelMode(
+                index: hiresWheelIndex,
+                flags: flags,
+                generation: generation
+            ) { [weak self] in
+                guard let self, self.wheelRoutingGeneration == generation else { return }
+                self.applyThumbRouting(
+                    divert: divertThumb,
+                    invert: invertThumb,
+                    generation: generation
+                )
+                self.readThumbWheelInfoIfNeeded()
             }
             publishMotionSettings()
             return
         }
-        applyThumbRouting(divert: divertThumb, invert: invertThumb)
+        applyThumbRouting(
+            divert: divertThumb,
+            invert: invertThumb,
+            generation: generation
+        )
         readThumbWheelInfoIfNeeded()
         publishMotionSettings()
     }
 
-    private func applyThumbRouting(divert: Bool, invert: Bool) {
-        guard let thumbWheelIndex else { return }
+    private func applyHiresWheelMode(
+        index: UInt8,
+        flags: UInt8,
+        generation: Int,
+        completion: @escaping () -> Void
+    ) {
+        let write = { [weak self] in
+            guard let self, self.wheelRoutingGeneration == generation else { return }
+            self.ownsHiresWheelMode = true
+            self.request(
+                featureIndex: index,
+                function: 2,
+                params: [flags],
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { _ in completion() }
+        }
+        if originalHiresWheelMode != nil {
+            write()
+            return
+        }
         request(
-            featureIndex: thumbWheelIndex,
-            function: 2,
-            params: [divert ? 1 : 0, invert ? 1 : 0],
+            featureIndex: index,
+            function: 1,
+            params: [],
             countsTowardTimeouts: false,
             dropsPipeOnError: false
-        ) { _ in }
+        ) { [weak self] data in
+            guard let self, self.wheelRoutingGeneration == generation else { return }
+            guard let mode = data?.first else {
+                self.lastWheelConfig = nil
+                completion()
+                return
+            }
+            self.originalHiresWheelMode = mode
+            write()
+        }
+    }
+
+    private func applyThumbRouting(divert: Bool, invert: Bool, generation: Int) {
+        guard let thumbWheelIndex else { return }
+        let write = { [weak self] in
+            guard let self, self.wheelRoutingGeneration == generation else { return }
+            self.ownsThumbWheelRouting = true
+            self.request(
+                featureIndex: thumbWheelIndex,
+                function: 2,
+                params: [divert ? 1 : 0, invert ? 1 : 0],
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { _ in }
+        }
+        if originalThumbWheelRouting != nil {
+            write()
+            return
+        }
+        request(
+            featureIndex: thumbWheelIndex,
+            function: 1,
+            params: [],
+            countsTowardTimeouts: false,
+            dropsPipeOnError: false
+        ) { [weak self] data in
+            guard let self, self.wheelRoutingGeneration == generation else { return }
+            guard let data, data.count >= 2 else {
+                self.lastWheelConfig = nil
+                return
+            }
+            self.originalThumbWheelRouting = (data[0], data[1] & 1)
+            write()
+        }
+    }
+
+    private func restoreWheelRouting(
+        generation: Int,
+        completion: @escaping () -> Void = {}
+    ) {
+        let restoreThumb = { [weak self] in
+            guard let self, self.wheelRoutingGeneration == generation else { return }
+            guard self.ownsThumbWheelRouting,
+                  let thumbWheelIndex = self.thumbWheelIndex,
+                  let originalThumbWheelRouting = self.originalThumbWheelRouting
+            else {
+                self.clearPendingRestoreIfComplete()
+                completion()
+                return
+            }
+            self.request(
+                featureIndex: thumbWheelIndex,
+                function: 2,
+                params: [originalThumbWheelRouting.mode, originalThumbWheelRouting.invert],
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { [weak self] data in
+                guard let self, self.wheelRoutingGeneration == generation else { return }
+                if data != nil {
+                    self.ownsThumbWheelRouting = false
+                    self.originalThumbWheelRouting = nil
+                }
+                self.clearPendingRestoreIfComplete()
+                completion()
+            }
+        }
+        if ownsHiresWheelMode,
+           let hiresWheelIndex,
+           let originalHiresWheelMode {
+            request(
+                featureIndex: hiresWheelIndex,
+                function: 2,
+                params: [originalHiresWheelMode],
+                countsTowardTimeouts: false,
+                dropsPipeOnError: false
+            ) { [weak self] data in
+                guard let self, self.wheelRoutingGeneration == generation else { return }
+                if data != nil {
+                    self.ownsHiresWheelMode = false
+                    self.originalHiresWheelMode = nil
+                }
+                restoreThumb()
+            }
+        } else {
+            restoreThumb()
+        }
     }
 
     /// OpenLogi `getThumbwheelInfo`: native ratchets vs diverted increments per
@@ -1827,36 +2652,45 @@ final class LogitechMXMasterReader {
 
     private func restoreNativeReporting() {
         guard canWriteHIDPP else { return }
-        hidppQueue.removeAll()
-        pending = nil
-        var cids = Set(controls.map(\.cid))
-        cids.formUnion(gestureCIDs)
-        cids.insert(model.gestureCID)
+        let hasOwnedState = !ownedReportingCIDs.isEmpty
+            || ownsHiresWheelMode
+            || ownsThumbWheelRouting
+        if hasOwnedState, let currentRouteID {
+            pendingRestoreRouteID = currentRouteID
+        }
+        confirmedReportingCIDs.removeAll()
+        wheelRoutingGeneration += 1
+        hidppClient.cancelAll()
         if let reprogIndex {
-            for cid in cids {
-                sendHIDPP(featureIndex: reprogIndex, function: 3, params: [
-                    UInt8(cid >> 8), UInt8(cid & 0xFF), Self.clearReportingFlags, 0, 0
-                ])
+            for cid in ownedReportingCIDs.sorted() {
+                guard let original = originalReportingByCID[cid] else { continue }
+                sendHIDPP(
+                    featureIndex: reprogIndex,
+                    function: 3,
+                    params: original.restoreParameters
+                )
             }
         }
-        if let thumbWheelIndex {
-            sendHIDPP(featureIndex: thumbWheelIndex, function: 2, params: [0, 0])
+        if ownsHiresWheelMode,
+           let hiresWheelIndex,
+           let originalHiresWheelMode {
+            sendHIDPP(featureIndex: hiresWheelIndex, function: 2, params: [originalHiresWheelMode])
         }
+        if ownsThumbWheelRouting,
+           let thumbWheelIndex,
+           let originalThumbWheelRouting {
+            sendHIDPP(
+                featureIndex: thumbWheelIndex,
+                function: 2,
+                params: [originalThumbWheelRouting.mode, originalThumbWheelRouting.invert]
+            )
+        }
+        pressed.removeAll()
+        applyPressed([])
     }
 
     private func sendHIDPP(featureIndex: UInt8, function: UInt8, params: [UInt8]) {
-        guard canWriteHIDPP else { return }
-        swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
-        let swID = swCounter
-        var report = [UInt8](repeating: 0, count: 20)
-        report[0] = 0x11
-        report[1] = deviceIndex
-        report[2] = featureIndex
-        report[3] = (function << 4) | (swID & 0x0F)
-        for (offset, byte) in params.prefix(16).enumerated() {
-            report[4 + offset] = byte
-        }
-        writeHIDPPReport(report)
+        hidppClient.send(featureIndex: featureIndex, function: function, parameters: params)
     }
 
     private func writeHIDPPReport(_ report: [UInt8]) {
@@ -1917,70 +2751,17 @@ final class LogitechMXMasterReader {
         dropsPipeOnError: Bool = true,
         completion: @escaping (Data?) -> Void
     ) {
-        hidppQueue.append((
-            featureIndex,
-            function,
-            params,
-            countsTowardTimeouts,
-            allowShortReport,
-            dropsPipeOnError,
-            completion
-        ))
-        pumpHIDPP()
-    }
-
-    private func pumpHIDPP() {
-        guard pending == nil, canWriteHIDPP, let call = hidppQueue.first else { return }
-        swCounter = swCounter == 0x0F ? 0x08 : swCounter + 1
-        let swID = swCounter
-        pending = Pending(
-            swID: swID,
-            countsTowardTimeouts: call.countsTowardTimeouts,
-            dropsPipeOnError: call.dropsPipeOnError,
-            completion: { [weak self] data in
-                guard let self else { return }
-                if !self.hidppQueue.isEmpty {
-                    self.hidppQueue.removeFirst()
-                }
-                call.completion(data)
-                self.pumpHIDPP()
-            }
+        hidppClient.request(
+            featureIndex: featureIndex,
+            function: function,
+            parameters: params,
+            options: LogitechHIDPP2Client.RequestOptions(
+                countsTowardTimeouts: countsTowardTimeouts,
+                allowShortReport: allowShortReport,
+                dropsPipeOnError: dropsPipeOnError
+            ),
+            completion: completion
         )
-        var report = [UInt8](repeating: 0, count: 20)
-        report[0] = 0x11
-        report[1] = deviceIndex
-        report[2] = call.featureIndex
-        report[3] = (call.function << 4) | (swID & 0x0F)
-        for (offset, byte) in call.params.prefix(16).enumerated() {
-            report[4 + offset] = byte
-        }
-        writeHIDPPReport(report)
-        if model.tryShortHIDPPReport, call.allowShortReport, call.params.count <= 3, boltLink == nil {
-            var short = [UInt8](repeating: 0, count: 7)
-            short[0] = 0x10
-            short[1] = deviceIndex
-            short[2] = call.featureIndex
-            short[3] = (call.function << 4) | (swID & 0x0F)
-            for (offset, byte) in call.params.prefix(3).enumerated() {
-                short[4 + offset] = byte
-            }
-            writeHIDPPReport(short)
-        }
-        let epoch = hidppEpoch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self,
-                  self.hidppEpoch == epoch,
-                  let pending = self.pending,
-                  pending.swID == swID
-            else { return }
-            self.pending = nil
-            pending.completion(nil)
-            guard self.ready, pending.countsTowardTimeouts else { return }
-            self.consecutiveTimeouts += 1
-            if self.consecutiveTimeouts >= 3 {
-                self.notePipeDropped("HID++ timed out. Retrying…")
-            }
-        }
     }
 
     private func handleReport(_ report: [UInt8]) {
@@ -1990,30 +2771,14 @@ final class LogitechMXMasterReader {
         if bytes[0] != 0x10 && bytes[0] != 0x11 && bytes.count >= 3 {
             bytes.insert(0x11, at: 0)
         }
-        guard bytes.count >= 4 else { return }
-        if bytes[2] == 0x8F {
-            let wasReady = ready
-            let dropPipe = pending?.dropsPipeOnError ?? true
-            if let pending {
-                self.pending = nil
-                pending.completion(nil)
-            }
-            if wasReady, dropPipe {
-                notePipeDropped("HID++ error. Retrying…")
-            }
+        let result = hidppClient.handle(bytes)
+        guard case let .event(incoming) = result else {
             return
         }
-        let featureIndex = bytes[2]
-        let function = bytes.count > 3 ? bytes[3] >> 4 : 0
-        let swID = bytes.count > 3 ? bytes[3] & 0x0F : 0
-        let payload = Data(bytes.dropFirst(4))
-
-        if swID != 0, let pending, pending.swID == swID {
-            self.pending = nil
-            self.consecutiveTimeouts = 0
-            pending.completion(payload)
-            return
-        }
+        let featureIndex = incoming.featureIndex
+        let function = incoming.function
+        let swID = incoming.softwareID
+        let payload = incoming.payload
         if let reprogIndex, featureIndex == reprogIndex {
             if function == 0 {
                 handleDivertedButtons(payload)
@@ -2075,6 +2840,10 @@ final class LogitechMXMasterReader {
             applyNativeScroll(vertical: nativeVertical, horizontal: nativeHorizontal)
         }
         guard activeGestureCID != nil, length >= xyOffset + 3 else { return }
+        lock.lock()
+        let owner = snapshot.liveGestureOwner
+        lock.unlock()
+        guard owner == .mxHaptic else { return }
         let dx = Self.signExtend12(Int(report[xyOffset]) | (Int(report[xyOffset + 1] & 0x0F) << 8))
         let dy = Self.signExtend12((Int(report[xyOffset + 1]) >> 4) | (Int(report[xyOffset + 2]) << 4))
         guard dx != 0 || dy != 0 else { return }
@@ -2199,6 +2968,7 @@ final class LogitechMXMasterReader {
             offset += 2
             if next.count >= 4 { break }
         }
+        confirmedReportingCIDs.formUnion(next.intersection(ownedReportingCIDs))
         let previous = pressed
         let removed = previous.subtracting(next)
         let added = next.subtracting(previous)
@@ -2210,35 +2980,60 @@ final class LogitechMXMasterReader {
 
         for cid in added {
             guard let button = button(for: cid), isGestureOwner(button) else { continue }
-            if Self.nativeClickCIDs.contains(cid) { continue }
+            if Self.primaryClickCIDs.contains(cid) { continue }
             addHoldSource(button, "hidpp")
         }
         for cid in removed {
             guard let button = button(for: cid) else { continue }
-            if Self.nativeClickCIDs.contains(cid) { continue }
+            if Self.primaryClickCIDs.contains(cid) { continue }
             removeHoldSource(button, "hidpp")
         }
     }
 
     private func applyPressed(_ next: Set<UInt16>) {
         let extras = extraCIDs.keys.sorted().compactMap { cid -> MXMasterControl? in
-            if button(for: cid) != nil { return nil }
+            if knownButton(for: cid) != nil { return nil }
             return MXMasterControl(
                 id: cid,
                 title: extraCIDs[cid] ?? String(format: "CID %04X", cid),
                 down: next.contains(cid)
             )
         }
+        var dynamicButtons: [DeviceButton: Bool] = [:]
+        for (cid, button) in dynamicButtonByCID {
+            dynamicButtons[button] = next.contains(cid)
+        }
+        var capturedButtonStates: [DeviceButton: Bool] = [:]
+        let confirmedControls = controls.filter { confirmedReportingCIDs.contains($0.cid) }
+        for button in Set(confirmedControls.compactMap({ button(for: $0.cid) })) {
+            capturedButtonStates[button] = cids(for: button).contains(where: next.contains)
+        }
+        let isConfirmed = { (button: DeviceButton) in
+            self.cids(for: button).contains(where: self.confirmedReportingCIDs.contains)
+        }
         lock.lock()
-        snapshot.back = next.contains(0x0053)
-        snapshot.forward = next.contains(0x0056) || next.contains(0x0054)
-        snapshot.smartShift = next.contains(0x00C4)
-        snapshot.modeShift = next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)
-        snapshot.side = model.acceptedKinds.contains(.logitechMXMaster4) && next.contains(0x00C3)
-        let hidppHaptic = next.contains(model.gestureCID)
+        if isConfirmed(.mxBack) {
+            snapshot.back = next.contains(0x0053)
+        }
+        if isConfirmed(.mxForward) {
+            snapshot.forward = next.contains(0x0056) || next.contains(0x0054)
+        }
+        if isConfirmed(.mxSmartShift) {
+            snapshot.smartShift = next.contains(0x00C4)
+        }
+        if isConfirmed(.mxModeShift) {
+            snapshot.modeShift = next.contains(0x00D0)
+                || next.contains(0x00ED)
+                || next.contains(0x00FD)
+        }
+        snapshot.side = next.contains(0x00C3)
+        let hidppHaptic = next.contains(0x01A0)
+            || (isHapticPanel && next.contains(model.gestureCID))
         let holding = activeGestureCID != nil
         snapshot.haptic = hidppHaptic || lastHapticBit
         snapshot.extras = extras
+        snapshot.dynamicButtons = dynamicButtons
+        snapshot.capturedButtonStates = capturedButtonStates
         snapshot.gestureDown = snapshot.haptic
             || next.contains(where: { self.gestureCIDs.contains($0) })
             || holding
@@ -2249,9 +3044,9 @@ final class LogitechMXMasterReader {
             ("Forward", next.contains(0x0056) || next.contains(0x0054)),
             ("Mode shift", next.contains(0x00C4)),
             ("DPI", next.contains(0x00D0) || next.contains(0x00ED) || next.contains(0x00FD)),
-            ("Side", model.acceptedKinds.contains(.logitechMXMaster4) && next.contains(0x00C3)),
-            (model.gestureControlTitle, next.contains(model.gestureCID)),
-            ("Gesture", next.contains(where: { gestureCIDs.contains($0) }))
+            ("Gesture button", next.contains(0x00C3)),
+            ("Haptic button", next.contains(model.gestureCID) || next.contains(0x01A0)),
+            ("Gesture hold", next.contains(where: { gestureCIDs.contains($0) }))
         ]
         logged.append(contentsOf: extras.map { ($0.title, $0.down) })
         noteButtons(logged)
@@ -2286,16 +3081,22 @@ final class LogitechMXMasterReader {
         let dx = Int16(bitPattern: Self.be16(payload, 0))
         let dy = Int16(bitPattern: Self.be16(payload, 2))
         usingRawXY = true
+        lastFirmwareXYAt = Date()
         addGestureHID(dx: Double(dx), dy: Double(dy))
         lock.lock()
         snapshot.gestureDX = gestureDelta.width
         snapshot.gestureDY = gestureDelta.height
         if !snapshot.gestureDown {
             snapshot.gestureDown = true
-            snapshot.haptic = true
+            if snapshot.liveGestureOwner == .mxSide || pressed.contains(0x00C3) {
+                snapshot.side = true
+            } else if isHapticPanel {
+                snapshot.haptic = true
+            } else {
+                snapshot.side = true
+            }
         }
         lock.unlock()
-        noteLastEvent(String(format: "raw XY %+d,%+d", dx, dy))
     }
 
     private func handleAnalytics(_ payload: Data) {
@@ -2326,7 +3127,10 @@ final class LogitechMXMasterReader {
     }
 
     private func finishGesture(released: UInt16) {
-        let delta = Self.liveDelta(hid: gestureDelta, pointer: pointerDelta)
+        let delta = LogitechGestureMotion.liveDelta(
+            hid: gestureDelta,
+            pointer: pointerDelta
+        )
         let held = hapticDownAt.map { Date().timeIntervalSince($0) } ?? 0
         hapticDownAt = nil
         let moved = held >= 0.10 && hypot(delta.width, delta.height) >= Self.pointerSwipeDistance
@@ -2356,32 +3160,19 @@ final class LogitechMXMasterReader {
         pointerDelta = .zero
         pointerOrigin = .zero
         usingRawXY = false
+        lastFirmwareXYAt = .distantPast
     }
 
     private func handleMouseValue(_ value: IOHIDValue) {
         let element = IOHIDValueGetElement(value)
         let device = IOHIDElementGetDevice(element)
-        let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? ""
         let vendor = (IOHIDDeviceGetProperty(device, kIOHIDVendorIDKey as CFString) as? Int) ?? 0
         guard vendor == DeviceSupport.logitechVendorID else { return }
+        guard matchesCurrentDirectMouse(device) else { return }
         lock.lock()
         let connected = snapshot.connected
-        let mxName = snapshot.name
         lock.unlock()
-        let looksLikeMX = DeviceSupport.isMXMasterName(product) || DeviceSupport.isMXMasterName(mxName)
-        guard looksLikeMX, connected || DeviceSupport.isMXMasterName(product) else { return }
-        if DeviceSupport.isMXMasterName(product) {
-            lock.lock()
-            if !snapshot.connected {
-                snapshot.connected = true
-                snapshot.name = product
-                snapshot.product = product
-                if snapshot.status.contains("Looking") || snapshot.status.contains("No MX Master") {
-                    snapshot.status = "Mouse connected. Extra buttons come up over HID++."
-                }
-            }
-            lock.unlock()
-        }
+        guard connected else { return }
 
         let page = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
@@ -2409,9 +3200,7 @@ final class LogitechMXMasterReader {
                 snapshot.gestureDown = snapshot.haptic || snapshot.gestureDown || activeGestureCID != nil
             }
         case (0x09, 8):
-            if model.acceptedKinds.contains(.logitechMXMaster4) {
-                snapshot.side = integer != 0
-            }
+            snapshot.side = integer != 0
         case (0x01, 0x30):
             if activeGestureCID != nil, snapshot.liveGestureOwner == .mxHaptic, integer != 0 {
                 usingRawXY = true
@@ -2459,14 +3248,33 @@ final class LogitechMXMasterReader {
             ("Thumb wheel left", snapshot.thumbLeft && now < thumbPulseUntil),
             ("Thumb wheel right", snapshot.thumbRight && now < thumbPulseUntil),
             ("Mode shift", snapshot.smartShift),
-            ("Side", snapshot.side),
-            (model.gestureControlTitle, snapshot.haptic)
+            ("Gesture button", snapshot.side),
+            ("Haptic button", snapshot.haptic)
         ]
         lock.unlock()
         noteButtons(logged)
         if page == 0x09, usage == 7, model.nativeHapticButtonBit != nil {
             applyHapticEdge(down: integer != 0)
         }
+    }
+
+    private func matchesCurrentDirectMouse(_ device: IOHIDDevice) -> Bool {
+        guard boltLink == nil, let hidppDevice else { return false }
+        if CFEqual(device, hidppDevice) { return true }
+        let productID = (IOHIDDeviceGetProperty(
+            device,
+            kIOHIDProductIDKey as CFString
+        ) as? NSNumber)?.intValue
+        let currentProductID = (IOHIDDeviceGetProperty(
+            hidppDevice,
+            kIOHIDProductIDKey as CFString
+        ) as? NSNumber)?.intValue
+        guard productID != nil, productID == currentProductID else { return false }
+        let address = DeviceIdentity.fromHID(device)
+        let currentAddress = DeviceIdentity.fromHID(hidppDevice)
+        return DeviceIdentity.isConcrete(address)
+            && DeviceIdentity.isConcrete(currentAddress)
+            && DeviceIdentity.same(address, currentAddress)
     }
 
     private func noteButtons(_ buttons: [(String, Bool)]) {
@@ -2517,13 +3325,6 @@ final class LogitechMXMasterReader {
         gestureDelta.height += CGFloat(dy * factor)
     }
 
-    private static func liveDelta(hid: CGSize, pointer: CGSize) -> CGSize {
-        if hid.width != 0 || hid.height != 0 {
-            return hid
-        }
-        return pointer
-    }
-
     private static func classify(delta: CGSize, tapLimit: CGFloat) -> DeviceButton {
         let dx = delta.width
         let dy = delta.height
@@ -2536,24 +3337,14 @@ final class LogitechMXMasterReader {
         return dx < 0 ? .mxGestureLeft : .mxGestureRight
     }
 
-    private func gestureOwner(forOtherMouse event: CGEvent) -> DeviceButton? {
-        switch event.getIntegerValueField(.mouseEventButtonNumber) {
-        case 2: return .mxMiddle
-        case 3: return .mxBack
-        case 4: return .mxForward
-        case 5, 6:
-            return model.nativeHapticButtonBit != nil ? .mxHaptic : nil
-        case 7:
-            return model.acceptedKinds.contains(.logitechMXMaster4) ? .mxSide : nil
-        default: return nil
-        }
+    private func button(for cid: UInt16) -> DeviceButton? {
+        dynamicButtonByCID[cid] ?? knownButton(for: cid)
     }
 
-    private func button(for cid: UInt16) -> DeviceButton? {
+    private func knownButton(for cid: UInt16) -> DeviceButton? {
+        if cid == 0x00C3 { return .mxSide }
         if cid == model.gestureCID { return .mxHaptic }
-        if cid == 0x00C3, model.acceptedKinds.contains(.logitechMXMaster4) {
-            return .mxSide
-        }
+        if cid == 0x01A0 { return .mxHaptic }
         switch cid {
         case 0x0050: return .mxLeft
         case 0x0051: return .mxRight
@@ -2562,14 +3353,14 @@ final class LogitechMXMasterReader {
         case 0x0054, 0x0056: return .mxForward
         case 0x00C4: return .mxSmartShift
         case 0x00D0, 0x00ED, 0x00FD: return .mxModeShift
-        case 0x01A0: return .mxHaptic
-        case 0x00C3, 0x00D6, 0x00D7: return .mxGesture
+        case 0x00D6, 0x00D7: return .mxGesture
         default: return nil
         }
     }
 
     private func title(for cid: UInt16, task _: UInt16) -> String {
-        if cid == model.gestureCID { return model.gestureControlTitle }
+        if cid == 0x00C3 { return DeviceButton.mxSide.title }
+        if cid == 0x01A0 || cid == model.gestureCID { return DeviceButton.mxHaptic.title }
         if let button = button(for: cid) { return button.title }
         switch cid {
         case 0x00D4: return "Thumb wheel"
@@ -2586,14 +3377,17 @@ final class LogitechMXMasterReader {
         data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
     }
 
-    private func reportingFlags(for control: ControlInfo) -> UInt8 {
+    private func reportingFlags(for control: LogitechHIDPPControlDescriptor) -> UInt8 {
         if control.cid == model.gestureCID {
             return Self.gestureReportingFlags
         }
-        if control.cid == 0x00C3, model.acceptedKinds.contains(.logitechMXMaster4) {
-            return Self.buttonReportingFlags
+        if control.cid == 0x00C3 {
+            return gestureOwnerButtons.contains(.mxSide)
+                ? Self.gestureReportingFlags
+                : Self.buttonReportingFlags
         }
-        if control.rawXY || Self.knownGestureCIDs.contains(control.cid) {
+        if gestureOwnerButtons.contains(button(for: control.cid) ?? .mxSide),
+           control.supportsRawXY || Self.knownGestureCIDs.contains(control.cid) {
             return Self.gestureReportingFlags
         }
         return Self.buttonReportingFlags
@@ -2609,6 +3403,12 @@ final class LogitechMXMasterReader {
     }
 
     private func cids(for button: DeviceButton) -> [UInt16] {
+        let dynamic = dynamicButtonByCID.compactMap { cid, mapped in
+            mapped == button ? cid : nil
+        }
+        if !dynamic.isEmpty {
+            return dynamic.sorted()
+        }
         switch button {
         case .mxLeft: return [0x0050]
         case .mxRight: return [0x0051]
@@ -2618,12 +3418,13 @@ final class LogitechMXMasterReader {
         case .mxSmartShift: return [0x00C4]
         case .mxModeShift: return [0x00D0, 0x00ED, 0x00FD]
         case .mxSide: return [0x00C3]
-        case .mxHaptic: return [model.gestureCID]
+        case .mxHaptic: return isHapticPanel ? [model.gestureCID] : []
         default: return []
         }
     }
 
-    private static let knownGestureCIDs: Set<UInt16> = [0x00C3, 0x00D6, 0x00D7]
+    private static let knownGestureCIDs: Set<UInt16> = [0x01A0, 0x00C3, 0x00D6, 0x00D7]
+    private static let primaryClickCIDs: Set<UInt16> = [0x0050, 0x0051]
     private static let nativeClickCIDs: Set<UInt16> = [0x0050, 0x0051, 0x0052]
     private static let wheelCIDs: Set<UInt16> = [0x00D4, 0x00D7]
 }
@@ -2632,7 +3433,7 @@ final class LogitechMXMasterReader {
 /// fails, so MX4 used to miss left/right/wheel while 3S still lit up.
 private enum MXClickProbe {
     private static let lock = NSLock()
-    private static var readers: [ObjectIdentifier: LogitechMXMasterReader] = [:]
+    private static var readers: [ObjectIdentifier: LogitechMouseReader] = [:]
     private static var tap: CFMachPort?
     private static var source: CFRunLoopSource?
     private static var scrollTap: CFMachPort?
@@ -2664,7 +3465,7 @@ private enum MXClickProbe {
         return Unmanaged.passUnretained(event)
     }
 
-    static func add(_ reader: LogitechMXMasterReader) {
+    static func add(_ reader: LogitechMouseReader) {
         lock.lock()
         readers[ObjectIdentifier(reader)] = reader
         let needsTap = tap == nil
@@ -2715,7 +3516,7 @@ private enum MXClickProbe {
         lock.unlock()
     }
 
-    static func remove(_ reader: LogitechMXMasterReader) {
+    static func remove(_ reader: LogitechMouseReader) {
         lock.lock()
         readers.removeValue(forKey: ObjectIdentifier(reader))
         let empty = readers.isEmpty

@@ -1,42 +1,34 @@
-# Only the haptic pad runs gestures
+# Gesture ownership follows raw-XY capability
 
-## Current rule
+## Resolved rule (2026-09-08)
 
-**Gestures is haptic-pad only.** Profiles do not offer Gestures on Back, Forward, Smart Shift, Mode / DPI, middle, left, or right. Those stay ordinary click bindings.
+Profiles offers **Gestures** for every Logitech mouse control whose Reprog descriptor is both divertable and raw-XY capable. Defaults are the **gesture button** (`0x00C3` on 3 / 3S / 4) and the MX4 **haptic button**. Middle, Back, Forward, Mode shift, and generic Extra controls join the **Gesture-capable controls** subcard only when firmware reports support.
 
-Click-as-gesture is parked. Hardware and failed attempts: [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
+Left and right click are always excluded. Main-wheel rotation also stays native.
 
-## Why other buttons cannot share the pad path
+## How it works
 
-The profile can store a `GestureSet` per button, but only the haptic pad has press + XY on the same report (`0x02` bit `0x40` + 12-bit X/Y). Extra buttons are clicks. Hold-Back-and-move uses the desk laser, which is a different sensor.
-
-Diverting left/right/middle over HID++ (`0x0050` / `0x0051` / `0x0052`) can steal the system pointer.
-
-## How the app enforces haptic-only
-
-| Layer | What it does |
+| Layer | Current behavior |
 |---|---|
-| Profiles UI | Gestures appears only on the Haptic picker. Footer: haptic is the only Gestures button. |
-| `MappingProfile.setBinding` | Non-haptic `.gestures` is coerced to browser Back / Forward or `.none`. |
-| `setGestureSet` / `gestureSet(for:)` | No-op / nil unless the button is `.mxHaptic`. |
-| `mxGestureOwners` | `{.mxHaptic}` or empty. Never Back, etc. |
-| Load | `restrictGesturesToHapticPad()` on every saved MX profile. |
-| Reader | `setGestureOwners` intersects with `{.mxHaptic}`. |
-| Engine | `processGesture` runs `HoldGesture` only when `gestureOwner == .mxHaptic` and that binding is Gestures. |
+| Feature probe | `LogitechHIDPPControlDescriptor.canOwnGestures` requires divertable + raw XY. |
+| Profiles UI | Capability-backed controls are separated from ordinary Buttons. |
+| Persistence | `MappingProfile` stores independent `GestureSet` values per control; loading no longer deletes non-haptic owners. |
+| Reader | `setGestureOwners` maps each owner to its CID and changes reporting between plain divert (`0x03`) and `0x33` raw XY. Dedicated `0x00C3` is always diverted; raw XY is only while it owns Gestures. |
+| Engine | `ControlEngine` resolves the gesture owner from the normalized frame and uses that owner’s gesture map. |
 
-Default MX bindings: haptic = Gestures (window navigation), Back = browser back, Forward = browser forward.
+Raw-XY reports do not identify which held CID generated motion. The first held gesture owner owns the stream; overlap motion is ignored until only one owner remains.
 
-## Earlier bug (UI-only Gestures)
+## Generic Logitech mice
 
-Before the park, Profiles said “Assign Gestures to any button.” Setting Back to Gestures did not start a hold-to-swipe session. Only the haptic pad ran.
+Unknown Reprog controls are assigned stable Extra slots by sorted CID. A control is diverted only when its active profile needs capture. Turning Control this Mac off restores the reporting state captured before Control Box took ownership (`0x22` plus the original value bits when native).
 
-Causes that still matter if anyone reopens this:
+## Historical failure
 
-- The reader started sessions from the haptic pad only.
-- A Back CID in `gestureCIDs` still called `applyHapticEdge`, which labeled the owner as haptic and then ended when the pad bit was up.
-- After HID++ attach, Back/Forward CGEvents were ignored (`!ready`), so a missed HID++ edge never started a session.
-- Form pickers for Preset / Click / directions reused the same identity, so editing Back also rewrote Haptic. Haptic pickers now use `.id` per button/slot; keep that if Gestures stays on haptic only.
+The earlier UI-only implementation allowed selecting Gestures on Back without teaching the reader to arm that CID or attribute its hold. It therefore continued routing every swipe as haptic. The fix had to cover the feature probe, profile migration, reporting flags, hold ownership, frame owner, and UI identity together.
 
 ## Do not
 
-HID++-divert the standard click CIDs to make left/right/middle into gesture buttons. Do not put Gestures back on those pickers until laser follow is actually solved.
+- Never make left or right click gesture owners.
+- Never force raw XY when the control table does not advertise it.
+- Never persist diversion or clear it with zero; restore with valid clear flags `0x22`.
+- Never pin the pointer for the gesture button. OpenLogi uses HID++ raw XY for that CID; cursor-travel swipe is not the Logitech path.

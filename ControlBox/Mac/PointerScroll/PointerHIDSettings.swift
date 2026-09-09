@@ -59,7 +59,7 @@ enum PointerHIDSettings {
         let client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault)
         guard let services = IOHIDEventSystemClientCopyServices(client) as? [IOHIDServiceClient] else { return }
         for service in services {
-            guard matchesMX4PointerService(service, vendor: vendor, product: product) else { continue }
+            guard matchesPointerService(service, vendor: vendor, product: product) else { continue }
             apply(to: service, resolutionFixed: resolutionFixed, accelerationFixed: accelerationFixed)
         }
     }
@@ -104,20 +104,24 @@ enum PointerHIDSettings {
         let usage = (IOHIDServiceClientCopyProperty(service, kIOHIDPrimaryUsageKey as CFString) as? NSNumber)?.intValue
         if usagePage == 0x0D { return false }
         let productID = (IOHIDServiceClientCopyProperty(service, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue
-        if productID == MXMasterHIDDiscovery.boltReceiverProductID { return false }
+        if let productID, LogitechHIDPP2.knownReceiverProductIDs.contains(productID) {
+            return false
+        }
         if usagePage == 0x01, usage == 0x02 { return true }
         if usagePage == 0x01, usage == 0x01 { return true }
         return false
     }
 
-    private static func matchesMX4PointerService(
+    private static func matchesPointerService(
         _ service: IOHIDServiceClient,
         vendor: Int?,
         product: Int?
     ) -> Bool {
         let serviceVendor = (IOHIDServiceClientCopyProperty(service, kIOHIDVendorIDKey as CFString) as? NSNumber)?.intValue
         let serviceProduct = (IOHIDServiceClientCopyProperty(service, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue
-        if let serviceVendor, let serviceProduct, MXMaster4Support.productIDs.contains(serviceProduct) {
+        if let serviceVendor,
+           let serviceProduct,
+           LogitechMouseRegistry.master4ProductIDs.contains(serviceProduct) {
             return serviceVendor == 0x046D
         }
         if let vendor, let product, serviceVendor == vendor, serviceProduct == product {

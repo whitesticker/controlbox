@@ -2,7 +2,7 @@
 
 ## Symptom
 
-On MX Master 4, Calibration lights extra HID++ buttons (Back, Forward, Side, Mode) and the haptic pad. Left click, right click, and wheel motion stay idle. 3S on the same Mac still lights those controls.
+On MX Master 4, Calibration lights extra HID++ buttons (Back, Forward, Gesture, Mode) and the haptic pad. Left click, right click, and wheel motion stay idle. 3S on the same Mac still lights those controls.
 
 ## Cause
 
@@ -25,6 +25,6 @@ Open the standard Logitech mouse collection (`0x01` / `0x02`) to fix this. Do no
 
 ## Related
 
-- [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) — HID++ extra buttons, including MX4 Side
+- [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) — HID++ extra buttons, including MX4 gesture button
 - [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) — report `0x02` layout
 - [hid-open-seize-dual-mouse.md](hid-open-seize-dual-mouse.md)

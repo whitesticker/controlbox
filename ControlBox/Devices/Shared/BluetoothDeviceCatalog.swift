@@ -10,6 +10,7 @@ enum DeviceKind: String, Codable, Equatable {
     case logitechMXMaster3
     case logitechMXMaster3S
     case logitechMXMaster4
+    case logitechMouse
     case logitechMXMechanical
     case logitechMXMechanicalMini
     case unsupported
@@ -18,7 +19,8 @@ enum DeviceKind: String, Codable, Equatable {
 
     var isMXMaster: Bool {
         switch self {
-        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
+             .logitechMouse:
             return true
         default:
             return false
@@ -42,7 +44,8 @@ enum DeviceKind: String, Codable, Equatable {
 
     var usesMXMasterHIDPP: Bool {
         switch self {
-        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
+             .logitechMouse:
             return true
         default:
             return false
@@ -57,6 +60,7 @@ enum DeviceKind: String, Codable, Equatable {
         case .logitechMXMaster, .logitechMXMaster4: return "MX Master 4"
         case .logitechMXMaster3: return "MX Master 3"
         case .logitechMXMaster3S: return "MX Master 3S"
+        case .logitechMouse: return "Logitech Mouse"
         case .logitechMXMechanical: return "MX Mechanical"
         case .logitechMXMechanicalMini: return "MX Mechanical Mini"
         case .unsupported: return "Not supported yet"
@@ -74,7 +78,9 @@ enum DeviceKind: String, Codable, Equatable {
         case .logitechMXMaster3S:
             return "Pointer, wheel, thumb, and the gesture button. Tap is click; hold then move is swipe."
         case .logitechMXMaster, .logitechMXMaster4:
-            return "Pointer, wheel, thumb, Side, and the haptic pad. Control this Mac is a mouse toggle."
+            return "Pointer, wheel, thumb, Gesture, and the haptic pad. Control this Mac is a mouse toggle."
+        case .logitechMouse:
+            return "Pointer, scrolling, and the controls this mouse reports over HID++."
         case .logitechMXMechanical, .logitechMXMechanicalMini:
             return "Backlight, lighting effect, battery saving, and battery. Keys stay native."
         case .unsupported:
@@ -86,7 +92,8 @@ enum DeviceKind: String, Codable, Equatable {
 
     var sidebarType: DeviceSidebarType {
         switch self {
-        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4:
+        case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
+             .logitechMouse:
             return .mouse
         case .dualSense, .dualSenseEdge:
             return .gamepad
@@ -106,7 +113,7 @@ enum DeviceKind: String, Codable, Equatable {
         case .appleTVRemote:
             return "Apple"
         case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
-             .logitechMXMechanical, .logitechMXMechanicalMini:
+             .logitechMouse, .logitechMXMechanical, .logitechMXMechanicalMini:
             return "Logitech"
         case .unsupported:
             return "Other"
@@ -179,12 +186,17 @@ enum DeviceSupport {
     static let appleVendorID = 0x004C
     static var appleTVRemoteProductIDs: Set<Int> { AppleTVRemoteGenerations.productIDs }
     static let logitechVendorID = 0x046D
-    static let mxMasterProductIDs: Set<Int> =
-        MXMaster3Support.productIDs
-            .union(MXMaster4Support.productIDs)
+    static let mxMasterProductIDs = LogitechMouseRegistry.knownProductIDs
     static var mxKeyboardProductIDs: Set<Int> { MXMechanicalSupport.productIDs }
 
-    static func classify(name: String, vendorID: Int?, productID: Int?) -> DeviceKind {
+    static func classify(
+        name: String,
+        vendorID: Int?,
+        productID: Int?,
+        usagePage: Int? = nil,
+        usage: Int? = nil,
+        hasLogitechHIDPP: Bool = false
+    ) -> DeviceKind {
         if vendorID == sonyVendorID {
             if productID == dualSenseProductID { return .dualSense }
             if productID == dualSenseEdgeProductID { return .dualSenseEdge }
@@ -196,9 +208,11 @@ enum DeviceSupport {
             if MXMechanicalSupport.productIDs.contains(productID) {
                 return MXMechanicalSupport.kind(productID: productID, product: name)
             }
-            if MXMaster4Support.productIDs.contains(productID) { return .logitechMXMaster4 }
-            if MXMaster3Support.productIDs.contains(productID) {
-                return MXMaster3Support.kind(productID: productID, product: name)
+            if LogitechMouseRegistry.knownProductIDs.contains(productID) {
+                return LogitechMouseRegistry.kind(productID: productID, product: name)
+            }
+            if usagePage == 0x01, usage == 0x02, hasLogitechHIDPP {
+                return .logitechMouse
             }
         }
 
@@ -217,11 +231,7 @@ enum DeviceSupport {
     }
 
     static func mxKind(from name: String) -> DeviceKind {
-        let lowered = name.lowercased()
-        if lowered.contains("3s") || lowered.contains("3 s") { return .logitechMXMaster3S }
-        if lowered.contains("master 4") { return .logitechMXMaster4 }
-        if lowered.contains("master 3") { return .logitechMXMaster3 }
-        return .logitechMXMaster4
+        LogitechMouseRegistry.kind(productID: 0, product: name)
     }
 
     static func isMXMasterName(_ name: String) -> Bool {
@@ -273,6 +283,8 @@ enum DeviceIdentity {
 
     static func compatibleLogitechKinds(_ lhs: DeviceKind, _ rhs: DeviceKind) -> Bool {
         if lhs == rhs { return true }
+        if lhs == .logitechMouse, rhs.isMXMaster { return true }
+        if rhs == .logitechMouse, lhs.isMXMaster { return true }
         if lhs.isMXMaster3Family, rhs.isMXMaster3Family { return true }
         if (lhs == .logitechMXMaster4 || lhs == .logitechMXMaster),
            (rhs == .logitechMXMaster4 || rhs == .logitechMXMaster) {
@@ -299,19 +311,9 @@ enum DeviceIdentity {
             return same(lhs.address, rhs.address)
         }
         if same(lhs.address, rhs.address) { return true }
-        let sameWPID = wpidEqual(lhs.wirelessProductID, rhs.wirelessProductID)
-        // Easy-Switch: one unit on BLE and Bolt. HID product name is often
-        // truncated ("MX MCHNCL M") while Bolt uses the full title.
-        if sameWPID, lhs.connection != rhs.connection {
-            return true
-        }
-        guard logitechNamesEquivalent(lhs.name, rhs.name) else { return false }
-        if sameWPID { return true }
-        return lhs.connection != rhs.connection
-            || isBoltWPID(lhs.address)
-            || isBoltWPID(rhs.address)
-            || !isConcrete(lhs.address)
-            || !isConcrete(rhs.address)
+        // WPID identifies a model, not one physical unit. Cross-radio collapse
+        // requires the HID++ unit ID (or a concrete matching address) above.
+        return false
     }
 
     static func logitechNamesEquivalent(_ lhs: String, _ rhs: String) -> Bool {
@@ -340,11 +342,6 @@ enum DeviceIdentity {
         if leftTruncated, !rightTruncated { return right }
         if rightTruncated, !leftTruncated { return left }
         return left.count >= right.count ? left : right
-    }
-
-    private static func wpidEqual(_ lhs: Int?, _ rhs: Int?) -> Bool {
-        guard let lhs, lhs != 0, let rhs, rhs != 0 else { return false }
-        return lhs == rhs
     }
 
     static func unitToken(_ unit: UInt32) -> String {
@@ -408,10 +405,21 @@ enum BluetoothDeviceCatalog {
         var seen = Set<String>()
 
         for record in hid.records {
+            let isGenericLogitechEndpoint =
+                record.vendorID == DeviceSupport.logitechVendorID
+                && LogitechHIDPPDiscovery.collections.contains {
+                    $0.usagePage == record.usagePage && $0.usage == record.usage
+                }
+                && !DeviceSupport.mxMasterProductIDs.contains(record.productID)
+                && !DeviceSupport.mxKeyboardProductIDs.contains(record.productID)
+            if isGenericLogitechEndpoint { continue }
             let kind = DeviceSupport.classify(
                 name: record.product,
                 vendorID: record.vendorID,
-                productID: record.productID
+                productID: record.productID,
+                usagePage: record.usagePage,
+                usage: record.usage,
+                hasLogitechHIDPP: hid.logitechHIDPPProductIDs.contains(record.productID)
             )
             let name = record.product.isEmpty
                 ? (kind.isSupported ? kind.title : "Unknown device")
@@ -470,10 +478,13 @@ private struct HIDRecord {
     var vendorID: Int
     var productID: Int
     var address: String
+    var usagePage: Int
+    var usage: Int
 }
 
 private struct HIDNameIndex {
     var records: [HIDRecord]
+    var logitechHIDPPProductIDs: Set<Int>
 
     static func load() -> HIDNameIndex {
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -500,15 +511,20 @@ private struct HIDNameIndex {
                 kIOHIDProductIDKey as String: productID
             ])
         }
+        matching.append(contentsOf: LogitechHIDPPDiscovery.hidManagerMatches())
         IOHIDManagerSetDeviceMatchingMultiple(manager, matching as CFArray)
         IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         defer { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
 
         var records: [HIDRecord] = []
+        var logitechHIDPPProductIDs = Set<Int>()
         if let copied = IOHIDManagerCopyDevices(manager) {
             for case let device as IOHIDDevice in (copied as NSSet) {
                 let productID = intProperty(kIOHIDProductIDKey as String, device: device)
-                if productID == MXMasterHIDDiscovery.boltReceiverProductID { continue }
+                if LogitechHIDPPDiscovery.receiverProductIDs.contains(productID) { continue }
+                if LogitechHIDPPDiscovery.collection(for: device) != nil {
+                    logitechHIDPPProductIDs.insert(productID)
+                }
                 let page = intProperty(kIOHIDPrimaryUsagePageKey as String, device: device)
                 let usage = intProperty(kIOHIDPrimaryUsageKey as String, device: device)
                 if page == 1 && (usage == 6 || usage == 7) { continue }
@@ -519,12 +535,17 @@ private struct HIDNameIndex {
                         product: product,
                         vendorID: vendorID,
                         productID: productID,
-                        address: DeviceIdentity.fromHID(device)
+                        address: DeviceIdentity.fromHID(device),
+                        usagePage: page,
+                        usage: usage
                     )
                 )
             }
         }
-        return HIDNameIndex(records: records)
+        return HIDNameIndex(
+            records: records,
+            logitechHIDPPProductIDs: logitechHIDPPProductIDs
+        )
     }
 
     private static func stringProperty(_ key: String, device: IOHIDDevice) -> String? {

@@ -19,12 +19,12 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [x] 100ms arm delay so a haptic tap is not a swipe (see `haptic-tap-starts-swipe.md`)
 - [x] App Exposé is a discrete down-swipe, not live DockSwipe (see `dockswipe-down-skips-app-expose.md`)
 - [x] Media gesture left/right fires previous/next track (see `media-gesture-skip-dead.md`)
-- [x] Haptic pad is the only Gestures owner (click-as-gesture on Back / etc. is parked; see `haptic-vs-back-gesture.md`)
+- [x] Gestures owners are capability-gated (divertable + raw XY). Defaults are the gesture button and MX4 haptic button. See [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md).
 - [ ] Watch for mid-swipe DockSwipe flicker after the 100ms arm delay (absolute progress + teleport reject are in; 180ms release debounce is not)
 - [x] Live Space swipe commits the nearest desktop, not a reverse-tick cancel (see [dockswipe-commit-nearest.md](dockswipe-commit-nearest.md))
 - [x] Split MX 3 / 3S / 4 into separate kinds; keep only MX4 HID++ attached for now
 - [x] MX Master 3 / 3S reader (same CID table; BLE `0xB034` measured). Separate module from MX4.
-- [x] MX4 Side button CID `0x00C3` (not the 3S gesture; divert `0x03`). See [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md).
+- [x] MX4 **gesture button** CID `0x00C3` (same thumb button as 3S). Divert `0x33` when it owns Gestures; do not pin. See [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md), [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md).
 - [x] MX4 left / right / wheel in Calibration (report `0x02` + one shared click tap). See [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md).
 - [x] Focused Control Box does not inject (including system-nav gestures). See [focused-host-still-injects.md](focused-host-still-injects.md).
 - [x] Main wheel stays native vertical scroll; thumb wheel uses one delta-driven mode and old direction bindings migrate. See [mx-wheel-modes.md](mx-wheel-modes.md).
@@ -48,7 +48,7 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 - [x] Logi Bolt pair / unpair: **Add Device → Logi Bolt** lists Online / Not connected per receiver; Add discovers advertising devices, then mouse click string or keyboard passkey. Bolt-only MX / Mechanical talk uses the same vendor HID++ pipe. See [logi-bolt-receiver.md](logi-bolt-receiver.md).
 - [ ] Confirm Unifying MX Master 3 (`0x4082`) if one shows up — same module, untested radio
 - [ ] Logi Options+ / LogiPluginService occupying HID++
-- [ ] Click-as-gesture on Back / Forward / etc. (desk laser, not the pad). Parked; haptic only for now.
+- [ ] Back / Forward / Middle as Gestures still need a laser-follow pass on each family that advertises raw XY. Do not treat them as a second haptic pad. See [haptic-vs-back-gesture.md](haptic-vs-back-gesture.md).
 - [x] Per-app mouse Control profiles (frontmost app switches mappings). Design: [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
 - [x] **Delete device does not leave the sidebar.** Removing a device drops that **sidebar** row (and its remembered record) even if it is still connected.
 - [x] **Device management and onboarding.** Add Device: **Add** when there is no Control Box page, **Settings** when there is. Connected hardware is not on the sidebar until Add. Product shape is in [roadmap.md](roadmap.md).
@@ -59,7 +59,7 @@ Open items for MX Master / HID++work. 3S and 4 can stay attached at once (separa
 
 Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as a device.
 
-- [ ] **More Logitech devices** — probe HID++ features; not only MX 3/3S/4 / Mechanical product IDs.
+- [x] **More Logitech HID++ mice** — capability-driven `LogitechMouseReader` plus audited discovery; not an MX-only product-ID allowlist. Non-Logitech mice are later. See [logitech-generic-hidpp.md](logitech-generic-hidpp.md).
 - [x] **Logi Bolt — talk** — one catalog owns `C548` vendor HID++ only; walk slots 1–6; prefer BLE if both radios are up; MX4 haptic from HID++ (not report `0x02`). Same Easy-Switch unit is one sidebar row.
 - [x] **Easy-Switch channels** — MX mouse and keyboard **device pages** list three channels from `0x1814` / `0x1815` (BLE or Bolt). Section stays up with **Pending**; **Refresh** re-reads. No forget-host UI.
 - [x] **Logi Bolt — pair** — **Add Device** sheet, Bluetooth / Logi Bolt panels (discover list / passkey / unpair). Occupied slots split Online / Not connected. Not Other. Not a Devices sidebar row.
@@ -81,8 +81,8 @@ Unsigned Debug compile on GitHub Actions plus hard-constraint greps. One job is 
 
 - [x] **Compile check** — `xcodebuild` Debug, `CODE_SIGNING_ALLOWED=NO` (local Debug stays Apple Development).
 - [x] **Constraint greps** — `pairedDevices()`, ad-hoc `CODE_SIGN_IDENTITY`, Logitech HID seize (Apple TV seize is still allowed).
-- [ ] **Unit tests** — XCTest on ControlBoxCore first (gesture math, HID++ flags, arrangement identity). Run them in CI once they exist.
+- [x] **Unit tests** — ControlBoxCore XCTest for HID++ encoding, capabilities, and gesture-owner migration. CI runs `swift test --package-path Packages/ControlBoxCore`.
 - [ ] **Release configuration** — CI is Debug-only today; add a Release build so shipping flags get compiled too.
 - [ ] **Pin Xcode** — lock the runner image / Xcode version so a silent GitHub image bump does not fail `main` overnight.
 
-Product-facing work (mic, live gesture HUD, MX Keys remapping, generic mouse/gamepad mapper, MX4 Side-as-Gestures, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 swipe feel, product page, settings export, Pointer & Scroll vs System Settings, Sound per-app icons) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 Side, Caps Lock, window management, Dock Previews, per-app mouse and DualSense profiles, SmartShift, thumb-wheel sensitivity, and Add Device onboarding are shipped. Media skip / play / mute already show an action HUD.
+Product-facing work (mic, live gesture HUD, MX Keys remapping, generic non-Logitech mapper, window management extras, Dropover-style shelf, PopClip-style selection bar, calibration art, MX4 haptic swipe feel, product page, settings export, Pointer & Scroll vs System Settings, Sound per-app icons) lives in [roadmap.md](roadmap.md). MX Mechanical settings, MX4 gesture button, Caps Lock, window management, Dock Previews, per-app mouse and DualSense profiles, SmartShift, thumb-wheel sensitivity, and Add Device onboarding are shipped. Media skip / play / mute already show an action HUD.

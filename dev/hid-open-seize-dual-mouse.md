@@ -6,7 +6,7 @@ With MX Master 4 and MX Master 3S both connected, the app crashed on launch or b
 
 ## Cause
 
-`LogitechMXMasterReader` matched all Logitech vendor collections and:
+The old MX reader matched all Logitech vendor collections and:
 
 - Opened every matching HID++ / mouse / consumer interface at once
 - Sometimes called `IOHIDManagerOpen(..., kIOHIDOptionsTypeSeizeDevice)`, which seizes **all** matching devices

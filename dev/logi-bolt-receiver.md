@@ -29,7 +29,7 @@ Diverting haptic CID `0x01A0` on the receiver talked to the keyboard. That is wh
 
 `LogiBoltCatalog` owns `C548` for the life of the app (pair, list, and talk). BLE product-ID readers stay first: if the same unit is also on Bluetooth, the Bolt slot is not attached. Identity is unit ID, then WPID on BLE vs Bolt (HID names like `MX MCHNCL M` do not have to match the Bolt title), then name. One `DeviceRecord` / sidebar row.
 
-`LogitechMXMasterReader` already walks HID++ indices `0xFF`, `0x00`, then 1–6 on BLE. On Bolt the slot is known, so the walk is that index only. BLE MX4 haptic still comes from native report `0x02` bit `0x40` on the **same** device as HID++ ([mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md)). On Bolt, haptic / gesture XY come from diverted HID++ (`0x01A0`, Force Sensing, analytics), not from parsing `0x02` on `C548`. Clicks still ride the shared `CGEvent` tap.
+`LogitechMouseReader` already walks HID++ indices `0xFF`, `0x00`, then 1–6 on BLE. On Bolt the slot is known, so the walk is that index only. BLE MX4 haptic still comes from native report `0x02` bit `0x40` on the **same** device as HID++ ([mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md)). On Bolt, haptic / gesture XY come from diverted HID++ (`0x01A0`, Force Sensing, analytics), not from parsing `0x02` on `C548`. Clicks still ride the shared `CGEvent` tap.
 
 ## Feasible shape
 
@@ -86,7 +86,7 @@ Do not open the mouse collection (`0x01` / `0x02`) for this capture.
 
 - Treat `C548` as “the MX Master 4.”
 - Assume slot 1 is the mouse.
-- Match Bolt by adding more wireless IDs to `MXMaster3Support` / `MXMaster4Support`.
+- Do not match Bolt by adding per-model mouse modules; mouse support is capability-driven and exceptional data belongs only in `LogitechMouseRegistry`.
 - Open or seize the receiver mouse collection.
 - Let every family matcher attach `C548`.
 - Apply pointer DPI / speed to the receiver as a whole.

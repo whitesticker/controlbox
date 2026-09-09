@@ -6,9 +6,12 @@ public struct HoldGesture {
     public static let armDelay: TimeInterval = 0.10
 
     public private(set) var owner: DeviceButton?
+    public private(set) var activeSet: GestureSet?
     public var isActive: Bool { owner != nil }
 
-    private var set: GestureSet?
+    private var set: GestureSet? {
+        activeSet
+    }
     private var startedAt: Date?
     private var lastX = 0.0
     private var lastY = 0.0
@@ -34,7 +37,7 @@ public struct HoldGesture {
     public mutating func begin(owner: DeviceButton, set: GestureSet) {
         cancel()
         self.owner = owner
-        self.set = set
+        self.activeSet = set
         startedAt = Date()
     }
 
@@ -91,7 +94,7 @@ public struct HoldGesture {
 
     private mutating func reset() {
         owner = nil
-        set = nil
+        activeSet = nil
         startedAt = nil
         lastX = 0
         lastY = 0

@@ -179,21 +179,18 @@ final class DualSenseMonitor {
     private var lastLiveAppProfileID: [String: String] = [:]
     private let dualSense = DualSenseSession()
     private let appleTV = AppleTVRemoteSession()
-    private let keyboard = MXKeyboardSession()
-    private let mx3Reader = LogitechMXMasterReader(model: MXMaster3Support.model)
-    private let mx4Reader = LogitechMXMasterReader(model: MXMaster4Support.model)
+    private let logitech = LogitechDeviceSession()
     private let mouseScrollTap = MouseScrollTap()
     private var boltCatalog: LogiBoltCatalog?
 
-    private var mxReaders: [LogitechMXMasterReader] { [mx3Reader, mx4Reader] }
-    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV, keyboard] }
+    private var keyboard: any LogitechKeyboardDevice { logitech.keyboard }
+    private var mxReaders: [any LogitechMouseDevice] { logitech.mouseReaders }
+    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV, logitech] }
 
     func start() {
         guard !didStart else { return }
         didStart = true
         familySessions.forEach { $0.start() }
-        mx3Reader.start()
-        mx4Reader.start()
         if let catalog = boltCatalog {
             catalog.keepAlive = true
             catalog.startWatching()
@@ -367,9 +364,6 @@ final class DualSenseMonitor {
             self.workspaceObserver = nil
         }
         familySessions.forEach { $0.stop() }
-        mx3Reader.stop()
-        mx4Reader.stop()
-        keyboard.detachBolt()
         mouseScrollTap.stop()
         mxWheelEngines.values.forEach { $0.reset() }
         WindowGrab.stop()
@@ -412,89 +406,7 @@ final class DualSenseMonitor {
 
     private func syncBoltTalk() {
         guard let catalog = boltCatalog else { return }
-        if catalog.isTalkSuspended {
-            mx3Reader.detachBolt()
-            mx4Reader.detachBolt()
-            keyboard.detachBolt()
-            return
-        }
-        let online = catalog.receivers.flatMap(\.devices).filter { $0.online && $0.deviceKind.isSupported }
-        syncBoltMouse(mx3Reader, online.filter(\.deviceKind.isMXMaster3Family), catalog)
-        syncBoltMouse(mx4Reader, online.filter {
-            $0.deviceKind == .logitechMXMaster4 || $0.deviceKind == .logitechMXMaster
-        }, catalog)
-        syncBoltKeyboard(online.filter(\.deviceKind.isMXKeyboard), catalog)
-    }
-
-    private func syncBoltMouse(
-        _ reader: LogitechMXMasterReader,
-        _ candidates: [LogiBoltPairedDevice],
-        _ catalog: LogiBoltCatalog
-    ) {
-        if reader.usesBluetoothHIDPP {
-            reader.detachBolt()
-            return
-        }
-        guard let device = preferredBoltDevice(candidates, currentID: reader.boltSlotID) else {
-            reader.detachBolt()
-            return
-        }
-        let slotID = "\(device.receiverID)-\(device.slot)"
-        if reader.boltSlotID == slotID, reader.current.connected { return }
-        guard let link = catalog.talkLink(receiverID: device.receiverID, slot: device.slot) else {
-            reader.detachBolt()
-            return
-        }
-        if !reader.attachBolt(
-            link,
-            name: device.displayName,
-            kind: device.deviceKind,
-            address: device.identityAddress,
-            unitID: device.unitID,
-            wpid: device.wpid
-        ) {
-            catalog.releaseTalkLink(link)
-        }
-    }
-
-    private func syncBoltKeyboard(_ candidates: [LogiBoltPairedDevice], _ catalog: LogiBoltCatalog) {
-        if keyboard.usesBluetoothHIDPP {
-            keyboard.detachBolt()
-            return
-        }
-        guard let device = preferredBoltDevice(candidates, currentID: keyboard.boltSlotID) else {
-            keyboard.detachBolt()
-            return
-        }
-        let slotID = "\(device.receiverID)-\(device.slot)"
-        if keyboard.boltSlotID == slotID, keyboard.snapshot.connected { return }
-        guard let link = catalog.talkLink(receiverID: device.receiverID, slot: device.slot) else {
-            keyboard.detachBolt()
-            return
-        }
-        if !keyboard.attachBolt(
-            link,
-            name: device.displayName,
-            kind: device.deviceKind,
-            address: device.identityAddress,
-            unitID: device.unitID,
-            wpid: device.wpid
-        ) {
-            catalog.releaseTalkLink(link)
-        }
-    }
-
-    private func preferredBoltDevice(
-        _ candidates: [LogiBoltPairedDevice],
-        currentID: String?
-    ) -> LogiBoltPairedDevice? {
-        if let currentID, let current = candidates.first(where: { "\($0.receiverID)-\($0.slot)" == currentID }) {
-            return current
-        }
-        return candidates.sorted { lhs, rhs in
-            if lhs.receiverID != rhs.receiverID { return lhs.receiverID < rhs.receiverID }
-            return lhs.slot < rhs.slot
-        }.first
+        logitech.syncBolt(using: catalog)
     }
 
     func setControlEnabled(_ enabled: Bool) {
@@ -990,7 +902,7 @@ final class DualSenseMonitor {
             keyboard.reloadEasySwitchHosts()
             return
         }
-        guard let record = selectedRecord, let reader = reader(for: record.kind) else { return }
+        guard let record = selectedRecord, let reader = reader(for: record) else { return }
         reader.reloadEasySwitchHosts()
     }
 
@@ -1000,7 +912,7 @@ final class DualSenseMonitor {
             keyboard.setFriendlyName(name)
             return
         }
-        if record.isMXMaster, let reader = reader(for: record.kind) {
+        if record.isMXMaster, let reader = reader(for: record) {
             reader.setFriendlyName(name)
         }
     }
@@ -1269,6 +1181,7 @@ final class DualSenseMonitor {
                 ingestMX(reader, record, ControlFrameBuilder.make(from: next))
             } else {
                 reader.injectEnabled = false
+                reader.setManaged(false)
             }
             _ = reader.consumePendingGesture()
             reader.consumePendingScroll()
@@ -1312,17 +1225,15 @@ final class DualSenseMonitor {
         snapshot = next
     }
 
-    private func reader(for kind: DeviceKind) -> LogitechMXMasterReader? {
-        if kind.isMXMaster3Family { return mx3Reader }
-        if kind == .logitechMXMaster4 || kind == .logitechMXMaster { return mx4Reader }
-        return nil
+    private func reader(for record: DeviceRecord) -> (any LogitechMouseDevice)? {
+        logitech.mouseReader(for: record.logitechKey)
     }
 
     func mxSnapshot(for deviceID: String) -> MXMasterSnapshot {
         guard let record = deviceRecord(for: deviceID), record.isMXMaster else {
             return MXMasterSnapshot()
         }
-        if let live = reader(for: record.kind)?.current {
+        if let live = reader(for: record)?.current {
             return live
         }
         var unavailable = MXMasterSnapshot()
@@ -1334,13 +1245,13 @@ final class DualSenseMonitor {
     }
 
     private func displayMXSnapshot() -> MXMasterSnapshot {
-        if selectedKind.isMXMaster, let reader = reader(for: selectedKind) {
-            return reader.current
+        if let selectedRecord, selectedRecord.isMXMaster {
+            return mxSnapshot(for: selectedRecord.id)
         }
         return mxReaders.map(\.current).first(where: \.connected) ?? MXMasterSnapshot()
     }
 
-    private func ingestMX(_ reader: LogitechMXMasterReader, _ record: DeviceRecord, _ frame: ControlFrame) {
+    private func ingestMX(_ reader: any LogitechMouseDevice, _ record: DeviceRecord, _ frame: ControlFrame) {
         let engine = engine(for: record.id)
         let live = liveMXProfile(for: record)
         let deviceLevel = record.mxDefaultProfile
@@ -1348,10 +1259,16 @@ final class DualSenseMonitor {
         engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = false
+        reader.setManaged(true)
         reader.injectEnabled = record.controlEnabled
             && !ShortcutCapture.isActive
             && !calibrationWindowFocused
         reader.wheelsEnabled = accessibilityTrusted
+        var capturedButtons = Set(live.bindings.compactMap { button, action in
+            action == .none || button.isMXScrollDirection ? nil : button
+        })
+        capturedButtons.formUnion(live.mxGestureOwners)
+        reader.setCapturedButtons(capturedButtons)
         reader.setGestureOwners(live.mxGestureOwners)
         reader.applySensorDPI(deviceLevel.resolvedSensorDPI)
         reader.applyPointerSpeed(deviceLevel.resolvedPointerSpeed)
@@ -1656,7 +1573,7 @@ final class DualSenseMonitor {
 
     private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
         guard live.connected else { return nil }
-        if let match = deviceRecords.first(where: {
+        if let index = deviceRecords.firstIndex(where: {
             $0.remembered && isLiveMXDevice(
                 kind: $0.kind,
                 address: $0.address,
@@ -1667,9 +1584,40 @@ final class DualSenseMonitor {
                 connection: $0.logitechKey.connection
             )
         }) {
-            return match
+            promoteLiveLogitechIdentity(at: index, from: live)
+            return deviceRecords[index]
+        }
+        let fallback = deviceRecords.indices.filter { index in
+            let record = deviceRecords[index]
+            return record.remembered
+                && (live.kind != .logitechMouse
+                    || (!DeviceIdentity.isConcrete(record.address)
+                        && record.unitID == nil))
+                && DeviceIdentity.compatibleLogitechKinds(record.kind, live.kind)
+                && record.logitechKey.connection == live.connection
+                && record.wirelessProductID == live.wirelessProductID
+                && DeviceIdentity.logitechNamesEquivalent(record.name, live.name)
+        }
+        if fallback.count == 1, let index = fallback.first {
+            promoteLiveLogitechIdentity(at: index, from: live)
+            return deviceRecords[index]
         }
         return nil
+    }
+
+    private func promoteLiveLogitechIdentity(at index: Int, from live: MXMasterSnapshot) {
+        var changed = false
+        if deviceRecords[index].unitID == nil, live.unitID != 0 {
+            deviceRecords[index].unitID = live.unitID
+            changed = true
+        }
+        if deviceRecords[index].kind == .logitechMouse, live.kind != .logitechMouse {
+            deviceRecords[index].kind = live.kind
+            changed = true
+        }
+        if changed {
+            persistDeviceRecords()
+        }
     }
 
     private func isLiveMXDevice(
@@ -1763,6 +1711,11 @@ final class DualSenseMonitor {
         if keep.unitID == nil { keep.unitID = other.unitID }
         if keep.wirelessProductID == nil { keep.wirelessProductID = other.wirelessProductID }
         keep.name = DeviceIdentity.preferredLogitechName(keep.name, other.name)
+        if keep.kind == .logitechMouse,
+           other.kind.isMXMaster,
+           other.kind != .logitechMouse {
+            keep.kind = other.kind
+        }
         if DeviceIdentity.looksLikeHardwareAddress(other.address),
            !DeviceIdentity.looksLikeHardwareAddress(keep.address) {
             keep.address = other.address
@@ -1803,9 +1756,7 @@ final class DualSenseMonitor {
                     if next.isMXMaster {
                         for index in next.profiles.indices {
                             next.profiles[index].restrictGesturesToHapticPad()
-                            if !next.kind.isMXMaster3Family {
-                                next.profiles[index].ensureMX4SideButton()
-                            }
+                            next.profiles[index].ensureThumbGestureButton()
                         }
                     }
                     next.ensureAppProfiles()

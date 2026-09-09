@@ -11,9 +11,13 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
     case volumeUp, volumeDown
     case clickSelect, clickSelectLong, clickUp, clickDown, clickLeft, clickRight
     case mxGesture, mxGestureUp, mxGestureDown, mxGestureLeft, mxGestureRight
-    case mxBack, mxForward, mxSmartShift, mxModeShift, mxHaptic, mxSide
+    case mxBack, mxForward, mxSmartShift, mxModeShift, mxHaptic
+    /// Logitech Gesture button (CID `0x00C3`). Persisted as `mxSide`.
+    case mxSide
     case mxLeft, mxRight, mxMiddle
     case mxWheelUp, mxWheelDown, mxThumbLeft, mxThumbRight
+    case mxExtra1, mxExtra2, mxExtra3, mxExtra4, mxExtra5, mxExtra6
+    case mxExtra7, mxExtra8, mxExtra9, mxExtra10, mxExtra11, mxExtra12
 
     public var title: String {
         switch self {
@@ -60,8 +64,8 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         case .mxForward: return "Forward"
         case .mxSmartShift: return "Mode shift"
         case .mxModeShift: return "DPI"
-        case .mxHaptic: return "Haptic"
-        case .mxSide: return "Side"
+        case .mxHaptic: return "Haptic button"
+        case .mxSide: return "Gesture button"
         case .mxLeft: return "Left click"
         case .mxRight: return "Right click"
         case .mxMiddle: return "Middle click"
@@ -69,6 +73,18 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         case .mxWheelDown: return "Scroll down"
         case .mxThumbLeft: return "Scroll left"
         case .mxThumbRight: return "Scroll right"
+        case .mxExtra1: return "Extra 1"
+        case .mxExtra2: return "Extra 2"
+        case .mxExtra3: return "Extra 3"
+        case .mxExtra4: return "Extra 4"
+        case .mxExtra5: return "Extra 5"
+        case .mxExtra6: return "Extra 6"
+        case .mxExtra7: return "Extra 7"
+        case .mxExtra8: return "Extra 8"
+        case .mxExtra9: return "Extra 9"
+        case .mxExtra10: return "Extra 10"
+        case .mxExtra11: return "Extra 11"
+        case .mxExtra12: return "Extra 12"
         }
     }
 
@@ -155,15 +171,25 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         )
     ]
 
-    /// Hold-to-swipe owners: MX haptic / gesture button, DualSense finger counts.
+    /// Controls that can own a directional gesture map when their live device
+    /// descriptor confirms raw-XY support.
     public var canOwnGestures: Bool {
         switch self {
-        case .mxHaptic, .touchpadOneFinger, .touchpadTwoFinger:
+        case .mxMiddle, .mxBack, .mxForward, .mxSmartShift, .mxModeShift,
+             .mxHaptic, .mxSide,
+             .mxExtra1, .mxExtra2, .mxExtra3, .mxExtra4, .mxExtra5, .mxExtra6,
+             .mxExtra7, .mxExtra8, .mxExtra9, .mxExtra10, .mxExtra11, .mxExtra12,
+             .touchpadOneFinger, .touchpadTwoFinger:
             return true
         default:
             return false
         }
     }
+
+    public static let mxExtraButtons: [DeviceButton] = [
+        .mxExtra1, .mxExtra2, .mxExtra3, .mxExtra4, .mxExtra5, .mxExtra6,
+        .mxExtra7, .mxExtra8, .mxExtra9, .mxExtra10, .mxExtra11, .mxExtra12
+    ]
 }
 
 public struct DeviceButtonGroup: Identifiable, Hashable, Sendable {

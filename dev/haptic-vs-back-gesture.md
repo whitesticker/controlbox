@@ -1,6 +1,6 @@
 # Haptic hold-to-swipe vs Back as Gestures
 
-Parked 2026-08-22. Only the haptic pad is a Gestures owner. This file is the full record of why click-as-gesture did not ship.
+Parked 2026-08-22, reopened 2026-09-08 with capability-gated ownership. This file records why merely exposing a picker was insufficient. A button is now eligible only when its live Reprog descriptor is divertable and advertises raw XY; left/right remain excluded.
 
 ## Hardware
 
@@ -31,22 +31,19 @@ The UI already had a Gestures assignment on every MX button. Wiring it so Back a
 
 Conclusion: this is a different sensor. It needs a laser-specific module that actually follows, not pad math with a scale tweak. That is not close. Parked.
 
-## What shipped instead
+## What shipped after reopening
 
-- Profiles: Gestures picker only on **Haptic**.
-- `MappingProfile.setBinding` / `setGestureSet` / `gestureSet(for:)` refuse non-haptic Gestures.
-- `mxGestureOwners` is `{.mxHaptic}` or empty.
-- Load-time `restrictGesturesToHapticPad()` rewrites saved Back-as-Gestures (etc.) to ordinary clicks.
-- Reader `setGestureOwners` intersects with `{.mxHaptic}`.
-- Engine `processGesture` starts `HoldGesture` only for haptic.
-- `ButtonHoldGesture` and the Button gesture speed slider were removed.
-- Extra buttons stay normal bindings (default Back / Forward = browser).
+- Profiles separates **Gesture-capable controls** from ordinary **Buttons** using live Reprog flags.
+- `MappingProfile` stores an independent `GestureSet` for each eligible control.
+- `mxGestureOwners` may contain the gesture button, haptic button, Middle, Back, Forward, Mode shift, or generic Extra slots.
+- Reader reporting changes between plain divert and raw-XY `0x33` as the active profile changes.
+- The first held gesture owner owns unattributed raw XY; overlap motion is ignored.
+- Default Back / Forward remain browser actions until the user promotes them.
 
 Enforcement details: [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md).
 
 ## Do not
 
-- Treat Back as a second haptic pad.
-- HID++-divert left/right/middle (`0x0050` / `0x0051` / `0x0052`) to invent XY. That steals the pointer.
-- Re-enable Gestures on non-haptic MX buttons until a laser-specific path actually follows the hand (correct signs, one XY source, spans that track, no cursor warp fighting the laser).
-- Reuse `HoldGesture` pad thresholds / `-y` / `gestureSpeedFactor` for desk motion.
+- Treat a button as gesture-capable when its control descriptor does not advertise raw XY.
+- HID++-divert left/right (`0x0050` / `0x0051`) for gestures. That can steal the pointer.
+- Assume pad and desk-laser motion feel identical. Back/Forward/Middle gesture feel still needs hardware validation on every family that advertises raw XY.

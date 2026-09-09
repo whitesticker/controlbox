@@ -5,7 +5,7 @@ import IOKit.hid
 /// or mouse collections, never seize. Pairing lives on Add Device → Logi Bolt.
 enum LogiBoltSupport {
     static let vendorID = DeviceSupport.logitechVendorID
-    static let productID = MXMasterHIDDiscovery.boltReceiverProductID
+    static let productID = 0xC548
     static let hidppUsagePage = 0xFF00
     static let receiverIndex: UInt8 = 0xFF
     static let maxSlots = 6
@@ -93,6 +93,9 @@ enum LogiBoltSupport {
         }
         if deviceClass == .mouse, DeviceSupport.isMXMasterName(name) {
             return DeviceSupport.mxKind(from: name)
+        }
+        if deviceClass.isMouse {
+            return .logitechMouse
         }
         return .unsupported
     }
