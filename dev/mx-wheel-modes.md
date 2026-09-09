@@ -65,5 +65,5 @@ write: HiResWheel `0x2121` on the main wheel.
 Old profiles with paired thumb-direction bindings migrate tabs, volume,
 desktops, and apps when the new optional mode field is absent.
 
-Main-wheel Free Spin / Ratchet is firmware SmartShift on Calibration.
-See [mx-smartshift.md](mx-smartshift.md).
+Main-wheel Free Spin / Ratchet is firmware SmartShift on Mouse Settings.
+Buttons can map **Switch wheel mode** to toggle it. See [mx-smartshift.md](mx-smartshift.md).

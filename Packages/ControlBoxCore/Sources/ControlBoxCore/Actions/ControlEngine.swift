@@ -8,6 +8,8 @@ public final class ControlEngine: @unchecked Sendable {
     public var isDualSense = false
     public var pointerSpeed: Double = 14
     public var scrollSpeed: Double = 0.35
+    /// MagSpeed Free Spin / Ratchet toggle. Host writes HID++ and shows the HUD.
+    public var onSwitchWheelMode: (() -> Void)?
 
     private var previousButtons: [DeviceButton: Bool] = [:]
     private var lastAnalog: [AnalogSource: AnalogSample] = [:]
@@ -614,13 +616,16 @@ public final class ControlEngine: @unchecked Sendable {
             ActionHUD.show(action)
         }
         switch action {
-        case .switchApplication, .switchApplicationBack, .none, .gestures, .scroll:
+        case .switchApplication, .switchApplicationBack, .none, .gestures, .scroll, .switchWheelMode:
             break
         default:
             AppSwitcher.cancel()
         }
         switch action {
         case .none, .gestures, .scroll:
+            return
+        case .switchWheelMode:
+            if down { onSwitchWheelMode?() }
             return
         case .key(let virtualKey, let flags):
             EventPoster.key(virtualKey, flags: CGEventFlags(rawValue: flags), down: down)

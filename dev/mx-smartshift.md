@@ -1,10 +1,12 @@
 # MX SmartShift and thumb-wheel sensitivity
 
-Implemented 2026-09-07. HID++ bytes follow OpenLogi (`0x2110` / `0x2111` / `0x2150`).
+Shipped Switch wheel mode in 0.1.45. Implemented 2026-09-07. HID++ bytes follow OpenLogi (`0x2110` / `0x2111` / `0x2150`).
 
 ## Main wheel: Free Spin / Ratchet
 
-Each MX **Calibration** sidebar **On this mouse** card has a segmented control (Free Spin / Ratchet) and a **Sensitivity** slider. These write MagSpeed SmartShift on the mouse, not a Control mapping.
+Each MX **Mouse Settings** window has a segmented control (Free Spin / Ratchet) and a **Sensitivity** slider. These write MagSpeed SmartShift on the mouse.
+
+**Switch wheel mode** is a button (and gesture) mapping that toggles that same stored mode and writes it immediately. The action HUD shows **Free Spin** or **Ratchet**. Sensitivity stays on Mouse Settings.
 
 A SmartShift HID++ error must not drop the pipe: `dropsPipeOnError` is false, and thumb divert (`0x2150`) is re-applied after the write so MagSpeed does not leave the thumb wheel native.
 

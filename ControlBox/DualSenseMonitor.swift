@@ -591,6 +591,26 @@ final class DualSenseMonitor {
         updateMXDeviceLevelProfile { $0.mxRatchetMode = mode }
     }
 
+    func toggleMXRatchetMode(for deviceID: String) {
+        guard let record = deviceRecord(for: deviceID), record.isMXMaster else { return }
+        let next = record.mxDefaultProfile.resolvedMXRatchetMode.toggled
+        updateRecord(deviceID) { record in
+            guard record.isMXMaster else { return }
+            let defaultID = record.mxDefaultProfile.id
+            guard var profile = record.profiles.first(where: { $0.id == defaultID }) else { return }
+            profile.mxRatchetMode = next
+            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
+                record.profiles[index] = profile
+            }
+        }
+        guard let live = deviceRecord(for: deviceID) else { return }
+        reader(for: live)?.applySmartShift(
+            mode: next,
+            sensitivity: live.mxDefaultProfile.resolvedMXSmartShiftSensitivity
+        )
+        WheelModeHUD.show(next)
+    }
+
     func setMXSmartShiftSensitivity(_ value: Int) {
         updateMXDeviceLevelProfile { $0.mxSmartShiftSensitivity = MappingProfile.clampSmartShiftSensitivity(value) }
     }
@@ -1259,6 +1279,11 @@ final class DualSenseMonitor {
         engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
         engine.isDualSense = false
+        engine.onSwitchWheelMode = { [weak self] in
+            DispatchQueue.main.async {
+                self?.toggleMXRatchetMode(for: record.id)
+            }
+        }
         reader.setManaged(true)
         reader.injectEnabled = record.controlEnabled
             && !ShortcutCapture.isActive

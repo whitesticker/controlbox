@@ -25,6 +25,7 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
     case switchApplicationBack
     case screenCapture
     case closeWindow
+    case switchWheelMode
     case scroll
 
     public var title: String {
@@ -55,6 +56,7 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         case .switchApplicationBack: return "Previous application"
         case .screenCapture: return "Screen capture"
         case .closeWindow: return "Close window"
+        case .switchWheelMode: return "Switch wheel mode"
         }
     }
 
@@ -102,7 +104,8 @@ public enum ControlAction: Codable, Equatable, Hashable, Sendable {
         case .mediaNext, .mediaPrevious, .mediaPlayPause, .mediaMute,
              .switchApplication, .switchApplicationBack,
              .browserBack, .browserForward,
-             .tabPrevious, .tabNext:
+             .tabPrevious, .tabNext,
+             .switchWheelMode:
             return true
         default:
             return false
@@ -227,6 +230,7 @@ public extension ControlAction {
         .init(id: "switchApplicationBack", title: "Previous application", action: .switchApplicationBack),
         .init(id: "screenCapture", title: "Screen capture", action: .screenCapture),
         .init(id: "closeWindow", title: "Close window", action: .closeWindow),
+        .init(id: "switchWheelMode", title: "Switch wheel mode", action: .switchWheelMode),
         .init(id: "mediaNext", title: "Next track", action: .mediaNext),
         .init(id: "mediaPrevious", title: "Previous track", action: .mediaPrevious),
         .init(id: "leftOption", title: "Left Option", action: .leftOptionKey),

@@ -69,7 +69,7 @@ Do not become Options+. Do not divert left/right. Do not list the Bolt dongle as
 - [ ] **Detect Options+ / LogiPluginService** — say so up front, not only after HID++ timeout.
 - [ ] **Software-ID lease on a shared dongle** — required when two sessions share `C548`.
 - [x] **Per-app mouse profiles** — MX device page **profile tiles**; live mapping follows the frontmost app. See [per-app-mouse-profiles.md](per-app-mouse-profiles.md).
-- [x] **SmartShift as a wheel setting** — firmware `0x2111` (fallback `0x2110`) on Calibration: Free Spin / Ratchet plus sensitivity. See [mx-smartshift.md](mx-smartshift.md). Mode Shift stays a mappable button.
+- [x] **SmartShift as a wheel setting** — firmware `0x2111` (fallback `0x2110`) on Mouse Settings: Free Spin / Ratchet plus sensitivity. Buttons can map **Switch wheel mode** to toggle it. See [mx-smartshift.md](mx-smartshift.md). Mode Shift stays a mappable button.
 - [ ] **Keyboard remapping, carefully** — divert only bound keys; do not divert MX Mechanical keys.
 - [x] **Thumb-wheel smooth travel** — Pointer & Scroll Smooth scrolling eases diverted thumb HID++ for every thumb mode (100 ms cubic, pixel-continuous scroll). Main-wheel intercept is still open; see [roadmap.md](roadmap.md).
 - [ ] **Smooth-scroll animation (main wheel)** — keep hi-res firmware; intercept native line ticks (not trackpad) and feed the same interpolator.

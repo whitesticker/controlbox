@@ -2,6 +2,8 @@ import AppKit
 import Foundation
 import QuartzCore
 
+/// Shared on-screen HUDs: volume, mapped actions, MagSpeed wheel mode, and
+/// display arrangement. One chrome; callers pick the content type.
 enum VolumeHUD {
     static func show(level: Double) {
         FeedbackHUD.show(.volume(min(max(level, 0), 1)))
@@ -12,6 +14,12 @@ enum ActionHUD {
     static func show(_ action: ControlAction) {
         guard action.showsActionHUD, let symbol = action.actionHUDSymbol else { return }
         FeedbackHUD.show(.action(symbol: symbol, title: action.title))
+    }
+}
+
+public enum WheelModeHUD {
+    public static func show(_ mode: MXRatchetMode) {
+        FeedbackHUD.show(.action(symbol: mode.hudSymbol, title: mode.title))
     }
 }
 

@@ -20,6 +20,17 @@ public enum MXRatchetMode: String, Codable, CaseIterable, Equatable, Hashable, S
         }
     }
 
+    public var toggled: MXRatchetMode {
+        self == .ratchet ? .freeSpin : .ratchet
+    }
+
+    public var hudSymbol: String {
+        switch self {
+        case .freeSpin: return "arrow.triangle.2.circlepath"
+        case .ratchet: return "circle.grid.3x3.fill"
+        }
+    }
+
     public static func fromHIDPP(_ byte: UInt8) -> MXRatchetMode? {
         switch byte {
         case 1: return .freeSpin
