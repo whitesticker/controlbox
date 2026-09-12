@@ -192,6 +192,7 @@ enum DeviceSupport {
     static let sonyVendorID = 0x054C
     static let dualSenseProductID = 0x0CE6
     static let dualSenseEdgeProductID = 0x0DF2
+    static let xboxVendorID = 0x045E
     static let appleVendorID = 0x004C
     static var appleTVRemoteProductIDs: Set<Int> { AppleTVRemoteGenerations.productIDs }
     static let logitechVendorID = 0x046D
@@ -412,10 +413,19 @@ enum BluetoothDeviceCatalog {
         let hid = HIDNameIndex.load()
         var devices: [ConnectedBluetoothDevice] = []
         var seen = Set<String>()
-
-        for controller in GCController.controllers() where controller.extendedGamepad != nil {
-            appendGameController(controller, into: &devices, seen: &seen)
+        let hidPads = hid.records.map {
+            GamepadHIDPad(
+                name: $0.product,
+                address: $0.address,
+                vendorID: $0.vendorID,
+                productID: $0.productID,
+                usagePage: $0.usagePage,
+                usage: $0.usage
+            )
         }
+        appendGameControllers(hid: hidPads, into: &devices, seen: &seen)
+
+        let gcGamepadNames = Set(devices.filter(\.deviceKind.isGamepad).map { $0.name.lowercased() })
 
         for record in hid.records {
             let isGenericLogitechEndpoint =
@@ -426,6 +436,15 @@ enum BluetoothDeviceCatalog {
                 && !DeviceSupport.mxMasterProductIDs.contains(record.productID)
                 && !DeviceSupport.mxKeyboardProductIDs.contains(record.productID)
             if isGenericLogitechEndpoint { continue }
+            if record.vendorID == DeviceSupport.sonyVendorID,
+               record.productID == DeviceSupport.dualSenseProductID
+                || record.productID == DeviceSupport.dualSenseEdgeProductID {
+                continue
+            }
+            if record.usagePage == 1, record.usage == 5,
+               gcGamepadNames.contains(record.product.lowercased()) {
+                continue
+            }
             let kind = DeviceSupport.classify(
                 name: record.product,
                 vendorID: record.vendorID,
@@ -468,40 +487,47 @@ enum BluetoothDeviceCatalog {
         }
     }
 
-    private static func appendGameController(
-        _ controller: GCController,
+    static func gamepadHIDPads() -> [GamepadHIDPad] {
+        HIDNameIndex.load().records.map {
+            GamepadHIDPad(
+                name: $0.product,
+                address: $0.address,
+                vendorID: $0.vendorID,
+                productID: $0.productID,
+                usagePage: $0.usagePage,
+                usage: $0.usage
+            )
+        }
+    }
+
+    private static func appendGameControllers(
+        hid: [GamepadHIDPad],
         into devices: inout [ConnectedBluetoothDevice],
         seen: inout Set<String>
     ) {
-        let layout = GamepadLayout.from(controller: controller)
-        let capabilities = GamepadCapabilities.from(controller: controller)
-        let name = controller.vendorName ?? layout.title
-        if seen.contains(name.lowercased()) { return }
-        let id = "gc:\(name)"
-        guard seen.insert(id).inserted else { return }
-        seen.insert(name.lowercased())
-        let kind: DeviceKind
-        if controller.extendedGamepad is GCDualSenseGamepad {
-            kind = name.lowercased().contains("edge") ? .dualSenseEdge : .dualSense
-        } else {
-            kind = .gamepad
-        }
-        devices.append(
-            ConnectedBluetoothDevice(
-                id: id,
-                name: name,
-                address: "Game Controller",
-                deviceKind: kind,
-                detail: kind == .gamepad ? layout.title : kind.title,
-                isConnected: true,
-                gamepadLayout: layout,
-                gamepadCapabilities: capabilities
-            )
+        let pads = GamepadIdentity.livePads(
+            controllers: GCController.controllers(),
+            hid: hid
         )
+        for pad in pads {
+            guard seen.insert(pad.catalogID).inserted else { continue }
+            devices.append(
+                ConnectedBluetoothDevice(
+                    id: pad.catalogID,
+                    name: pad.name,
+                    address: pad.address,
+                    deviceKind: pad.kind,
+                    detail: pad.kind == .gamepad ? pad.layout.title : pad.kind.title,
+                    isConnected: true,
+                    gamepadLayout: pad.layout,
+                    gamepadCapabilities: pad.capabilities
+                )
+            )
+        }
     }
 }
 
-private struct HIDRecord {
+struct HIDRecord {
     var product: String
     var vendorID: Int
     var productID: Int

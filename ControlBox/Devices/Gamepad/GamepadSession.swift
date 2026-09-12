@@ -24,13 +24,15 @@ class GamepadSession: DeviceFamilySession {
     }
 
     func start() {
-        GCController.shouldMonitorBackgroundEvents = true
-        GCController.startWirelessControllerDiscovery(completionHandler: nil)
+        // Discovery and HID battery belong to `GamepadFamilySession`.
     }
 
     func stop() {
         detach()
-        GCController.stopWirelessControllerDiscovery()
+    }
+
+    func attach(_ incoming: GCController) {
+        attachIfNeeded(incoming)
     }
 
     func pulse() {

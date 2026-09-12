@@ -1,6 +1,6 @@
 # Generic gamepad: `GamepadSession` base, DualSense as a subclass
 
-Status: implemented (2026-09-11). `GamepadSession` is the generic `GCExtendedGamepad` base; `DualSenseSession` subclasses it. Generic pads are `DeviceKind.gamepad` on Add Device → Bluetooth. Calibration is the same three-column **window** with touchpad / motion panels gated on capabilities.
+Status: implemented (2026-09-11). `GamepadFamilySession` owns a pool of `GamepadSession`s; `DualSenseSession` subclasses the reader for Sony touchpad + HID battery. Generic pads are `DeviceKind.gamepad` on Add Device → Bluetooth. Several DualSenses and several Xbox pads can each be a **sidebar** row. Calibration is the same three-column **window** with touchpad / motion panels gated on capabilities.
 
 ## What we found
 
@@ -37,7 +37,7 @@ Packages/ControlBoxCore/.../Models/
   GamepadCapabilities.swift                   Codable { touchpad, motion, haptics, battery }
 ```
 
-Swift has class inheritance, so "DualSense extends generic" is literal: `GamepadSession` is a non-final class with a handful of overridable hooks; `DualSenseSession` overrides them. The host keeps **two instances**: one `DualSenseSession` and one generic `GamepadSession`. Each has an `accepts(_ controller:)` filter so a DualSense never attaches to the generic session and vice versa; both can be live at the same time (a DualSense plus the mystery controller works out of the box). A pool of several generic controllers at once is a later step (see Later).
+Swift has class inheritance, so "DualSense extends generic" is literal: `GamepadSession` is a non-final class with a handful of overridable hooks; `DualSenseSession` overrides them. `GamepadFamilySession` is the `DeviceFamilySession` the host starts: it opens one shared DualSense HID battery manager, starts GameController discovery, and keeps one attached session per `GCController`. DualSense vs generic is still the `accepts` filter on the session type. Same-name pads get ordinal catalog ids (`gc:Name`, `gc:Name#2`). HID Bluetooth address is used only when exactly one HID pad and one GC pad of that kind are present; otherwise the address is `slot:<catalogID>` so two Xbox pads are not both `Game Controller`. Player 1–4 is `GCController.playerIndex` (LED) persisted on `DeviceRecord.gamepadPlayerIndex`; Apple says it does not survive unplug as a serial. Add Device and `recordsMatch` do not collapse gamepads by vendor name.
 
 ### `GamepadSnapshot` (rename of `DualSenseSnapshot`)
 
@@ -306,7 +306,6 @@ Done check: open Calibration on the generic record: every face button, D-pad arm
 
 ## Later (not in this pass)
 
-- **Pool of generic controllers at once.** Today one generic session attaches one `GCController`. Multi-pad = a `[String: GamepadSession]` keyed by record id, same shape as `LogitechDeviceSession`'s reader pool, plus `gamepadSnapshot(for:)` already being per record.
 - **Xbox extras.** `GCXboxGamepad.paddleButton1–4` and `buttonShare` → new `DeviceButton` cases (`padPaddle1…4`, `padShare`) surfaced under Profiles as an "Extra" group when present, like MX Extra controls. Same `readExtras` hook, an `XboxSession: GamepadSession` subclass.
 - **Sony extras beyond touchpad.** Light bar (`controller.light`), adaptive trigger effects, DualShock 4 as a second `GamepadSession` subclass sharing the touchpad override with DualSense.
 - **Raw HID fallback.** Only if Step 0 shows a pad GameController does not list. Would be a `HIDGamepadReader` behind the same `GamepadSnapshot`, parsing usage page `0x01` usage `0x05` reports via `IOHIDValue` element usages (no product-specific byte offsets). Never seize; never open the collection just to watch buttons (see `AGENTS.md` hard constraints).

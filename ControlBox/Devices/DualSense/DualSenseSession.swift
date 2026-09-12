@@ -2,23 +2,14 @@ import Foundation
 import GameController
 
 /// DualSense / DualSense Edge. Game Controller attach + snapshot.
-/// Adds Sony touchpad and HID battery on top of `GamepadSession`.
+/// Adds Sony touchpad and a shared HID battery reader on top of `GamepadSession`.
 @MainActor
 final class DualSenseSession: GamepadSession {
-    private let hidBattery = DualSenseHIDBatteryReader()
+    var hidBattery: DualSenseHIDBatteryReader?
+    var hidAddress: String?
 
     init() {
         super.init(familyID: "dualsense", kinds: [.dualSense, .dualSenseEdge])
-    }
-
-    override func start() {
-        hidBattery.start()
-        super.start()
-    }
-
-    override func stop() {
-        hidBattery.stop()
-        super.stop()
     }
 
     override func accepts(_ controller: GCController) -> Bool {
@@ -40,15 +31,15 @@ final class DualSenseSession: GamepadSession {
     }
 
     override func applyBattery(to next: inout GamepadSnapshot, controller: GCController) {
-        if let percent = hidBattery.percent {
+        if let reading = hidBattery?.reading(forAddress: hidAddress) {
             next.batteryAvailable = true
             next.capabilities.battery = true
-            next.batteryPercent = percent
-            next.batteryCharging = hidBattery.isCharging
-            next.batteryFull = hidBattery.isFull
-            if hidBattery.isFull {
+            next.batteryPercent = reading.percent
+            next.batteryCharging = reading.isCharging
+            next.batteryFull = reading.isFull
+            if reading.isFull {
                 next.batteryStateDescription = "Full"
-            } else if hidBattery.isCharging {
+            } else if reading.isCharging {
                 next.batteryStateDescription = "Charging"
             } else {
                 next.batteryStateDescription = "Discharging"

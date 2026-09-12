@@ -18,6 +18,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var customName: String? = nil
     var gamepadLayout: GamepadLayout? = nil
     var gamepadCapabilities: GamepadCapabilities? = nil
+    /// Last assigned `GCController.playerIndex` (1–4). Lights the pad LED; not a serial.
+    var gamepadPlayerIndex: Int? = nil
 
     var displayName: String {
         let custom = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -168,7 +170,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             unitID: device.unitID,
             wirelessProductID: device.wirelessProductID,
             gamepadLayout: device.gamepadLayout,
-            gamepadCapabilities: device.gamepadCapabilities
+            gamepadCapabilities: device.gamepadCapabilities,
+            gamepadPlayerIndex: nil
         )
         record.ensureAppProfiles()
         record.ensureControllerDeviceSettings()
@@ -188,6 +191,7 @@ struct SidebarDevice: Identifiable, Hashable {
     var unitID: UInt32? = nil
     var wirelessProductID: Int? = nil
     var gamepadLayout: GamepadLayout? = nil
+    var gamepadPlayerIndex: Int? = nil
 
     var glyph: String { kind.paneGlyph }
 
@@ -211,6 +215,9 @@ struct SidebarDevice: Identifiable, Hashable {
 
     func rowCaption(showBrand: Bool) -> String {
         if isConnected {
+            if kind.isGamepad, let gamepadPlayerIndex, (1...4).contains(gamepadPlayerIndex) {
+                return "\(brandTitle) · Player \(gamepadPlayerIndex)"
+            }
             return "\(brandTitle) · \(connection.title)"
         }
         if showBrand { return brandTitle }

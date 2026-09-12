@@ -1,14 +1,20 @@
 import Foundation
 import IOKit.hid
 
+struct DualSenseHIDBatteryReading: Equatable {
+    var percent: Int
+    var isCharging: Bool
+    var isFull: Bool
+}
+
+/// Shared DualSense HID battery nibble reader. Tracks each HID device separately
+/// so two DualSenses do not overwrite one percentage.
 final class DualSenseHIDBatteryReader {
     private var manager: IOHIDManager?
     private var buffers: [ObjectIdentifier: UnsafeMutablePointer<UInt8>] = [:]
+    private var addresses: [ObjectIdentifier: String] = [:]
+    private var readings: [ObjectIdentifier: DualSenseHIDBatteryReading] = [:]
     private let bufferSize = 128
-
-    private(set) var percent: Int?
-    private(set) var isCharging = false
-    private(set) var isFull = false
 
     func start() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -43,14 +49,25 @@ final class DualSenseHIDBatteryReader {
     func stop() {
         buffers.values.forEach { $0.deallocate() }
         buffers.removeAll()
+        addresses.removeAll()
+        readings.removeAll()
         if let manager {
             IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
             IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         }
         manager = nil
-        percent = nil
-        isCharging = false
-        isFull = false
+    }
+
+    func reading(forAddress address: String?) -> DualSenseHIDBatteryReading? {
+        if let address, DeviceIdentity.isConcrete(address) {
+            if let id = addresses.first(where: { DeviceIdentity.same($0.value, address) })?.key {
+                return readings[id]
+            }
+        }
+        if readings.count == 1 {
+            return readings.values.first
+        }
+        return nil
     }
 
     private func attach(_ device: IOHIDDevice) {
@@ -60,16 +77,23 @@ final class DualSenseHIDBatteryReader {
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
         buffer.initialize(repeating: 0, count: bufferSize)
         buffers[id] = buffer
+        let hidAddress = DeviceIdentity.fromHID(device)
+        if DeviceIdentity.isConcrete(hidAddress) {
+            addresses[id] = hidAddress
+        }
 
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(
             device,
             buffer,
             bufferSize,
-            { context, _, _, _, reportID, report, length in
+            { context, _, sender, _, reportID, report, length in
                 guard let context else { return }
-                Unmanaged<DualSenseHIDBatteryReader>.fromOpaque(context).takeUnretainedValue()
-                    .parse(report: report, length: length, reportID: reportID)
+                let reader = Unmanaged<DualSenseHIDBatteryReader>.fromOpaque(context).takeUnretainedValue()
+                let deviceID = sender.map { pointer -> ObjectIdentifier in
+                    ObjectIdentifier(Unmanaged<IOHIDDevice>.fromOpaque(pointer).takeUnretainedValue())
+                }
+                reader.parse(deviceID: deviceID, report: report, length: length, reportID: reportID)
             },
             pointer
         )
@@ -80,9 +104,16 @@ final class DualSenseHIDBatteryReader {
         if let buffer = buffers.removeValue(forKey: id) {
             buffer.deallocate()
         }
+        addresses[id] = nil
+        readings[id] = nil
     }
 
-    private func parse(report: UnsafePointer<UInt8>, length: CFIndex, reportID: UInt32) {
+    private func parse(
+        deviceID: ObjectIdentifier?,
+        report: UnsafePointer<UInt8>,
+        length: CFIndex,
+        reportID: UInt32
+    ) {
         let count = Int(length)
         guard count > 0 else { return }
         let bytes = UnsafeBufferPointer(start: report, count: count)
@@ -102,9 +133,14 @@ final class DualSenseHIDBatteryReader {
             let raw = bytes[offset]
             let level = Int(raw & 0x0F)
             guard level <= 10 else { continue }
-            percent = min(level * 10, 100)
-            isCharging = (raw & 0x10) != 0
-            isFull = (raw & 0x20) != 0 || level >= 10
+            let reading = DualSenseHIDBatteryReading(
+                percent: min(level * 10, 100),
+                isCharging: (raw & 0x10) != 0,
+                isFull: (raw & 0x20) != 0 || level >= 10
+            )
+            if let deviceID {
+                readings[deviceID] = reading
+            }
             return
         }
     }

@@ -116,4 +116,36 @@ final class GamepadLayoutTests: XCTestCase {
         XCTAssertFalse(withoutPadButtons.contains(.touchpadClick))
         XCTAssertEqual(DeviceButton.dualSenseButtons, withPadButtons)
     }
+
+    func testCatalogIDUsesNameOrdinals() {
+        XCTAssertEqual(GamepadCatalogID.make(name: "Xbox Wireless Controller", ordinal: 1), "gc:Xbox Wireless Controller")
+        XCTAssertEqual(GamepadCatalogID.make(name: "Xbox Wireless Controller", ordinal: 2), "gc:Xbox Wireless Controller#2")
+        XCTAssertEqual(GamepadCatalogID.make(name: "  ", ordinal: 1), "gc:Game Controller")
+    }
+
+    func testUniqueHIDAddressOnlyWhenOnePadEach() {
+        XCTAssertEqual(
+            GamepadCatalogID.uniqueHIDAddress(addresses: ["AA:BB:CC:DD:EE:FF"], gcCount: 1),
+            "AA:BB:CC:DD:EE:FF"
+        )
+        XCTAssertNil(GamepadCatalogID.uniqueHIDAddress(addresses: ["AA:BB:CC:DD:EE:FF"], gcCount: 2))
+        XCTAssertNil(
+            GamepadCatalogID.uniqueHIDAddress(
+                addresses: ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                gcCount: 1
+            )
+        )
+        XCTAssertNil(GamepadCatalogID.uniqueHIDAddress(addresses: [], gcCount: 1))
+    }
+
+    func testSlotAddressPrefersHIDThenOrdinalSlot() {
+        XCTAssertEqual(
+            GamepadCatalogID.slotAddress(catalogID: "gc:Xbox Wireless Controller", hidAddress: "AA:BB:CC:DD:EE:FF"),
+            "AA:BB:CC:DD:EE:FF"
+        )
+        XCTAssertEqual(
+            GamepadCatalogID.slotAddress(catalogID: "gc:Xbox Wireless Controller#2", hidAddress: nil),
+            "slot:gc:Xbox Wireless Controller#2"
+        )
+    }
 }
