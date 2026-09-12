@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 
 /// Window cards for the highlighted app while Command-Tab is up.
-/// Tracks Tab from a listen-only tap (keyboard or DualSense). No idle poll.
+/// Tracks Tab and Left/Right from a listen-only tap (keyboard or DualSense). No idle poll.
 public enum AppSwitcherPreview {
     public static let overlayTitle = "Control Box App Switcher Preview"
 
@@ -51,7 +51,8 @@ private final class Controller: @unchecked Sendable {
     private var index = 0
     private var mru: [pid_t] = []
     private var scheduled = false
-    private var pendingTab: Bool?
+    /// Tab can open the strip; Left/Right only move after it is already up.
+    private var pendingSteps: [(back: Bool, canStart: Bool)] = []
     private var pendingCommand: Bool?
     private var pendingEscape = false
 
@@ -96,7 +97,7 @@ private final class Controller: @unchecked Sendable {
         }
         workspaceObserver = nil
         scheduled = false
-        pendingTab = nil
+        pendingSteps = []
         pendingCommand = nil
         pendingEscape = false
     }
@@ -151,8 +152,12 @@ private final class Controller: @unchecked Sendable {
         } else if type == .keyDown {
             let key = event.getIntegerValueField(.keyboardEventKeycode)
             if key == 48, flags.contains(.maskCommand) {
-                pendingTab = flags.contains(.maskShift)
+                pendingSteps.append((back: flags.contains(.maskShift), canStart: true))
                 shiftDown = flags.contains(.maskShift)
+            } else if key == 123, flags.contains(.maskCommand) {
+                pendingSteps.append((back: true, canStart: false))
+            } else if key == 124, flags.contains(.maskCommand) {
+                pendingSteps.append((back: false, canStart: false))
             } else if key == 53 {
                 pendingEscape = true
             }
@@ -175,18 +180,21 @@ private final class Controller: @unchecked Sendable {
             pendingCommand = nil
             commandDown = command
             if !command {
+                pendingSteps = []
                 endSession()
                 return
             }
         }
         if pendingEscape {
             pendingEscape = false
+            pendingSteps = []
             endSession()
             return
         }
-        if let back = pendingTab {
-            pendingTab = nil
-            step(back: back)
+        let steps = pendingSteps
+        pendingSteps = []
+        for step in steps where session || step.canStart {
+            self.step(back: step.back)
         }
     }
 

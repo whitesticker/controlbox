@@ -42,6 +42,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [dockswipe-commit-nearest.md](dockswipe-commit-nearest.md) | Gesture Space swipe only lands one desktop, or pops back to the start |
 | [app-switcher-no-bar.md](app-switcher-no-bar.md) | Next/Previous application swaps apps with no Command-Tab bar |
 | [app-switcher-window-preview.md](app-switcher-window-preview.md) | Application switcher has no window cards |
+| [app-switcher-preview-arrow-keys.md](app-switcher-preview-arrow-keys.md) | App switcher preview ignores Left/Right and then lags Tab by one |
 | [caps-lock-modifier.md](caps-lock-modifier.md) | Caps Lock toggles caps instead of acting as a modifier |
 | [media-gesture-skip-dead.md](media-gesture-skip-dead.md) | Media left/right does not skip tracks |
 | [gesture-owner-haptic-only.md](gesture-owner-haptic-only.md) | Gesture ownership follows each control’s raw-XY capability |

@@ -10,7 +10,7 @@ A toggle on the **Dock Previews** pane, off until it is on. While the applicatio
 
 Cards are thumbnails only: no title under the still, no close / minimize / quit HUD. Click a card to focus that window and dismiss the switcher. Apps with no windows show nothing extra.
 
-The listen-only tap watches Command, Tab, Shift, and Escape. Accessibility and ScreenCaptureKit run on the main queue after the key is stashed. No idle pointer poll. Placement is always on the main display, vertically centered between the native switcher strip and the top of the display. Preview size is its own slider, up to 300%.
+The listen-only tap watches Command, Tab, Left, Right, Shift, and Escape. Left/Right only move the preview after the strip is already up. Accessibility and ScreenCaptureKit run on the main queue after the key is stashed. No idle pointer poll. Placement is always on the main display, vertically centered between the native switcher strip and the top of the display. Preview size is its own slider, up to 300%. See [app-switcher-preview-arrow-keys.md](app-switcher-preview-arrow-keys.md).
 
 ## Do not
 
