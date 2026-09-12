@@ -1,4 +1,5 @@
 import Foundation
+import ControlBoxCore
 
 struct Vec3: Equatable, Sendable {
     var x: Double
@@ -25,12 +26,20 @@ struct InputLogEvent: Identifiable, Equatable, Sendable {
     let pressed: Bool
 }
 
-struct DualSenseSnapshot: Equatable, Sendable {
+struct GamepadTouchpadState: Equatable, Sendable {
+    var click = false
+    var finger1 = TouchFinger(x: 0, y: 0, active: false)
+    var finger2 = TouchFinger(x: 0, y: 0, active: false)
+}
+
+struct GamepadSnapshot: Equatable, Sendable {
     var connected = false
     var name = "No controller"
     var product = ""
-    var isDualSense = false
     var playerIndex = -1
+    var layout: GamepadLayout = .generic
+    var capabilities = GamepadCapabilities()
+    var touchpad: GamepadTouchpadState?
 
     var cross = false
     var circle = false
@@ -47,15 +56,11 @@ struct DualSenseSnapshot: Equatable, Sendable {
     var create = false
     var options = false
     var ps = false
-    var touchpadClick = false
 
     var l2: Float = 0
     var r2: Float = 0
     var leftStick = SIMD2<Float>(repeating: 0)
     var rightStick = SIMD2<Float>(repeating: 0)
-
-    var touch1 = TouchFinger(x: 0, y: 0, active: false)
-    var touch2 = TouchFinger(x: 0, y: 0, active: false)
 
     var gravity = Vec3.zero
     var userAcceleration = Vec3.zero
@@ -70,7 +75,12 @@ struct DualSenseSnapshot: Equatable, Sendable {
 
     var events: [InputLogEvent] = []
 
-    func hadButtonDown(from previous: DualSenseSnapshot) -> Bool {
+    var isDualSense: Bool { touchpad != nil }
+    var touchpadClick: Bool { touchpad?.click ?? false }
+    var touch1: TouchFinger { touchpad?.finger1 ?? TouchFinger(x: 0, y: 0, active: false) }
+    var touch2: TouchFinger { touchpad?.finger2 ?? TouchFinger(x: 0, y: 0, active: false) }
+
+    func hadButtonDown(from previous: GamepadSnapshot) -> Bool {
         func rose(_ now: Bool, _ was: Bool) -> Bool { now && !was }
         if rose(cross, previous.cross) { return true }
         if rose(circle, previous.circle) { return true }
@@ -93,7 +103,7 @@ struct DualSenseSnapshot: Equatable, Sendable {
         return false
     }
 
-    func matchesIgnoringMotion(_ other: DualSenseSnapshot) -> Bool {
+    func matchesIgnoringMotion(_ other: GamepadSnapshot) -> Bool {
         var lhs = self
         var rhs = other
         lhs.gravity = .zero
@@ -105,14 +115,15 @@ struct DualSenseSnapshot: Equatable, Sendable {
         return lhs == rhs
     }
 
-    /// Battery, name, and connection — the DualSense **device page** only.
+    /// Battery, name, and connection — the gamepad **device page** only.
     /// Analog, buttons, touch, IMU, and click history stay off this compare so
     /// the settings Form is not invalidated at poll rate.
-    func matchesSettings(_ other: DualSenseSnapshot) -> Bool {
+    func matchesSettings(_ other: GamepadSnapshot) -> Bool {
         connected == other.connected
             && name == other.name
             && product == other.product
-            && isDualSense == other.isDualSense
+            && layout == other.layout
+            && capabilities == other.capabilities
             && batteryPercent == other.batteryPercent
             && batteryCharging == other.batteryCharging
             && batteryFull == other.batteryFull

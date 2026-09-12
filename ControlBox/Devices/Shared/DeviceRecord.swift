@@ -16,6 +16,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var wirelessProductID: Int?
     /// Sidebar title. Hardware / Bluetooth name stays in `name` for identity.
     var customName: String? = nil
+    var gamepadLayout: GamepadLayout? = nil
+    var gamepadCapabilities: GamepadCapabilities? = nil
 
     var displayName: String {
         let custom = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -29,7 +31,24 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
     var usesAppProfiles: Bool { isMXMaster || isGamepad || isAppleTVRemote }
 
     var hapticFeedbackEnabled: Bool {
-        hapticFeedback ?? (kind == .dualSense || kind == .dualSenseEdge)
+        hapticFeedback ?? resolvedGamepadCapabilities.haptics
+    }
+
+    var resolvedGamepadLayout: GamepadLayout {
+        if let gamepadLayout { return gamepadLayout }
+        if kind == .dualSense || kind == .dualSenseEdge { return .sony }
+        return .generic
+    }
+
+    var resolvedGamepadCapabilities: GamepadCapabilities {
+        if let gamepadCapabilities { return gamepadCapabilities }
+        if kind == .dualSense || kind == .dualSenseEdge { return .dualSense }
+        return .none
+    }
+
+    var brandTitle: String {
+        if kind == .gamepad { return resolvedGamepadLayout.brand }
+        return kind.brand
     }
 
     var selectedProfile: MappingProfile {
@@ -38,7 +57,8 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             ?? MappingProfile.makeDefault(
                 isAppleTVRemote: isAppleTVRemote,
                 isMXMaster: isMXMaster,
-                isMXKeyboard: isMXKeyboard
+                isMXKeyboard: isMXKeyboard,
+                gamepadHasTouchpad: resolvedGamepadCapabilities.touchpad
             )
     }
 
@@ -122,7 +142,10 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
         var profile = MappingProfile.makeDefault(
             isAppleTVRemote: device.deviceKind == .appleTVRemote,
             isMXMaster: device.deviceKind.isMXMaster,
-            isMXKeyboard: device.deviceKind.isMXKeyboard
+            isMXKeyboard: device.deviceKind.isMXKeyboard,
+            gamepadHasTouchpad: device.deviceKind == .dualSense
+                || device.deviceKind == .dualSenseEdge
+                || device.gamepadCapabilities?.touchpad == true
         )
         if device.deviceKind.isMXMaster3Family {
             profile.summary = "Gesture button is Gestures. Back and Forward are browser buttons."
@@ -138,11 +161,14 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             remembered: remembered,
             controlEnabled: false,
             controlWhileFocused: false,
-            hapticFeedback: device.deviceKind == .dualSense || device.deviceKind == .dualSenseEdge,
+            hapticFeedback: device.gamepadCapabilities?.haptics
+                ?? (device.deviceKind == .dualSense || device.deviceKind == .dualSenseEdge),
             profiles: [profile],
             selectedProfileID: profile.id,
             unitID: device.unitID,
-            wirelessProductID: device.wirelessProductID
+            wirelessProductID: device.wirelessProductID,
+            gamepadLayout: device.gamepadLayout,
+            gamepadCapabilities: device.gamepadCapabilities
         )
         record.ensureAppProfiles()
         record.ensureControllerDeviceSettings()
@@ -161,6 +187,7 @@ struct SidebarDevice: Identifiable, Hashable {
     var connection: DeviceConnection = .bluetooth
     var unitID: UInt32? = nil
     var wirelessProductID: Int? = nil
+    var gamepadLayout: GamepadLayout? = nil
 
     var glyph: String { kind.paneGlyph }
 
@@ -184,9 +211,14 @@ struct SidebarDevice: Identifiable, Hashable {
 
     func rowCaption(showBrand: Bool) -> String {
         if isConnected {
-            return "\(kind.brand) · \(connection.title)"
+            return "\(brandTitle) · \(connection.title)"
         }
-        if showBrand { return kind.brand }
+        if showBrand { return brandTitle }
         return statusTitle
+    }
+
+    var brandTitle: String {
+        if kind == .gamepad { return (gamepadLayout ?? .generic).brand }
+        return kind.brand
     }
 }

@@ -5,7 +5,7 @@ public final class ControlEngine: @unchecked Sendable {
     public var profile: MappingProfile
     public var enabled = false
     public var postsWhenHostIsActive = false
-    public var isDualSense = false
+    public var isGamepad = false
     public var pointerSpeed: Double = 14
     public var scrollSpeed: Double = 0.35
     /// MagSpeed Free Spin / Ratchet toggle. Host writes HID++ and shows the HUD.
@@ -34,8 +34,8 @@ public final class ControlEngine: @unchecked Sendable {
     private var volumeRepeatButton: DeviceButton?
     private var padGesture = HoldGesture()
     private var touchGesture = DualSenseTouchGesture()
-    private var leftTriggerTravel = DualSenseTriggerTravel()
-    private var rightTriggerTravel = DualSenseTriggerTravel()
+    private var leftTriggerTravel = GamepadTriggerTravel()
+    private var rightTriggerTravel = GamepadTriggerTravel()
 
     public init(profile: MappingProfile = MappingProfile.makeDefault(isAppleTVRemote: false)) {
         self.profile = profile
@@ -87,7 +87,7 @@ public final class ControlEngine: @unchecked Sendable {
         }
 
         pointerSpeed = 4 + profile.appliedPointerSpeed * 24
-        scrollSpeed = isDualSense ? analogScrollGain : (0.08 + profile.appliedWheelScrollSpeed * 0.72)
+        scrollSpeed = isGamepad ? analogScrollGain : (0.08 + profile.appliedWheelScrollSpeed * 0.72)
 
         guard enabled else {
             previousButtons = frame.buttons
@@ -111,7 +111,7 @@ public final class ControlEngine: @unchecked Sendable {
 
         postInjectedScroll(frame)
         processGesture(frame, injectAll: true)
-        if isDualSense {
+        if isGamepad {
             processTriggerTabs(frame, injectAll: true)
         }
 
@@ -404,7 +404,7 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func usesTriggerTabs(_ button: DeviceButton) -> Bool {
-        isDualSense && (button == .l2 || button == .r2) && (profile.bindings[button]?.isTabSwitch == true)
+        isGamepad && (button == .l2 || button == .r2) && (profile.bindings[button]?.isTabSwitch == true)
     }
 
     private func processTriggerTabs(_ frame: ControlFrame, injectAll: Bool) {
@@ -437,14 +437,14 @@ public final class ControlEngine: @unchecked Sendable {
     }
 
     private func analogScrollFactor(magnitude: Double, stick: Bool) -> Double {
-        if isDualSense {
+        if isGamepad {
             return analogScrollGain * scrollAccelerationFactor(magnitude: magnitude, stick: stick)
         }
         return scrollSpeed
     }
 
     private func scrollAccelerationFactor(magnitude: Double, stick: Bool) -> Double {
-        guard isDualSense, profile.scrollAcceleration == true else { return 1 }
+        guard isGamepad, profile.scrollAcceleration == true else { return 1 }
         let amount = min(max(profile.scrollAccelerationAmount ?? 0.3, 0), 1)
         if stick {
             let t = min(max(magnitude, 0), 1)
@@ -665,7 +665,7 @@ public final class ControlEngine: @unchecked Sendable {
             if down { EventPoster.system(.showDesktop) }
         case .spaceLeft:
             if down {
-                if isDualSense {
+                if isGamepad {
                     DockSwipe.playOneSpace(axis: .horizontal, towardPositive: false)
                 } else {
                     EventPoster.system(.spaceLeft)
@@ -673,7 +673,7 @@ public final class ControlEngine: @unchecked Sendable {
             }
         case .spaceRight:
             if down {
-                if isDualSense {
+                if isGamepad {
                     DockSwipe.playOneSpace(axis: .horizontal, towardPositive: true)
                 } else {
                     EventPoster.system(.spaceRight)

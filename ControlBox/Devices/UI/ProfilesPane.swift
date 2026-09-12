@@ -406,7 +406,7 @@ struct DeviceProfilePane: View {
         }
 
         if record.isGamepad {
-            let live = monitor.snapshot
+            let live = monitor.gamepadSnapshot(for: record.id)
             if live.batteryAvailable, let percent = live.batteryPercent {
                 return (percent, live.batteryCharging, "")
             }
@@ -454,16 +454,10 @@ struct DeviceProfilePane: View {
                 }
             }
         } else {
+            let capabilities = record.resolvedGamepadCapabilities
             devicePageBox(
                 "Analog",
-                footer: bullets(
-                    "One setting for this gamepad across every app profile.",
-                    "Sticks only move or scroll if that source is on.",
-                    "Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.",
-                    "Acceleration: small moves stay precise, flicks speed up.",
-                    "Sticky targeting outlines the control under the pointer and clicks it.",
-                    "Haptic rumble on DualSense button press."
-                )
+                footer: footerBullets(gamepadAnalogFooter(capabilities))
             ) {
                 devicePageRow {
                     analogPicker("Left stick", source: .dualSenseLeftStick)
@@ -472,17 +466,19 @@ struct DeviceProfilePane: View {
                 devicePageRow {
                     analogPicker("Right stick", source: .dualSenseRightStick)
                 }
-                devicePageDivider()
-                devicePageRow {
-                    analogPicker("Touchpad analog", source: .dualSenseTouchpad)
+                if capabilities.touchpad {
+                    devicePageDivider()
+                    devicePageRow {
+                        analogPicker("Touchpad analog", source: .dualSenseTouchpad)
+                    }
                 }
                 devicePageDivider()
                 devicePageRow {
                     Toggle("Pointer acceleration", isOn: accelerationBinding)
-                        .disabled(!dualSenseHasPointerSource(record))
+                        .disabled(!gamepadHasPointerSource(record))
                 }
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
-                   dualSenseHasPointerSource(record) {
+                   gamepadHasPointerSource(record) {
                     devicePageDivider()
                     devicePageRow {
                         SettingsSlider("Amount", value: accelerationAmountBinding)
@@ -492,12 +488,30 @@ struct DeviceProfilePane: View {
                 devicePageRow {
                     Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                 }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
+                if capabilities.haptics {
+                    devicePageDivider()
+                    devicePageRow {
+                        Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
+                    }
                 }
             }
         }
+    }
+
+    private func gamepadAnalogFooter(_ capabilities: GamepadCapabilities) -> [String] {
+        var lines = [
+            "One setting for this gamepad across every app profile.",
+            "Sticks only move or scroll if that source is on."
+        ]
+        if capabilities.touchpad {
+            lines.append("Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.")
+        }
+        lines.append("Acceleration: small moves stay precise, flicks speed up.")
+        lines.append("Sticky targeting outlines the control under the pointer and clicks it.")
+        if capabilities.haptics {
+            lines.append("Haptic rumble on button press.")
+        }
+        return lines
     }
 
     private func controllerPointerScrollBox(for record: DeviceRecord) -> some View {
@@ -512,8 +526,12 @@ struct DeviceProfilePane: View {
                 )
                 : bullets(
                     "One setting for this gamepad across every app profile.",
-                    "Pointer speed: stick and touchpad.",
-                    "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll.",
+                    record.resolvedGamepadCapabilities.touchpad
+                        ? "Pointer speed: stick and touchpad."
+                        : "Pointer speed: sticks.",
+                    record.resolvedGamepadCapabilities.touchpad
+                        ? "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll."
+                        : "Scroll speed / acceleration: only when a stick is set to Scroll.",
                     "Natural matches the Mac."
                 )
         ) {
@@ -653,15 +671,19 @@ struct DeviceProfilePane: View {
             Section {
                 analogPicker("Left stick", source: .dualSenseLeftStick)
                 analogPicker("Right stick", source: .dualSenseRightStick)
-                analogPicker("Touchpad analog", source: .dualSenseTouchpad)
+                if record.resolvedGamepadCapabilities.touchpad {
+                    analogPicker("Touchpad analog", source: .dualSenseTouchpad)
+                }
                 Toggle("Pointer acceleration", isOn: accelerationBinding)
-                    .disabled(!dualSenseHasPointerSource(record))
+                    .disabled(!gamepadHasPointerSource(record))
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
-                   dualSenseHasPointerSource(record) {
+                   gamepadHasPointerSource(record) {
                     SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
                 Toggle("Sticky targeting", isOn: stickyTargetingBinding)
-                Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
+                if record.resolvedGamepadCapabilities.haptics {
+                    Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
+                }
             } header: {
                 Text("Analog")
             } footer: {
@@ -1211,14 +1233,19 @@ struct DeviceProfilePane: View {
         }
         return profile.mode(for: .dualSenseLeftStick) == .scroll
             || profile.mode(for: .dualSenseRightStick) == .scroll
-            || profile.mode(for: .dualSenseTouchpad) == .scroll
+            || (record.resolvedGamepadCapabilities.touchpad
+                && profile.mode(for: .dualSenseTouchpad) == .scroll)
     }
 
-    private func dualSenseHasPointerSource(_ record: DeviceRecord) -> Bool {
+    private func gamepadHasPointerSource(_ record: DeviceRecord) -> Bool {
         let profile = record.selectedProfile
-        return profile.mode(for: .dualSenseLeftStick) == .pointer
-            || profile.mode(for: .dualSenseRightStick) == .pointer
-            || profile.mode(for: .dualSenseTouchpad) == .pointer
+        if profile.mode(for: .dualSenseLeftStick) == .pointer { return true }
+        if profile.mode(for: .dualSenseRightStick) == .pointer { return true }
+        if record.resolvedGamepadCapabilities.touchpad,
+           profile.mode(for: .dualSenseTouchpad) == .pointer {
+            return true
+        }
+        return false
     }
 
     private var scrollAccelerationBinding: Binding<Bool> {
@@ -1314,7 +1341,7 @@ struct DeviceProfilePane: View {
                     appProfileSelectorCard(for: record)
                 }
             }
-            if record.isGamepad {
+            if record.isGamepad, record.resolvedGamepadCapabilities.touchpad {
                 devicePageListRow {
                     controllerProfileBox("1-finger swipe") {
                         controllerProfileRow {
@@ -1338,7 +1365,7 @@ struct DeviceProfilePane: View {
         } header: {
             Text("Profiles")
         } footer: {
-            if record.isGamepad {
+            if record.isGamepad, record.resolvedGamepadCapabilities.touchpad {
                 bullets(
                     "Two separate Touchpad Gestures, like the MX gesture button.",
                     "Hold and move for the four directions; lift without moving is Click.",
@@ -1399,9 +1426,14 @@ struct DeviceProfilePane: View {
             return Text("L3 and R3 are stick clicks.")
         }
         if group.id == "shoulders", record.isGamepad {
+            let layout = record.resolvedGamepadLayout
+            let l2 = layout.label(for: .l2)
+            let r2 = layout.label(for: .r2)
+            let l1 = layout.label(for: .l1)
+            let r1 = layout.label(for: .r1)
             return bullets(
-                "L2 / R2 are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
-                "L1 / R1 are click buttons."
+                "\(l2) / \(r2) are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
+                "\(l1) / \(r1) are click buttons."
             )
         }
         return nil
@@ -1975,6 +2007,9 @@ struct DeviceProfilePane: View {
             return DeviceButton.mxMasterGroups
         }
         if record.isAppleTVRemote { return DeviceButton.appleTVGroups }
+        if record.isGamepad {
+            return DeviceButton.gamepadGroups(hasTouchpad: record.resolvedGamepadCapabilities.touchpad)
+        }
         return DeviceButton.dualSenseGroups
     }
 
@@ -2002,7 +2037,10 @@ struct DeviceProfilePane: View {
     }
 
     private func mxLabel(for button: DeviceButton, record: DeviceRecord) -> String {
-        monitor.mxSnapshot(for: record.id).controlTitles[button]
+        if record.isGamepad {
+            return record.resolvedGamepadLayout.label(for: button)
+        }
+        return monitor.mxSnapshot(for: record.id).controlTitles[button]
             ?? label(for: button, kind: record.kind)
     }
 

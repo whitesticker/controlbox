@@ -3,7 +3,7 @@ import Foundation
 import GameController
 
 @MainActor
-final class DualSenseHaptics {
+final class GamepadHaptics {
     private var engine: CHHapticEngine?
     private var attached: GCController?
     private var ready = false

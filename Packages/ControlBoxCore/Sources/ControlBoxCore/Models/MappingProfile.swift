@@ -670,7 +670,8 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         name: String = "Default",
         isAppleTVRemote: Bool,
         isMXMaster: Bool = false,
-        isMXKeyboard: Bool = false
+        isMXKeyboard: Bool = false,
+        gamepadHasTouchpad: Bool = true
     ) -> MappingProfile {
         if isMXKeyboard {
             return MappingProfile(
@@ -715,22 +716,38 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 stickyTargeting: false
             )
         }
+        if gamepadHasTouchpad {
+            return MappingProfile(
+                name: name,
+                summary: "L1/R1 desktops, L2/R2 tabs. D-pad Mission Control, Desktop, and app switch. Left stick pointer, right stick scroll. 1-finger is media.",
+                bindings: dualSenseBindings,
+                leftStick: .pointer,
+                rightStick: .scroll,
+                dualSenseTouchpad: .pointer,
+                pointerAcceleration: true,
+                pointerAccelerationAmount: 0.47,
+                pointerSpeed: 0.32,
+                hapticGestureSpeed: 0.29,
+                wheelScrollSpeed: 0.97,
+                naturalScrolling: true,
+                gestureSets: [
+                    .touchpadOneFinger: .named(.mediaControls)
+                ]
+            )
+        }
         return MappingProfile(
             name: name,
-            summary: "L1/R1 desktops, L2/R2 tabs. D-pad Mission Control, Desktop, and app switch. Left stick pointer, right stick scroll. 1-finger is media.",
-            bindings: dualSenseBindings,
+            summary: "L1/R1 desktops, L2/R2 tabs. D-pad Mission Control, Desktop, and app switch. Left stick pointer, right stick scroll.",
+            bindings: genericGamepadBindings,
             leftStick: .pointer,
             rightStick: .scroll,
-            dualSenseTouchpad: .pointer,
+            dualSenseTouchpad: .off,
             pointerAcceleration: true,
             pointerAccelerationAmount: 0.47,
             pointerSpeed: 0.32,
             hapticGestureSpeed: 0.29,
             wheelScrollSpeed: 0.97,
-            naturalScrolling: true,
-            gestureSets: [
-                .touchpadOneFinger: .named(.mediaControls)
-            ]
+            naturalScrolling: true
         )
     }
 }
@@ -760,7 +777,7 @@ private let appleTVBindings: [DeviceButton: ControlAction] = [
     .clickRight: .arrowRight
 ]
 
-private let dualSenseBindings: [DeviceButton: ControlAction] = [
+private let genericGamepadBindings: [DeviceButton: ControlAction] = [
     .dpadUp: .missionControl,
     .dpadDown: .showDesktop,
     .dpadLeft: .switchApplicationBack,
@@ -774,7 +791,12 @@ private let dualSenseBindings: [DeviceButton: ControlAction] = [
     .l2: .tabPrevious,
     .r2: .tabNext,
     .l3: .mouseLeft,
-    .r3: .mouseRight,
-    .touchpadClick: .mouseLeft,
-    .touchpadOneFinger: .gestures
+    .r3: .mouseRight
 ]
+
+private let dualSenseBindings: [DeviceButton: ControlAction] = {
+    var bindings = genericGamepadBindings
+    bindings[.touchpadClick] = .mouseLeft
+    bindings[.touchpadOneFinger] = .gestures
+    return bindings
+}()

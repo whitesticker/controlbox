@@ -390,7 +390,8 @@ private struct SupportedDevicesGuide: View {
                 .logitechMXMechanical,
                 .logitechMXMechanicalMini
             ]
-        )
+        ),
+        ("Other", [.gamepad])
     ]
 
     private let tileColumns = [
@@ -409,6 +410,13 @@ private struct SupportedDevicesGuide: View {
                         }
                         if brand == "Logitech" {
                             Text("Logi Bolt supports this family. Only MX Master 3S, MX Master 4, and MX Mechanical have been tested here — those are the devices on this desk.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 4)
+                        }
+                        if brand == "Other" {
+                            Text("Any controller macOS recognises: Xbox, Switch Pro, 8BitDo, generic HID pads.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

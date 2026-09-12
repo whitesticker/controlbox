@@ -289,7 +289,7 @@ struct CalibrationWindow: View {
                     description: Text("MX Mechanical settings live on the device page: backlight, lighting effect, and battery.")
                 )
             } else {
-                HeaderBar(snapshot: monitor.snapshot)
+                HeaderBar(snapshot: monitor.gamepadSnapshot(for: deviceID))
                 ControllerCalibrationLayout(monitor: monitor, deviceID: deviceID)
             }
         }
@@ -335,7 +335,7 @@ struct CalibrationWindow: View {
         if deviceKind.isMXKeyboard {
             return false
         }
-        return monitor.snapshot.connected
+        return monitor.gamepadSnapshot(for: deviceID).connected
     }
 
     private var subtitle: String {
@@ -351,7 +351,7 @@ private struct ControllerCalibrationLayout: View {
     @Bindable var monitor: DualSenseMonitor
     let deviceID: String
 
-    private var snapshot: DualSenseSnapshot { monitor.snapshot }
+    private var snapshot: GamepadSnapshot { monitor.gamepadSnapshot(for: deviceID) }
 
     var body: some View {
         GeometryReader { geo in
@@ -362,7 +362,7 @@ private struct ControllerCalibrationLayout: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if snapshot.isDualSense {
+                if snapshot.touchpad != nil {
                     VStack(spacing: 14) {
                         CalibrationCard(title: "Gesture capture") {
                             DualSenseGestureCaptureContent(snapshot: snapshot)
@@ -398,7 +398,7 @@ private struct ControllerCalibrationLayout: View {
 }
 
 private struct DualSenseGestureCaptureContent: View {
-    let snapshot: DualSenseSnapshot
+    let snapshot: GamepadSnapshot
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -509,7 +509,7 @@ struct CalibrationInputHistory: View {
 }
 
 private struct HeaderBar: View {
-    let snapshot: DualSenseSnapshot
+    let snapshot: GamepadSnapshot
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -519,7 +519,7 @@ private struct HeaderBar: View {
                 .frame(width: 10, height: 10)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(snapshot.connected ? snapshot.name : "Waiting for DualSense")
+                Text(snapshot.connected ? snapshot.name : "Waiting for controller")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(Palette.primaryText(colorScheme))
                 Text(statusLine)
@@ -537,7 +537,7 @@ private struct HeaderBar: View {
                     available: snapshot.batteryAvailable,
                     stateDescription: snapshot.batteryStateDescription
                 )
-                StatusChip(title: snapshot.isDualSense ? "DualSense profile" : "Generic gamepad", tint: Palette.accent)
+                StatusChip(title: snapshot.layout.title, tint: Palette.accent)
                 StatusChip(
                     title: snapshot.hasMotion ? "Motion on" : "No motion",
                     tint: snapshot.hasMotion ? Palette.good : Palette.secondaryText(colorScheme)
@@ -549,7 +549,7 @@ private struct HeaderBar: View {
 
     private var statusLine: String {
         if !snapshot.connected {
-            return "Press the PS button if the controller is paired but idle"
+            return "Press the \(snapshot.layout.homeButtonName) button if the controller is paired but idle"
         }
         return snapshot.product
     }
@@ -672,7 +672,7 @@ private struct ControllerLiveClicksContent: View {
     let deviceID: String
     @Environment(\.colorScheme) private var colorScheme
 
-    private var snapshot: DualSenseSnapshot { monitor.snapshot }
+    private var snapshot: GamepadSnapshot { monitor.gamepadSnapshot(for: deviceID) }
 
     var body: some View {
         ScrollView {
@@ -680,8 +680,8 @@ private struct ControllerLiveClicksContent: View {
                 Panel(title: "Analog") {
                     ValueRow(label: "Left stick", value: format(snapshot.leftStick))
                     ValueRow(label: "Right stick", value: format(snapshot.rightStick))
-                    ValueRow(label: "L2", value: String(format: "%.3f", snapshot.l2))
-                    ValueRow(label: "R2", value: String(format: "%.3f", snapshot.r2))
+                    ValueRow(label: snapshot.layout.label(for: .l2), value: String(format: "%.3f", snapshot.l2))
+                    ValueRow(label: snapshot.layout.label(for: .r2), value: String(format: "%.3f", snapshot.r2))
                 }
 
                 Panel(title: "Triggers") {
@@ -696,13 +696,15 @@ private struct ControllerLiveClicksContent: View {
                         .foregroundStyle(Palette.secondaryText(colorScheme))
                 }
 
-                Panel(title: "Touchpad") {
-                    ValueRow(label: "Click", value: snapshot.touchpadClick ? "down" : "up")
-                    ValueRow(label: "Finger 1", value: format(snapshot.touch1))
-                    ValueRow(label: "Finger 2", value: format(snapshot.touch2))
-                    Text("Hardware limit: 2 fingers at once")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Palette.secondaryText(colorScheme))
+                if snapshot.touchpad != nil {
+                    Panel(title: "Touchpad") {
+                        ValueRow(label: "Click", value: snapshot.touchpadClick ? "down" : "up")
+                        ValueRow(label: "Finger 1", value: format(snapshot.touch1))
+                        ValueRow(label: "Finger 2", value: format(snapshot.touch2))
+                        Text("Hardware limit: 2 fingers at once")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(Palette.secondaryText(colorScheme))
+                    }
                 }
 
                 Panel(title: "Motion") {
@@ -711,7 +713,7 @@ private struct ControllerLiveClicksContent: View {
                         ValueRow(label: "Accel", value: format(snapshot.userAcceleration))
                         ValueRow(label: "Gyro", value: format(snapshot.rotationRate))
                     } else {
-                        Text("No IMU data")
+                        Text("No IMU on this controller")
                             .foregroundStyle(Palette.secondaryText(colorScheme))
                             .font(.system(size: 12, design: .rounded))
                     }

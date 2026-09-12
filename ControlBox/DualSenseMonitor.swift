@@ -10,7 +10,8 @@ import ServiceManagement
 @Observable
 @MainActor
 final class DualSenseMonitor {
-    var snapshot = DualSenseSnapshot()
+    var snapshot = GamepadSnapshot()
+    var genericGamepadSnapshot = GamepadSnapshot()
     var audioInputs: [String] = []
     var dualSenseAudioPresent = false
     var calibrationWindowFocused = false
@@ -77,7 +78,8 @@ final class DualSenseMonitor {
             ?? MappingProfile.makeDefault(
                 isAppleTVRemote: selectedKind == .appleTVRemote,
                 isMXMaster: selectedKind.isMXMaster,
-                isMXKeyboard: selectedKind.isMXKeyboard
+                isMXKeyboard: selectedKind.isMXKeyboard,
+                gamepadHasTouchpad: selectedRecord?.resolvedGamepadCapabilities.touchpad ?? selectedKind.isGamepad
             )
     }
 
@@ -109,7 +111,8 @@ final class DualSenseMonitor {
                     remembered: true,
                     connection: live?.connection ?? record.logitechKey.connection,
                     unitID: record.unitID ?? live?.unitID,
-                    wirelessProductID: record.wirelessProductID ?? live?.wirelessProductID
+                    wirelessProductID: record.wirelessProductID ?? live?.wirelessProductID,
+                    gamepadLayout: record.gamepadLayout
                 )
             )
         }
@@ -178,6 +181,7 @@ final class DualSenseMonitor {
     private var mxWheelEngines: [String: MXWheelActionEngine] = [:]
     private var lastLiveAppProfileID: [String: String] = [:]
     private let dualSense = DualSenseSession()
+    private let gamepad = GamepadSession()
     private let appleTV = AppleTVRemoteSession()
     private let logitech = LogitechDeviceSession()
     private let mouseScrollTap = MouseScrollTap()
@@ -185,7 +189,7 @@ final class DualSenseMonitor {
 
     private var keyboard: any LogitechKeyboardDevice { logitech.keyboard }
     private var mxReaders: [any LogitechMouseDevice] { logitech.mouseReaders }
-    private var familySessions: [any DeviceFamilySession] { [dualSense, appleTV, logitech] }
+    private var familySessions: [any DeviceFamilySession] { [dualSense, gamepad, appleTV, logitech] }
 
     func start() {
         guard !didStart else { return }
@@ -221,7 +225,8 @@ final class DualSenseMonitor {
                 Task { @MainActor in
                     self?.refreshDevices()
                     self?.attachPreferredController()
-                    self?.snapshot = self?.dualSense.snapshot ?? DualSenseSnapshot()
+                    self?.snapshot = self?.dualSense.snapshot ?? GamepadSnapshot()
+                    self?.genericGamepadSnapshot = self?.gamepad.snapshot ?? GamepadSnapshot()
                 }
             }
         )
@@ -236,8 +241,10 @@ final class DualSenseMonitor {
                 Task { @MainActor in
                     self?.refreshDevices()
                     self?.dualSense.handleDisconnect(controller)
+                    self?.gamepad.handleDisconnect(controller)
                     self?.attachPreferredController()
-                    self?.snapshot = self?.dualSense.snapshot ?? DualSenseSnapshot()
+                    self?.snapshot = self?.dualSense.snapshot ?? GamepadSnapshot()
+                    self?.genericGamepadSnapshot = self?.gamepad.snapshot ?? GamepadSnapshot()
                 }
             }
         )
@@ -428,7 +435,11 @@ final class DualSenseMonitor {
     func setHapticFeedback(_ enabled: Bool) {
         updateSelectedRecord { $0.hapticFeedback = enabled }
         if enabled {
-            dualSense.pulse()
+            if selectedRecord?.kind == .gamepad {
+                gamepad.pulse()
+            } else {
+                dualSense.pulse()
+            }
         }
     }
 
@@ -838,7 +849,8 @@ final class DualSenseMonitor {
                 name: "Untitled",
                 isAppleTVRemote: record.isAppleTVRemote,
                 isMXMaster: record.isMXMaster,
-                isMXKeyboard: record.isMXKeyboard
+                isMXKeyboard: record.isMXKeyboard,
+                gamepadHasTouchpad: record.resolvedGamepadCapabilities.touchpad
             )
             record.profiles.append(profile)
             record.selectedProfileID = profile.id
@@ -1088,7 +1100,10 @@ final class DualSenseMonitor {
         persistSuppressedDevices()
         if let existing = matchingRecord(for: device) {
             selectDevice(id: existing.id)
-            updateSelectedRecord { $0.remembered = true }
+            updateSelectedRecord {
+                $0.remembered = true
+                applyGamepadIdentity(&$0, from: device)
+            }
             return
         }
         if !deviceRecords.contains(where: { $0.id == device.id }) {
@@ -1100,9 +1115,13 @@ final class DualSenseMonitor {
             deviceRecords[index].name = device.name
             deviceRecords[index].address = device.address
             deviceRecords[index].kind = device.deviceKind
+            applyGamepadIdentity(&deviceRecords[index], from: device)
         }
         persistDeviceRecords()
         selectDevice(id: device.id)
+        if device.deviceKind.isGamepad {
+            attachPreferredController()
+        }
     }
 
     func reloadDevices() {
@@ -1122,17 +1141,24 @@ final class DualSenseMonitor {
         persistDeviceRecords()
         selectedDeviceID = sidebarDevices.first?.id
         dualSense.detach()
-        snapshot = DualSenseSnapshot()
+        gamepad.detach()
+        snapshot = GamepadSnapshot()
+        genericGamepadSnapshot = GamepadSnapshot()
         appleTVSnapshot = AppleTVRemoteSnapshot()
         attachPreferredController()
     }
 
     private func attachPreferredController() {
-        let preferredName = deviceRecords.first {
-            $0.remembered && $0.isGamepad
-        }?.name
-        dualSense.attachPreferred(named: preferredName)
+        dualSense.attachPreferred(named: preferredGamepadName(for: dualSense))
+        gamepad.attachPreferred(named: preferredGamepadName(for: gamepad))
         snapshot = dualSense.snapshot
+        genericGamepadSnapshot = gamepad.snapshot
+    }
+
+    private func preferredGamepadName(for session: GamepadSession) -> String? {
+        deviceRecords.first {
+            $0.remembered && session.kinds.contains($0.kind)
+        }?.name
     }
 
     private func capture() {
@@ -1150,7 +1176,8 @@ final class DualSenseMonitor {
             refreshPermissions()
         }
 
-        let dualSenseRecord = liveDualSenseRecord()
+        let dualSenseRecord = liveGamepadRecord(for: dualSense)
+        let genericRecord = liveGamepadRecord(for: gamepad)
         let wantMotion = openCalibrationDeviceIDs.contains(where: {
             deviceRecord(for: $0)?.isGamepad == true
         })
@@ -1158,10 +1185,17 @@ final class DualSenseMonitor {
             hapticEnabled: dualSenseRecord?.hapticFeedbackEnabled == true,
             wantMotion: wantMotion
         )
-        let ds = dualSense.snapshot
-        publishDualSense(ds, wantMotion: wantMotion)
-        if let record = dualSenseRecord, ds.connected {
-            ingestControl(ControlFrameBuilder.make(from: ds), record: record)
+        publishGamepad(dualSense.snapshot, into: \.snapshot, wantMotion: wantMotion)
+        if let record = dualSenseRecord, dualSense.snapshot.connected {
+            ingestControl(ControlFrameBuilder.make(from: dualSense.snapshot), record: record)
+        }
+        gamepad.poll(
+            hapticEnabled: genericRecord?.hapticFeedbackEnabled == true,
+            wantMotion: wantMotion
+        )
+        publishGamepad(gamepad.snapshot, into: \.genericGamepadSnapshot, wantMotion: wantMotion)
+        if let record = genericRecord, gamepad.snapshot.connected {
+            ingestControl(ControlFrameBuilder.make(from: gamepad.snapshot), record: record)
         }
         captureMXMasters()
         captureKeyboard()
@@ -1228,21 +1262,37 @@ final class DualSenseMonitor {
         }
     }
 
-    private func publishDualSense(_ next: DualSenseSnapshot, wantMotion: Bool) {
+    private func publishGamepad(
+        _ next: GamepadSnapshot,
+        into keyPath: ReferenceWritableKeyPath<DualSenseMonitor, GamepadSnapshot>,
+        wantMotion: Bool
+    ) {
+        let current = self[keyPath: keyPath]
         if wantMotion {
-            if snapshot.matchesIgnoringMotion(next) {
+            if current.matchesIgnoringMotion(next) {
                 if Date().timeIntervalSince(lastMotionPublish) >= 0.1 {
-                    snapshot = next
+                    self[keyPath: keyPath] = next
                     lastMotionPublish = Date()
                 }
                 return
             }
-            snapshot = next
+            self[keyPath: keyPath] = next
             lastMotionPublish = Date()
             return
         }
-        if snapshot.matchesSettings(next) { return }
-        snapshot = next
+        if current.matchesSettings(next) { return }
+        self[keyPath: keyPath] = next
+    }
+
+    func gamepadSnapshot(for deviceID: String) -> GamepadSnapshot {
+        guard let record = deviceRecord(for: deviceID) else { return GamepadSnapshot() }
+        if record.kind == .dualSense || record.kind == .dualSenseEdge {
+            return snapshot
+        }
+        if record.kind == .gamepad {
+            return genericGamepadSnapshot
+        }
+        return GamepadSnapshot()
     }
 
     private func reader(for record: DeviceRecord) -> (any LogitechMouseDevice)? {
@@ -1278,7 +1328,7 @@ final class DualSenseMonitor {
         engine.profile = live
         engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
-        engine.isDualSense = false
+        engine.isGamepad = false
         engine.onSwitchWheelMode = { [weak self] in
             DispatchQueue.main.async {
                 self?.toggleMXRatchetMode(for: record.id)
@@ -1494,7 +1544,7 @@ final class DualSenseMonitor {
         engine.profile = record.usesAppProfiles ? liveAppProfile(for: record) : record.selectedProfile
         engine.enabled = record.controlEnabled && !calibrationWindowFocused
         engine.postsWhenHostIsActive = record.controlWhileFocused
-        engine.isDualSense = record.kind.isGamepad
+        engine.isGamepad = record.kind.isGamepad
         if record.isMXMaster {
             return
         }
@@ -1586,14 +1636,14 @@ final class DualSenseMonitor {
         deviceRecords.first { $0.remembered && $0.isAppleTVRemote }
     }
 
-    private func liveDualSenseRecord() -> DeviceRecord? {
-        if let name = dualSense.vendorName,
+    private func liveGamepadRecord(for session: GamepadSession) -> DeviceRecord? {
+        if let name = session.vendorName,
            let match = deviceRecords.first(where: {
-               $0.remembered && $0.isGamepad && namesMatch($0.name, name)
+               $0.remembered && session.kinds.contains($0.kind) && namesMatch($0.name, name)
            }) {
             return match
         }
-        return deviceRecords.first { $0.remembered && $0.isGamepad }
+        return deviceRecords.first { $0.remembered && session.kinds.contains($0.kind) }
     }
 
     private func liveMXRecord(for live: MXMasterSnapshot) -> DeviceRecord? {
@@ -1688,6 +1738,9 @@ final class DualSenseMonitor {
         if kind == .dualSense || kind == .dualSenseEdge {
             return "dualsense:\(name.lowercased())"
         }
+        if kind == .gamepad {
+            return "gamepad:\(name.lowercased())"
+        }
         return id
     }
 
@@ -1702,9 +1755,19 @@ final class DualSenseMonitor {
             }
         }
         deviceRecords[index].kind = device.deviceKind
+        applyGamepadIdentity(&deviceRecords[index], from: device)
         if deviceRecords[index].unitID == nil { deviceRecords[index].unitID = device.unitID }
         if deviceRecords[index].wirelessProductID == nil {
             deviceRecords[index].wirelessProductID = device.wirelessProductID
+        }
+    }
+
+    private func applyGamepadIdentity(_ record: inout DeviceRecord, from device: ConnectedBluetoothDevice) {
+        if let layout = device.gamepadLayout {
+            record.gamepadLayout = layout
+        }
+        if let capabilities = device.gamepadCapabilities {
+            record.gamepadCapabilities = capabilities
         }
     }
 
@@ -1772,7 +1835,8 @@ final class DualSenseMonitor {
                     let profile = MappingProfile.makeDefault(
                         isAppleTVRemote: next.isAppleTVRemote,
                         isMXMaster: next.isMXMaster,
-                        isMXKeyboard: next.isMXKeyboard
+                        isMXKeyboard: next.isMXKeyboard,
+                        gamepadHasTouchpad: next.resolvedGamepadCapabilities.touchpad
                     )
                     next.profiles = [profile]
                     next.selectedProfileID = profile.id

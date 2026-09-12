@@ -1,36 +1,48 @@
 import ControlBoxCore
 
 enum ControlFrameBuilder {
-    static func make(from snapshot: DualSenseSnapshot) -> ControlFrame {
-        ControlFrame(
-            buttons: [
-                .cross: snapshot.cross,
-                .circle: snapshot.circle,
-                .square: snapshot.square,
-                .triangle: snapshot.triangle,
-                .dpadUp: snapshot.dpadUp,
-                .dpadDown: snapshot.dpadDown,
-                .dpadLeft: snapshot.dpadLeft,
-                .dpadRight: snapshot.dpadRight,
-                .l1: snapshot.l1,
-                .r1: snapshot.r1,
-                .l2: snapshot.l2 > 0.15,
-                .r2: snapshot.r2 > 0.15,
-                .l3: snapshot.l3,
-                .r3: snapshot.r3,
-                .create: snapshot.create,
-                .options: snapshot.options,
-                .ps: snapshot.ps,
-                .touchpadClick: snapshot.touchpadClick,
-                .touchpadOneFinger: snapshot.touch1.active && !snapshot.touch2.active,
-                .touchpadTwoFinger: snapshot.touch1.active && snapshot.touch2.active
-            ],
-            analog: [
-                .dualSenseLeftStick: AnalogSample(x: snapshot.leftStick.x, y: snapshot.leftStick.y, active: true),
-                .dualSenseRightStick: AnalogSample(x: snapshot.rightStick.x, y: snapshot.rightStick.y, active: true),
-                .dualSenseTouchpad: AnalogSample(x: snapshot.touch1.x, y: snapshot.touch1.y, active: snapshot.touch1.active),
-                .dualSenseTouchpadSecondary: AnalogSample(x: snapshot.touch2.x, y: snapshot.touch2.y, active: snapshot.touch2.active)
-            ],
+    static func make(from snapshot: GamepadSnapshot) -> ControlFrame {
+        var buttons: [DeviceButton: Bool] = [
+            .cross: snapshot.cross,
+            .circle: snapshot.circle,
+            .square: snapshot.square,
+            .triangle: snapshot.triangle,
+            .dpadUp: snapshot.dpadUp,
+            .dpadDown: snapshot.dpadDown,
+            .dpadLeft: snapshot.dpadLeft,
+            .dpadRight: snapshot.dpadRight,
+            .l1: snapshot.l1,
+            .r1: snapshot.r1,
+            .l2: snapshot.l2 > 0.15,
+            .r2: snapshot.r2 > 0.15,
+            .l3: snapshot.l3,
+            .r3: snapshot.r3,
+            .create: snapshot.create,
+            .options: snapshot.options,
+            .ps: snapshot.ps
+        ]
+        var analog: [AnalogSource: AnalogSample] = [
+            .dualSenseLeftStick: AnalogSample(x: snapshot.leftStick.x, y: snapshot.leftStick.y, active: true),
+            .dualSenseRightStick: AnalogSample(x: snapshot.rightStick.x, y: snapshot.rightStick.y, active: true)
+        ]
+        if snapshot.touchpad != nil {
+            buttons[.touchpadClick] = snapshot.touchpadClick
+            buttons[.touchpadOneFinger] = snapshot.touch1.active && !snapshot.touch2.active
+            buttons[.touchpadTwoFinger] = snapshot.touch1.active && snapshot.touch2.active
+            analog[.dualSenseTouchpad] = AnalogSample(
+                x: snapshot.touch1.x,
+                y: snapshot.touch1.y,
+                active: snapshot.touch1.active
+            )
+            analog[.dualSenseTouchpadSecondary] = AnalogSample(
+                x: snapshot.touch2.x,
+                y: snapshot.touch2.y,
+                active: snapshot.touch2.active
+            )
+        }
+        return ControlFrame(
+            buttons: buttons,
+            analog: analog,
             leftTrigger: snapshot.l2,
             rightTrigger: snapshot.r2
         )

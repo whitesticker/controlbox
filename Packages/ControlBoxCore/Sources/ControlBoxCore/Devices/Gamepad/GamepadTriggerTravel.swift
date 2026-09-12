@@ -1,8 +1,8 @@
 import Foundation
 
-/// DualSense L2 / R2 analog travel for tab switching.
+/// Analog trigger travel for tab switching.
 /// Mid pull = one tab. Full hold = keep switching at `interval`.
-public struct DualSenseTriggerTravel {
+public struct GamepadTriggerTravel {
     public static let rest: Float = 0.12
     public static let single: Float = 0.38
     public static let hold: Float = 0.82

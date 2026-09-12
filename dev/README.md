@@ -74,3 +74,4 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |
 | [polling-loops.md](polling-loops.md) | Inventory of timers and system-API polls (start here when idle CPU or a loop looks wrong) |
+| [generic-gamepad.md](generic-gamepad.md) | Non-Sony controller is "Not supported yet"; plan for a `GamepadSession` base with DualSense as a subclass, plus its Calibration page |

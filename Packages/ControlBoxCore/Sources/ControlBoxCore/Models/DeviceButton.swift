@@ -90,8 +90,15 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
 
     public static let appleTVButtons: [DeviceButton] = appleTVGroups.flatMap(\.buttons)
 
-    public static let dualSenseButtons: [DeviceButton] = dualSenseGroups.flatMap(\.buttons)
-        + [.touchpadOneFinger, .touchpadTwoFinger]
+    public static let dualSenseButtons: [DeviceButton] = gamepadButtons(hasTouchpad: true)
+
+    public static func gamepadButtons(hasTouchpad: Bool) -> [DeviceButton] {
+        var buttons = gamepadGroups(hasTouchpad: hasTouchpad).flatMap(\.buttons)
+        if hasTouchpad {
+            buttons.append(contentsOf: [.touchpadOneFinger, .touchpadTwoFinger])
+        }
+        return buttons
+    }
 
     public static let appleTVGroups: [DeviceButtonGroup] = [
         DeviceButtonGroup(
@@ -143,33 +150,41 @@ public enum DeviceButton: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    public static let dualSenseGroups: [DeviceButtonGroup] = [
-        DeviceButtonGroup(
-            id: "face",
-            title: "Face buttons",
-            buttons: [.cross, .circle, .square, .triangle]
-        ),
-        DeviceButtonGroup(
-            id: "dpad",
-            title: "D-pad",
-            buttons: [.dpadUp, .dpadDown, .dpadLeft, .dpadRight]
-        ),
-        DeviceButtonGroup(
-            id: "shoulders",
-            title: "Shoulders",
-            buttons: [.l1, .r1, .l2, .r2]
-        ),
-        DeviceButtonGroup(
-            id: "sticks",
-            title: "Stick clicks",
-            buttons: [.l3, .r3]
-        ),
-        DeviceButtonGroup(
-            id: "system",
-            title: "System",
-            buttons: [.create, .options, .ps, .touchpadClick]
-        )
-    ]
+    public static let dualSenseGroups: [DeviceButtonGroup] = gamepadGroups(hasTouchpad: true)
+
+    public static func gamepadGroups(hasTouchpad: Bool) -> [DeviceButtonGroup] {
+        var system: [DeviceButton] = [.create, .options, .ps]
+        if hasTouchpad {
+            system.append(.touchpadClick)
+        }
+        return [
+            DeviceButtonGroup(
+                id: "face",
+                title: "Face buttons",
+                buttons: [.cross, .circle, .square, .triangle]
+            ),
+            DeviceButtonGroup(
+                id: "dpad",
+                title: "D-pad",
+                buttons: [.dpadUp, .dpadDown, .dpadLeft, .dpadRight]
+            ),
+            DeviceButtonGroup(
+                id: "shoulders",
+                title: "Shoulders",
+                buttons: [.l1, .r1, .l2, .r2]
+            ),
+            DeviceButtonGroup(
+                id: "sticks",
+                title: "Stick clicks",
+                buttons: [.l3, .r3]
+            ),
+            DeviceButtonGroup(
+                id: "system",
+                title: "System",
+                buttons: system
+            )
+        ]
+    }
 
     /// Controls that can own a directional gesture map when their live device
     /// descriptor confirms raw-XY support.

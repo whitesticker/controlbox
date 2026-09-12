@@ -1,10 +1,12 @@
 import Foundation
 import GameController
 import IOKit.hid
+import ControlBoxCore
 
 enum DeviceKind: String, Codable, Equatable {
     case dualSense
     case dualSenseEdge
+    case gamepad
     case appleTVRemote
     case logitechMXMaster
     case logitechMXMaster3
@@ -32,7 +34,7 @@ enum DeviceKind: String, Codable, Equatable {
     }
 
     var isGamepad: Bool {
-        self == .dualSense || self == .dualSenseEdge
+        self == .dualSense || self == .dualSenseEdge || self == .gamepad
     }
 
     var paneGlyph: String {
@@ -56,6 +58,7 @@ enum DeviceKind: String, Codable, Equatable {
         switch self {
         case .dualSense: return "PS5 DualSense"
         case .dualSenseEdge: return "PS5 DualSense Edge"
+        case .gamepad: return "Game Controller"
         case .appleTVRemote: return "Apple TV Remote"
         case .logitechMXMaster, .logitechMXMaster4: return "MX Master 4"
         case .logitechMXMaster3: return "MX Master 3"
@@ -71,6 +74,8 @@ enum DeviceKind: String, Codable, Equatable {
         switch self {
         case .dualSense, .dualSenseEdge:
             return "Buttons, sticks, and the touchpad map to pointer, keys, and gestures. 1-finger and 2-finger pads are separate."
+        case .gamepad:
+            return "Face buttons, D-pad, bumpers, analog triggers, and both sticks map to pointer, keys, and gestures."
         case .appleTVRemote:
             return "Click, swipe, and Back from the Siri Remote / Apple TV remote."
         case .logitechMXMaster3:
@@ -95,7 +100,7 @@ enum DeviceKind: String, Codable, Equatable {
         case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
              .logitechMouse:
             return .mouse
-        case .dualSense, .dualSenseEdge:
+        case .dualSense, .dualSenseEdge, .gamepad:
             return .gamepad
         case .appleTVRemote:
             return .remote
@@ -110,6 +115,8 @@ enum DeviceKind: String, Codable, Equatable {
         switch self {
         case .dualSense, .dualSenseEdge:
             return "Sony"
+        case .gamepad:
+            return "Other"
         case .appleTVRemote:
             return "Apple"
         case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,
@@ -163,6 +170,8 @@ struct ConnectedBluetoothDevice: Identifiable, Equatable {
     var unitID: UInt32? = nil
     var wirelessProductID: Int? = nil
     var connection: DeviceConnection = .bluetooth
+    var gamepadLayout: GamepadLayout? = nil
+    var gamepadCapabilities: GamepadCapabilities? = nil
 
     var isSupported: Bool { deviceKind.isSupported }
     var kind: String { deviceKind.title }
@@ -404,6 +413,10 @@ enum BluetoothDeviceCatalog {
         var devices: [ConnectedBluetoothDevice] = []
         var seen = Set<String>()
 
+        for controller in GCController.controllers() where controller.extendedGamepad != nil {
+            appendGameController(controller, into: &devices, seen: &seen)
+        }
+
         for record in hid.records {
             let isGenericLogitechEndpoint =
                 record.vendorID == DeviceSupport.logitechVendorID
@@ -424,6 +437,7 @@ enum BluetoothDeviceCatalog {
             let name = record.product.isEmpty
                 ? (kind.isSupported ? kind.title : "Unknown device")
                 : record.product
+            if seen.contains(name.lowercased()) { continue }
             let token = record.address.isEmpty ? name.lowercased() : record.address.lowercased()
             let identity = "\(record.vendorID):\(record.productID):\(token)"
             guard seen.insert(identity).inserted else { continue }
@@ -443,24 +457,6 @@ enum BluetoothDeviceCatalog {
             )
         }
 
-        for controller in GCController.controllers() where controller.extendedGamepad is GCDualSenseGamepad {
-            let name = controller.vendorName ?? "DualSense Wireless Controller"
-            if seen.contains(name.lowercased()) { continue }
-            let id = "gc:\(name)"
-            guard seen.insert(id).inserted else { continue }
-            seen.insert(name.lowercased())
-            devices.append(
-                ConnectedBluetoothDevice(
-                    id: id,
-                    name: name,
-                    address: "Game Controller",
-                    deviceKind: .dualSense,
-                    detail: DeviceKind.dualSense.title,
-                    isConnected: true
-                )
-            )
-        }
-
         return devices.sorted { lhs, rhs in
             if lhs.isConnected != rhs.isConnected {
                 return lhs.isConnected
@@ -470,6 +466,38 @@ enum BluetoothDeviceCatalog {
             }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private static func appendGameController(
+        _ controller: GCController,
+        into devices: inout [ConnectedBluetoothDevice],
+        seen: inout Set<String>
+    ) {
+        let layout = GamepadLayout.from(controller: controller)
+        let capabilities = GamepadCapabilities.from(controller: controller)
+        let name = controller.vendorName ?? layout.title
+        if seen.contains(name.lowercased()) { return }
+        let id = "gc:\(name)"
+        guard seen.insert(id).inserted else { return }
+        seen.insert(name.lowercased())
+        let kind: DeviceKind
+        if controller.extendedGamepad is GCDualSenseGamepad {
+            kind = name.lowercased().contains("edge") ? .dualSenseEdge : .dualSense
+        } else {
+            kind = .gamepad
+        }
+        devices.append(
+            ConnectedBluetoothDevice(
+                id: id,
+                name: name,
+                address: "Game Controller",
+                deviceKind: kind,
+                detail: kind == .gamepad ? layout.title : kind.title,
+                isConnected: true,
+                gamepadLayout: layout,
+                gamepadCapabilities: capabilities
+            )
+        )
     }
 }
 

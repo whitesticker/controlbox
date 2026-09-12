@@ -1,8 +1,12 @@
 import SwiftUI
+import ControlBoxCore
 
 struct ControllerDiagramView: View {
-    let snapshot: DualSenseSnapshot
+    let snapshot: GamepadSnapshot
     @Environment(\.colorScheme) private var colorScheme
+
+    private var layout: GamepadLayout { snapshot.layout }
+    private var showsTouchpad: Bool { snapshot.touchpad != nil }
 
     var body: some View {
         GeometryReader { geo in
@@ -16,16 +20,16 @@ struct ControllerDiagramView: View {
                             .stroke(Palette.hairline(colorScheme), lineWidth: 1)
                     )
 
-                TriggerBar(label: "L2", value: snapshot.l2)
+                TriggerBar(label: layout.label(for: .l2), value: snapshot.l2)
                     .frame(width: 78, height: 54)
                     .position(x: width * 0.18, y: height * 0.12)
-                TriggerBar(label: "R2", value: snapshot.r2)
+                TriggerBar(label: layout.label(for: .r2), value: snapshot.r2)
                     .frame(width: 78, height: 54)
                     .position(x: width * 0.82, y: height * 0.12)
 
-                ShoulderButton(label: "L1", pressed: snapshot.l1)
+                ShoulderButton(label: layout.label(for: .l1), pressed: snapshot.l1)
                     .position(x: width * 0.18, y: height * 0.24)
-                ShoulderButton(label: "R1", pressed: snapshot.r1)
+                ShoulderButton(label: layout.label(for: .r1), pressed: snapshot.r1)
                     .position(x: width * 0.82, y: height * 0.24)
 
                 DPad(
@@ -44,24 +48,21 @@ struct ControllerDiagramView: View {
                     .frame(width: 108, height: 108)
                     .position(x: width * 0.62, y: height * 0.68)
 
-                FaceButtons(
-                    triangle: snapshot.triangle,
-                    circle: snapshot.circle,
-                    cross: snapshot.cross,
-                    square: snapshot.square
-                )
-                .position(x: width * 0.82, y: height * 0.46)
+                FaceButtons(layout: layout, snapshot: snapshot)
+                    .position(x: width * 0.82, y: height * 0.46)
 
-                TouchpadView(snapshot: snapshot)
-                    .frame(width: min(width * 0.42, 280), height: 118)
-                    .position(x: width * 0.50, y: height * 0.36)
+                if showsTouchpad {
+                    TouchpadView(snapshot: snapshot)
+                        .frame(width: min(width * 0.42, 280), height: 118)
+                        .position(x: width * 0.50, y: height * 0.36)
+                }
 
                 HStack(spacing: 18) {
-                    SmallButton(label: "Create", pressed: snapshot.create)
-                    SmallButton(label: "PS", pressed: snapshot.ps, emphasized: true)
-                    SmallButton(label: "Options", pressed: snapshot.options)
+                    SmallButton(label: layout.label(for: .create), pressed: snapshot.create)
+                    SmallButton(label: layout.label(for: .ps), pressed: snapshot.ps, emphasized: true)
+                    SmallButton(label: layout.label(for: .options), pressed: snapshot.options)
                 }
-                .position(x: width * 0.50, y: height * 0.88)
+                .position(x: width * 0.50, y: showsTouchpad ? height * 0.88 : height * 0.36)
             }
             .padding(18)
         }
@@ -168,19 +169,73 @@ private struct DPadArm: View {
 }
 
 private struct FaceButtons: View {
-    let triangle: Bool
-    let circle: Bool
-    let cross: Bool
-    let square: Bool
+    let layout: GamepadLayout
+    let snapshot: GamepadSnapshot
 
     var body: some View {
         ZStack {
-            FaceButton(symbol: "△", pressed: triangle, color: Palette.triangle).offset(y: -34)
-            FaceButton(symbol: "○", pressed: circle, color: Palette.circle).offset(x: 34)
-            FaceButton(symbol: "✕", pressed: cross, color: Palette.cross).offset(y: 34)
-            FaceButton(symbol: "□", pressed: square, color: Palette.square).offset(x: -34)
+            FaceButton(
+                symbol: faceSymbol(for: .triangle),
+                pressed: snapshot.triangle,
+                color: faceColor(for: .triangle)
+            )
+            .offset(y: -34)
+            FaceButton(
+                symbol: faceSymbol(for: .circle),
+                pressed: snapshot.circle,
+                color: faceColor(for: .circle)
+            )
+            .offset(x: 34)
+            FaceButton(
+                symbol: faceSymbol(for: .cross),
+                pressed: snapshot.cross,
+                color: faceColor(for: .cross)
+            )
+            .offset(y: 34)
+            FaceButton(
+                symbol: faceSymbol(for: .square),
+                pressed: snapshot.square,
+                color: faceColor(for: .square)
+            )
+            .offset(x: -34)
         }
         .frame(width: 120, height: 120)
+    }
+
+    private func faceSymbol(for button: DeviceButton) -> String {
+        if layout == .sony {
+            switch button {
+            case .triangle: return "△"
+            case .circle: return "○"
+            case .cross: return "✕"
+            case .square: return "□"
+            default: return layout.label(for: button)
+            }
+        }
+        return layout.label(for: button)
+    }
+
+    private func faceColor(for button: DeviceButton) -> Color {
+        switch layout {
+        case .sony:
+            switch button {
+            case .triangle: return Palette.triangle
+            case .circle: return Palette.circle
+            case .cross: return Palette.cross
+            case .square: return Palette.square
+            default: return Palette.accent
+            }
+        case .xbox:
+            switch button {
+            case .cross: return Color(red: 0.20, green: 0.72, blue: 0.28)
+            case .circle: return Color(red: 0.90, green: 0.22, blue: 0.22)
+            case .square: return Color(red: 0.18, green: 0.48, blue: 0.92)
+            case .triangle: return Color(red: 0.96, green: 0.78, blue: 0.16)
+            default: return Palette.accent
+            }
+        case .nintendo, .generic:
+            return Palette.accent
+        }
     }
 }
 
@@ -224,7 +279,7 @@ private struct SmallButton: View {
 }
 
 private struct TouchpadView: View {
-    let snapshot: DualSenseSnapshot
+    let snapshot: GamepadSnapshot
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
