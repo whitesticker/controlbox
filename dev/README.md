@@ -61,6 +61,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [window-grab-only-own-app.md](window-grab-only-own-app.md) | Window grab moves Control Box but not Finder, Safari, or other apps |
 | [night-shift-hijack-hang.md](night-shift-hijack-hang.md) | App beachballs on launch while Night Shift take-over is on |
 | [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md) | Relaunch forces Dark while Night Shift take-over is on |
+| [night-shift-max-not-yellow.md](night-shift-max-not-yellow.md) | Chart top is not as yellow as System Settings More Warm |
+| [night-shift-beyond-apple-yellow.md](night-shift-beyond-apple-yellow.md) | Apple Night Shift cannot go below 2700 K |
 | [space-switch-wallpaper-black.md](space-switch-wallpaper-black.md) | MacBook wallpaper goes black when switching Spaces |
 | [trackpad-scroll-lag-with-mx.md](trackpad-scroll-lag-with-mx.md) | MacBook trackpad scroll stutters once an MX Master is attached |
 | [device-settings-scroll-lag.md](device-settings-scroll-lag.md) | Device sidebar page stutters when scrolled, even disconnected |

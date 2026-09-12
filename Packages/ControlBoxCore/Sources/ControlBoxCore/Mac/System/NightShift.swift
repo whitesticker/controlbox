@@ -63,7 +63,13 @@ public enum NightShift {
         public var maxKelvin: Double
 
         public static let fallback = CCTRange(minKelvin: 2700, maxKelvin: 6000)
+        /// Candle-range floor for the curve top. Apple Night Shift stops at 2700 K;
+        /// extra warmth below that is display gamma. See `NightShiftGamma`.
+        public static let extraMinKelvin: Double = 1900
     }
+
+    /// Apple's 2700 K floor plus extra gamma down to `CCTRange.extraMinKelvin`.
+    public static let extraMinKelvin = CCTRange.extraMinKelvin
 
     /// Apple's schedule modes. Tahoe rejects `off` (`setMode:1` returns false and
     /// leaves sunset-to-sunrise in place), so take-over uses a 24-hour custom schedule.
@@ -100,10 +106,13 @@ public enum NightShift {
         Client.shared.setStatusHandler(handler)
     }
 
-    /// `warmth` is 0…1 (cool → Night Shift maximum). Near-zero turns Night Shift off
-    /// so the panel is full daylight. `period` is the CoreBrightness fade in seconds.
-    /// `restyle` writes the 24-hour take-over schedule; live curve drags skip it
-    /// and skip the status XPC that beachballs the pane.
+    /// `warmth` is 0…1 (cool → Apple Night Shift maximum). Values ≥ 0.995 write
+    /// strength 1 and `getCCTRange.min` (System Settings **More Warm**). Extra
+    /// yellow past that is `NightShiftGamma`, not this client. Near-zero turns
+    /// Night Shift off so the panel is full daylight. `period` is the
+    /// CoreBrightness fade in seconds. `restyle` writes the 24-hour take-over
+    /// schedule; live curve drags skip it and skip the status XPC that
+    /// beachballs the pane.
     public static func apply(warmth: Double, period: TimeInterval, restyle: Bool = true) {
         Client.shared.apply(warmth: warmth, period: period, restyle: restyle)
     }
@@ -213,7 +222,8 @@ private final class Client: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let object else { return }
-        let clamped = Float(min(max(warmth, 0), 1))
+        var clamped = Float(min(max(warmth, 0), 1))
+        if clamped >= 0.995 { clamped = 1 }
         if restyle, isHolding(object, warmth: clamped) {
             return
         }
@@ -228,7 +238,9 @@ private final class Client: @unchecked Sendable {
         }
         setStrength(object, clamped, period: period)
         if let range = cctRangeLocked() {
-            let kelvin = Float(range.maxKelvin - Double(clamped) * (range.maxKelvin - range.minKelvin))
+            let kelvin = clamped >= 1
+                ? Float(range.minKelvin)
+                : Float(range.maxKelvin - Double(clamped) * (range.maxKelvin - range.minKelvin))
             setCCT(object, kelvin, period: period)
         }
     }
@@ -247,14 +259,22 @@ private final class Client: @unchecked Sendable {
         if warmth < 0.012 {
             return !current.enabled
         }
-        let strengthMatch = abs((strength(object) ?? -1) - warmth) < 0.03
-        return current.enabled
+        guard current.enabled
             && current.mode == NightShift.Mode.customSchedule.rawValue
             && current.fromHour == 0
             && current.fromMinute == 0
             && current.toHour == 23
-            && current.toMinute == 59
-            && strengthMatch
+            && current.toMinute == 59 else { return false }
+        let currentStrength = strength(object) ?? -1
+        if warmth >= 0.995 {
+            let strengthAtMax = currentStrength >= 0.995
+            guard strengthAtMax else { return false }
+            if let range = cctRangeLocked(), let kelvin = cct(object) {
+                return kelvin <= Float(range.minKelvin) + 8
+            }
+            return true
+        }
+        return abs(currentStrength - warmth) < 0.002
     }
 
     private func callVoid(_ object: NSObject, _ name: String) {
@@ -278,7 +298,15 @@ private final class Client: @unchecked Sendable {
     }
 
     private func strength(_ object: NSObject) -> Float? {
-        let sel = NSSelectorFromString("getStrength:")
+        getFloat(object, "getStrength:")
+    }
+
+    private func cct(_ object: NSObject) -> Float? {
+        getFloat(object, "getCCT:")
+    }
+
+    private func getFloat(_ object: NSObject, _ name: String) -> Float? {
+        let sel = NSSelectorFromString(name)
         guard object.responds(to: sel), let method = object.method(for: sel) else { return nil }
         var value: Float = 0
         typealias Fn = @convention(c) (NSObject, Selector, UnsafeMutablePointer<Float>) -> Bool

@@ -23,12 +23,14 @@ public struct NightShiftCurve: Codable, Equatable, Sendable {
 
     public static var factory: NightShiftCurve {
         NightShiftCurve(points: [
-            NightShiftPoint(minutes: 485.41, warmth: 1.0000),
-            NightShiftPoint(minutes: 652.55, warmth: 0.7508),
-            NightShiftPoint(minutes: 810.07, warmth: 0.0881),
-            NightShiftPoint(minutes: 1012.60, warmth: 0.0989),
-            NightShiftPoint(minutes: 1128.29, warmth: 0.7347),
-            NightShiftPoint(minutes: 1320, warmth: 1.0000),
+            NightShiftPoint(minutes: 2 * 60, warmth: 1.00),
+            NightShiftPoint(minutes: 6 * 60, warmth: 1.00),
+            NightShiftPoint(minutes: 8 * 60 + 30, warmth: 0.22),
+            NightShiftPoint(minutes: 11 * 60, warmth: 0.00),
+            NightShiftPoint(minutes: 16 * 60, warmth: 0.00),
+            NightShiftPoint(minutes: 18 * 60 + 30, warmth: 0.18),
+            NightShiftPoint(minutes: 20 * 60 + 30, warmth: 0.72),
+            NightShiftPoint(minutes: 22 * 60 + 30, warmth: 1.00),
         ])
     }
 
@@ -53,6 +55,18 @@ public struct NightShiftCurve: Codable, Equatable, Sendable {
             NightShiftPoint(minutes: 22 * 60, warmth: 1.00),
             NightShiftPoint(minutes: 6 * 60, warmth: 1.00),
             NightShiftPoint(minutes: 9 * 60 + 30, warmth: 0.92),
+        ])
+    }
+
+    /// Hand-dragged 8 a.m. plateau; replaced by the round-hour factory.
+    public static var shippingV3: NightShiftCurve {
+        NightShiftCurve(points: [
+            NightShiftPoint(minutes: 485.41, warmth: 1.0000),
+            NightShiftPoint(minutes: 652.55, warmth: 0.7508),
+            NightShiftPoint(minutes: 810.07, warmth: 0.0881),
+            NightShiftPoint(minutes: 1012.60, warmth: 0.0989),
+            NightShiftPoint(minutes: 1128.29, warmth: 0.7347),
+            NightShiftPoint(minutes: 1320, warmth: 1.0000),
         ])
     }
 
@@ -133,6 +147,35 @@ public struct NightShiftCurve: Codable, Equatable, Sendable {
         return point.id
     }
 
+    /// Insert on the curve at `minutes` when there is room; otherwise the midpoint of the widest gap.
+    public func suggestedAdd(preferring minutes: Double) -> (minutes: Double, warmth: Double)? {
+        guard points.count < Self.maxPoints else { return nil }
+        let wrapped = Self.wrap(minutes)
+        if !sorted.contains(where: { abs(Self.shortestDelta($0.minutes, wrapped)) < 12 }) {
+            return (wrapped, warmth(atMinutes: wrapped))
+        }
+        let knots = sorted
+        guard let first = knots.first else { return nil }
+        var bestGap = 0.0
+        var bestMinutes = wrapped
+        for index in knots.indices {
+            let start = knots[index].minutes
+            let end = index + 1 < knots.count
+                ? knots[index + 1].minutes
+                : first.minutes + Self.minutesPerDay
+            let gap = end - start
+            if gap > bestGap {
+                bestGap = gap
+                bestMinutes = Self.wrap((start + end) / 2)
+            }
+        }
+        guard bestGap >= 24 else { return nil }
+        if knots.contains(where: { abs(Self.shortestDelta($0.minutes, bestMinutes)) < 12 }) {
+            return nil
+        }
+        return (bestMinutes, warmth(atMinutes: bestMinutes))
+    }
+
     @discardableResult
     public mutating func remove(id: String) -> Bool {
         guard points.count > Self.minPoints else { return false }
@@ -179,7 +222,21 @@ public struct NightShiftCurve: Codable, Equatable, Sendable {
 
     public static func kelvin(warmth: Double, range: NightShift.CCTRange = .fallback) -> Int {
         let t = min(max(warmth, 0), 1)
-        return Int((range.maxKelvin - t * (range.maxKelvin - range.minKelvin)).rounded())
+        let extraMin = NightShift.extraMinKelvin
+        if t >= 0.995 {
+            return Int(extraMin.rounded())
+        }
+        let appleK = range.maxKelvin - t * (range.maxKelvin - range.minKelvin)
+        return Int((appleK + t * (extraMin - range.minKelvin)).rounded())
+    }
+
+    /// Pull a dragged knot onto the cool or warm rail so the top of the chart is
+    /// the extra-warm floor (past System Settings “More Warm”), not 96%.
+    public static func snapToEdge(_ warmth: Double, threshold: Double = 0.04) -> Double {
+        let clamped = min(max(warmth, 0), 1)
+        if clamped >= 1 - threshold { return 1 }
+        if clamped <= threshold { return 0 }
+        return clamped
     }
 
     static func shortestDelta(_ a: Double, _ b: Double) -> Double {

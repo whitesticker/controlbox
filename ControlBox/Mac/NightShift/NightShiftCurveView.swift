@@ -3,16 +3,16 @@ import SwiftUI
 
 struct NightShiftCurveView: View {
     @Binding var curve: NightShiftCurve
+    @Binding var selectedID: String?
     var range: NightShift.CCTRange
     var enabled: Bool
     var onMove: (String, Double, Double, Bool) -> Void
-    var onAdd: (Double, Double) -> Void
+    var onAdd: (Double, Double) -> String?
     var onRemove: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var draggingID: String?
     @State private var pendingRemove = false
-    @State private var selectedID: String?
 
     var body: some View {
         GeometryReader { geo in
@@ -28,7 +28,9 @@ struct NightShiftCurveView: View {
             .onTapGesture(count: 2) { location in
                 guard enabled, layout.plot.contains(location) else { return }
                 if hitHandle(at: location, layout: layout) != nil { return }
-                onAdd(layout.minutes(atX: location.x), layout.warmth(atY: location.y))
+                if let id = onAdd(layout.minutes(atX: location.x), layout.warmth(atY: location.y)) {
+                    selectedID = id
+                }
             }
             .onTapGesture { location in
                 selectedID = hitHandle(at: location, layout: layout)
@@ -37,10 +39,11 @@ struct NightShiftCurveView: View {
         .frame(minHeight: 268)
         .opacity(enabled ? 1 : 0.48)
         .allowsHitTesting(enabled)
+        .onDeleteCommand(perform: deleteSelected)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Night Shift curve")
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Double-click to add a point. Drag a point to change yellowness at that time.")
+        .accessibilityHint("Add Point or double-click to add a knot. Select a knot, then Remove Point or press Delete.")
     }
 
     private var accessibilityValue: String {
@@ -71,6 +74,12 @@ struct NightShiftCurveView: View {
                 .frame(width: active ? 15 : 12, height: active ? 15 : 12)
                 .position(origin)
                 .help(handleHelp(point))
+                .contextMenu {
+                    Button("Remove Point", role: .destructive) {
+                        remove(point.id)
+                    }
+                    .disabled(curve.points.count <= NightShiftCurve.minPoints)
+                }
         }
     }
 
@@ -84,7 +93,7 @@ struct NightShiftCurveView: View {
                 guard let id = draggingID else { return }
                 let rawWarmth = layout.rawWarmth(atY: value.location.y)
                 pendingRemove = rawWarmth < -0.10 && curve.points.count > NightShiftCurve.minPoints
-                onMove(id, layout.minutes(atX: value.location.x), min(max(rawWarmth, 0), 1), true)
+                onMove(id, layout.minutes(atX: value.location.x), NightShiftCurve.snapToEdge(rawWarmth), true)
             }
             .onEnded { value in
                 defer {
@@ -94,9 +103,9 @@ struct NightShiftCurveView: View {
                 guard let id = draggingID else { return }
                 let rawWarmth = layout.rawWarmth(atY: value.location.y)
                 if rawWarmth < -0.10, curve.points.count > NightShiftCurve.minPoints {
-                    onRemove(id)
+                    remove(id)
                 } else {
-                    onMove(id, layout.minutes(atX: value.location.x), min(max(rawWarmth, 0), 1), false)
+                    onMove(id, layout.minutes(atX: value.location.x), NightShiftCurve.snapToEdge(rawWarmth), false)
                 }
             }
     }
@@ -110,6 +119,18 @@ struct NightShiftCurveView: View {
         }.flatMap { point in
             let origin = layout.point(minutes: point.minutes, warmth: point.warmth)
             return hypot(origin.x - location.x, origin.y - location.y) < 18 ? point.id : nil
+        }
+    }
+
+    private func deleteSelected() {
+        guard enabled, let id = selectedID else { return }
+        remove(id)
+    }
+
+    private func remove(_ id: String) {
+        onRemove(id)
+        if selectedID == id {
+            selectedID = nil
         }
     }
 
@@ -284,7 +305,7 @@ struct NightShiftCurveView: View {
         }
 
         func warmth(atY y: CGFloat) -> Double {
-            min(max(rawWarmth(atY: y), 0), 1)
+            NightShiftCurve.snapToEdge(rawWarmth(atY: y))
         }
     }
 }

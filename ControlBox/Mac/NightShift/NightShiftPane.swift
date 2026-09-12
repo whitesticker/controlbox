@@ -3,6 +3,7 @@ import SwiftUI
 
 struct NightShiftPane: View {
     @Bindable var catalog: NightShiftCatalog
+    @State private var selectedPointID: String?
 
     var body: some View {
         NavigationStack {
@@ -24,6 +25,7 @@ struct NightShiftPane: View {
                 Section {
                     NightShiftCurveView(
                         curve: curveBinding,
+                        selectedID: $selectedPointID,
                         range: catalog.range,
                         enabled: catalog.isSupported,
                         onMove: { id, minutes, warmth, live in
@@ -38,8 +40,25 @@ struct NightShiftPane: View {
                     )
                     .frame(minHeight: 280)
                     .listRowInsets(EdgeInsets(top: 10, leading: 8, bottom: 4, trailing: 8))
-                    Button("Reset Curve") {
-                        catalog.resetCurve()
+                    HStack {
+                        Button("Add Point") {
+                            if let id = catalog.addSuggestedPoint() {
+                                selectedPointID = id
+                            }
+                        }
+                        .disabled(!canAddPoint)
+                        Button("Remove Point", role: .destructive) {
+                            if let id = selectedPointID {
+                                catalog.removePoint(id: id)
+                                selectedPointID = nil
+                            }
+                        }
+                        .disabled(!canRemovePoint)
+                        Spacer()
+                        Button("Reset Curve") {
+                            selectedPointID = nil
+                            catalog.resetCurve()
+                        }
                     }
                     .disabled(!catalog.isSupported)
                 } header: {
@@ -47,7 +66,8 @@ struct NightShiftPane: View {
                 } footer: {
                     footerBullets(
                         "X is time of day; Y is warmth (cool at the bottom, max yellow at the top).",
-                        "Drag a dot to edit. Double-click to add. Drag off the bottom to remove."
+                        "The top is warmer than System Settings More Warm.",
+                        "Add Point and Remove Point edit knots. Drag a knot to change time and warmth."
                     )
                 }
 
@@ -120,6 +140,16 @@ struct NightShiftPane: View {
             .formStyle(.grouped)
             .navigationTitle("Night Shift")
         }
+    }
+
+    private var canAddPoint: Bool {
+        catalog.isSupported && catalog.curve.points.count < NightShiftCurve.maxPoints
+    }
+
+    private var canRemovePoint: Bool {
+        catalog.isSupported
+            && catalog.curve.points.count > NightShiftCurve.minPoints
+            && selectedPointID.map { id in catalog.curve.points.contains(where: { $0.id == id }) } == true
     }
 
     private var enabledBinding: Binding<Bool> {

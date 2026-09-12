@@ -49,6 +49,7 @@ final class NightShiftCatalog {
         }
         catalog.onDisplaysChanged = { [weak self] in
             self?.applyExternalBrightness(force: false)
+            self?.reapplyGamma()
         }
         if enabled, adjustExternalBrightness {
             applyExternalBrightness(force: true)
@@ -148,11 +149,21 @@ final class NightShiftCatalog {
         }
     }
 
-    func addPoint(minutes: Double, warmth: Double) {
-        if curve.add(minutes: minutes, warmth: warmth) != nil {
+    @discardableResult
+    func addPoint(minutes: Double, warmth: Double) -> String? {
+        if let id = curve.add(minutes: minutes, warmth: warmth) {
             persist()
             apply(period: 0.6, force: true)
+            return id
         }
+        return nil
+    }
+
+    @discardableResult
+    func addSuggestedPoint(preferring minutes: Double? = nil) -> String? {
+        let around = minutes ?? NightShiftCurve.minutes(from: Date())
+        guard let slot = curve.suggestedAdd(preferring: around) else { return nil }
+        return addPoint(minutes: slot.minutes, warmth: slot.warmth)
     }
 
     func removePoint(id: String) {
@@ -168,6 +179,7 @@ final class NightShiftCatalog {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         NightShift.setStatusHandler(nil)
+        NightShiftGamma.restore()
     }
 
     private func beginControl(applyImmediately: Bool) {
@@ -199,6 +211,7 @@ final class NightShiftCatalog {
         lastBrightnessOffset = nil
         lastAppearanceDark = nil
         NightShift.setStatusHandler(nil)
+        NightShiftGamma.restore()
         if restore, let snapshot {
             NightShift.restore(snapshot)
         }
@@ -232,7 +245,7 @@ final class NightShiftCatalog {
     private func apply(period: TimeInterval, force: Bool, restyle: Bool = true) {
         currentWarmth = curve.warmth(at: Date())
         guard enabled, isSupported else { return }
-        let warmth = currentWarmth
+        let warmth = currentWarmth >= 0.995 ? 1.0 : currentWarmth
         let warmthMoved = force || lastApplied == nil || abs(lastApplied! - warmth) >= 0.008
         lastApplied = warmth
         guard warmthMoved else { return }
@@ -242,6 +255,7 @@ final class NightShiftCatalog {
         // actor and beachballs the app.
         ignoreSystemUntil = Date().addingTimeInterval(max(fade, 0.5) + 0.2)
         NightShift.apply(warmth: warmth, period: fade, restyle: restyle)
+        NightShiftGamma.apply(warmth: warmth)
         applyExternalBrightness(force: force)
     }
 
@@ -363,6 +377,17 @@ final class NightShiftCatalog {
                 self?.handleWake()
             }
         })
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.reapplyGamma()
+            }
+        })
+    }
+
+    private func reapplyGamma() {
+        guard enabled, isSupported else { return }
+        let warmth = currentWarmth >= 0.995 ? 1.0 : currentWarmth
+        NightShiftGamma.apply(warmth: warmth)
     }
 
     private func handleWake() {
@@ -399,7 +424,9 @@ final class NightShiftCatalog {
         brightnessSwing = min(max(store.brightnessSwing ?? Self.defaultBrightnessSwing, 0), 0.5)
         brightnessBaselines = store.brightnessBaselines ?? [:]
         appearanceSchedule = store.appearanceSchedule ?? .factory
-        if store.curve.matchesShape(of: .shippingV1) || store.curve.matchesShape(of: .shippingV2) {
+        if store.curve.matchesShape(of: .shippingV1)
+            || store.curve.matchesShape(of: .shippingV2)
+            || store.curve.matchesShape(of: .shippingV3) {
             curve = .factory
             persist()
         } else {
