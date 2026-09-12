@@ -333,10 +333,15 @@ struct DeviceProfilePane: View {
             "Status: \(device.statusTitle)",
             "Type: \(record.kind.title)"
         ]
+        var insertAt = 1
+        if record.isGamepad, let player = gamepadPlayerLabel(for: record, device: device) {
+            lines.insert("Player: \(player)", at: insertAt)
+            insertAt += 1
+        }
         if let identifier = deviceIdentifier(for: record, device: device) {
             lines.insert(
                 "\(DeviceIdentity.displayLabel(for: identifier)): \(identifier)",
-                at: 1
+                at: insertAt
             )
         }
         if record.isMXMaster {
@@ -345,6 +350,12 @@ struct DeviceProfilePane: View {
             lines.append("HID++: \(keyboardHIDPPStatus(for: record))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func gamepadPlayerLabel(for record: DeviceRecord, device: SidebarDevice) -> Int? {
+        let player = device.gamepadPlayerIndex ?? record.gamepadPlayerIndex
+        guard let player, (1...4).contains(player) else { return nil }
+        return player
     }
 
     private func deviceNameFooter(for record: DeviceRecord) -> String {
@@ -424,8 +435,7 @@ struct DeviceProfilePane: View {
                 footer: bullets(
                     "One setting for this remote across every app profile.",
                     "Slow slides stay precise; flicks cover more of the screen.",
-                    "Pointer does not move while Select is pressed.",
-                    "Sticky targeting outlines the control under the pointer and clicks it."
+                    "Pointer does not move while Select is pressed."
                 )
             ) {
                 devicePageRow {
@@ -446,11 +456,6 @@ struct DeviceProfilePane: View {
                     devicePageRow {
                         SettingsSlider("Amount", value: accelerationAmountBinding)
                     }
-                }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Sticky targeting", isOn: stickyTargetingBinding)
-                        .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
                 }
             }
         } else {
@@ -484,10 +489,6 @@ struct DeviceProfilePane: View {
                         SettingsSlider("Amount", value: accelerationAmountBinding)
                     }
                 }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Sticky targeting", isOn: stickyTargetingBinding)
-                }
                 if capabilities.haptics {
                     devicePageDivider()
                     devicePageRow {
@@ -507,7 +508,6 @@ struct DeviceProfilePane: View {
             lines.append("Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.")
         }
         lines.append("Acceleration: small moves stay precise, flicks speed up.")
-        lines.append("Sticky targeting outlines the control under the pointer and clicks it.")
         if capabilities.haptics {
             lines.append("Haptic rumble on button press.")
         }
@@ -657,14 +657,11 @@ struct DeviceProfilePane: View {
                    monitor.selectedProfile.mode(for: .appleTVClickpad) != .off {
                     SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
-                Toggle("Sticky targeting", isOn: stickyTargetingBinding)
-                    .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
             } footer: {
                 bullets(
                     "One setting for this remote across every app profile.",
                     "Slow slides stay precise; flicks cover more of the screen.",
-                    "Pointer does not move while Select is pressed.",
-                    "Sticky targeting outlines the control under the pointer and clicks it."
+                    "Pointer does not move while Select is pressed."
                 )
             }
         } else {
@@ -680,7 +677,6 @@ struct DeviceProfilePane: View {
                    gamepadHasPointerSource(record) {
                     SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
-                Toggle("Sticky targeting", isOn: stickyTargetingBinding)
                 if record.resolvedGamepadCapabilities.haptics {
                     Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
                 }
@@ -692,7 +688,6 @@ struct DeviceProfilePane: View {
                     "Sticks only move or scroll if that source is on.",
                     "Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.",
                     "Acceleration: small moves stay precise, flicks speed up.",
-                    "Sticky targeting outlines the control under the pointer and clicks it.",
                     "Haptic rumble on DualSense button press."
                 )
             }
@@ -1276,13 +1271,6 @@ struct DeviceProfilePane: View {
         )
     }
 
-    private var stickyTargetingBinding: Binding<Bool> {
-        Binding(
-            get: { monitor.selectedProfile.stickyTargeting ?? false },
-            set: { monitor.setStickyTargeting($0) }
-        )
-    }
-
     private var hapticFeedbackBinding: Binding<Bool> {
         Binding(
             get: { monitor.selectedRecord?.hapticFeedbackEnabled ?? true },
@@ -1312,8 +1300,11 @@ struct DeviceProfilePane: View {
     }
 
     private func deviceIdentifier(for record: DeviceRecord, device: SidebarDevice) -> String? {
-        for candidate in [device.address, record.address] where DeviceIdentity.isConcrete(candidate) {
-            return DeviceIdentity.format(candidate)
+        for candidate in [device.address, record.address] {
+            if candidate.hasPrefix("slot:") { continue }
+            if DeviceIdentity.isConcrete(candidate) {
+                return DeviceIdentity.format(candidate)
+            }
         }
         return nil
     }

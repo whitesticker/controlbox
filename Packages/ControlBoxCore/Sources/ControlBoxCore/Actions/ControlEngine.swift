@@ -74,13 +74,9 @@ public final class ControlEngine: @unchecked Sendable {
         rightTriggerTravel.reset()
         AppSwitcher.cancel()
         clearSelectHold()
-        StickyTargeting.hide()
     }
 
     public func process(_ frame: ControlFrame, hostIsActive: Bool) {
-        var stickyActive = false
-        defer { StickyTargeting.sync(active: stickyActive) }
-
         guard EventPoster.isTrusted() else {
             clearSelectHold()
             return
@@ -114,9 +110,6 @@ public final class ControlEngine: @unchecked Sendable {
         if isGamepad {
             processTriggerTabs(frame, injectAll: true)
         }
-
-        stickyActive = profile.stickyTargeting == true
-            && AnalogSource.allCases.contains { profile.mode(for: $0) == .pointer }
 
         for (button, pressed) in frame.buttons
             where button != .clickSelect
@@ -642,20 +635,8 @@ public final class ControlEngine: @unchecked Sendable {
         case .mediaPrevious:
             EventPoster.media(MediaKey.previous, down: down)
         case .mouseLeft:
-            if profile.stickyTargeting == true,
-               !EventPoster.wouldBeDoubleClick(right: false),
-               StickyTargeting.handleMouse(right: false, down: down) {
-                if down { EventPoster.recordClick(right: false) }
-                return
-            }
             EventPoster.mouseClick(right: false, down: down)
         case .mouseRight:
-            if profile.stickyTargeting == true,
-               !EventPoster.wouldBeDoubleClick(right: true),
-               StickyTargeting.handleMouse(right: true, down: down) {
-                if down { EventPoster.recordClick(right: true) }
-                return
-            }
             EventPoster.mouseClick(right: true, down: down)
         case .missionControl:
             if down { EventPoster.system(.missionControl) }

@@ -15,7 +15,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var pointerAccelerationAmount: Double?
     public var scrollAcceleration: Bool?
     public var scrollAccelerationAmount: Double?
-    public var stickyTargeting: Bool?
     public var pointerSpeed: Double?
     public var hapticGestureSpeed: Double?
     public var wheelScrollSpeed: Double?
@@ -126,7 +125,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         pointerAccelerationAmount: Double? = 0.3,
         scrollAcceleration: Bool? = false,
         scrollAccelerationAmount: Double? = 0.3,
-        stickyTargeting: Bool? = false,
         pointerSpeed: Double? = 0.5,
         hapticGestureSpeed: Double? = 0.5,
         wheelScrollSpeed: Double? = 0.5,
@@ -172,7 +170,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.pointerAccelerationAmount = pointerAccelerationAmount
         self.scrollAcceleration = scrollAcceleration
         self.scrollAccelerationAmount = scrollAccelerationAmount
-        self.stickyTargeting = stickyTargeting
         self.pointerSpeed = pointerSpeed
         self.hapticGestureSpeed = hapticGestureSpeed
         self.wheelScrollSpeed = wheelScrollSpeed
@@ -631,7 +628,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             pointerAccelerationAmount: pointerAccelerationAmount,
             scrollAcceleration: scrollAcceleration,
             scrollAccelerationAmount: scrollAccelerationAmount,
-            stickyTargeting: stickyTargeting,
             pointerSpeed: pointerSpeed,
             hapticGestureSpeed: hapticGestureSpeed,
             wheelScrollSpeed: wheelScrollSpeed,
@@ -712,8 +708,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
                 appleTVClickpad: .pointer,
                 appleTVWheel: .scroll,
                 pointerAcceleration: true,
-                pointerAccelerationAmount: 0.58,
-                stickyTargeting: false
+                pointerAccelerationAmount: 0.58
             )
         }
         if gamepadHasTouchpad {

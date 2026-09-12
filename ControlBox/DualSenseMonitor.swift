@@ -524,26 +524,6 @@ final class DualSenseMonitor {
         }
     }
 
-    func setStickyTargeting(_ enabled: Bool) {
-        if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {
-            updateControllerDeviceSettings { $0.stickyTargeting = enabled }
-            if !enabled {
-                StickyTargeting.hide()
-            }
-            return
-        }
-        updateSelectedRecord { record in
-            guard var profile = record.profiles.first(where: { $0.id == record.selectedProfileID }) else { return }
-            profile.stickyTargeting = enabled
-            if let index = record.profiles.firstIndex(where: { $0.id == profile.id }) {
-                record.profiles[index] = profile
-            }
-        }
-        if !enabled {
-            StickyTargeting.hide()
-        }
-    }
-
     func setPointerSpeed(_ speed: Double) {
         let clamped = min(max(speed, 0), 1)
         if selectedRecord?.isGamepad == true || selectedRecord?.isAppleTVRemote == true {

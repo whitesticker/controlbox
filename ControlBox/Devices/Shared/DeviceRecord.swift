@@ -105,7 +105,6 @@ struct DeviceRecord: Codable, Identifiable, Equatable, Sendable {
             profiles[index].appleTVWheel = deviceSettings.appleTVWheel
             profiles[index].pointerAcceleration = deviceSettings.pointerAcceleration
             profiles[index].pointerAccelerationAmount = deviceSettings.pointerAccelerationAmount
-            profiles[index].stickyTargeting = deviceSettings.stickyTargeting
             profiles[index].pointerSpeed = deviceSettings.pointerSpeed
             profiles[index].wheelScrollSpeed = deviceSettings.wheelScrollSpeed
             profiles[index].thumbScrollSpeed = deviceSettings.thumbScrollSpeed
