@@ -46,7 +46,6 @@ enum DockPreviewWindows {
         let extras = cg
             .filter { entry in
                 if entry.windowID != 0, claimed.contains(entry.windowID) { return false }
-                if entry.onScreen { return false }
                 return isRealContentWindow(entry.bounds, listed: listedBounds)
             }
             .sorted { area($0.bounds) > area($1.bounds) }
@@ -61,7 +60,7 @@ enum DockPreviewWindows {
                     title: cleanedTitle(entry.title.isEmpty ? nil : entry.title, fallback: app.localizedName ?? ""),
                     bounds: entry.bounds,
                     isMinimized: false,
-                    isOnScreen: false
+                    isOnScreen: entry.onScreen
                 )
             )
         }

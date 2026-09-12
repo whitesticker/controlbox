@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         nightShiftCatalog.invalidate()
         DockPreview.stop()
         DockPreviewOverlay.shared.hide()
+        DockClick.stop()
         AppSwitcherPreview.stop()
         AppSwitcherPreviewOverlay.shared.hide()
         capsLockCatalog.invalidate()

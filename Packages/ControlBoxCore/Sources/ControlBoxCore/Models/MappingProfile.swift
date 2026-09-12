@@ -1,6 +1,13 @@
 import CoreGraphics
 import Foundation
 
+/// What a plain Dock click does when that app is already in front with a visible window.
+public enum DockClickFrontAction: String, Codable, Equatable, Sendable, CaseIterable {
+    case none
+    case minimize
+    case hide
+}
+
 public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var id: String
     public var name: String
@@ -38,6 +45,13 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var windowShakeEnabled: Bool?
     public var windowShakeScope: WindowShakeScope?
     public var windowDockClickMinimizeEnabled: Bool?
+    public var windowDockClickEnabled: Bool?
+    public var windowDockClickDoubleMinimizeEnabled: Bool?
+    public var windowDockClickMoveAllEnabled: Bool?
+    public var windowDockClickMoveAllFlags: UInt64?
+    public var windowDockClickIgnoredBundleIDs: [String]?
+    /// What a plain Dock click does when that app is already in front. Nil migrates the old minimize toggle.
+    public var windowDockClickFrontAction: DockClickFrontAction?
     /// Exact-app row on an MX mouse. Nil on Default, category, and leftover profiles.
     public var frontmostAppBundleID: String? = nil
     /// Unused on current MX rows; kept so older saves that stored a category still decode.
@@ -88,6 +102,27 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedWindowShakeEnabled: Bool { windowShakeEnabled ?? false }
     public var resolvedWindowShakeScope: WindowShakeScope { windowShakeScope ?? .thisDisplay }
     public var resolvedWindowDockClickMinimizeEnabled: Bool { windowDockClickMinimizeEnabled ?? false }
+    public var resolvedWindowDockClickEnabled: Bool {
+        windowDockClickEnabled ?? windowDockClickMinimizeEnabled ?? false
+    }
+    public var resolvedWindowDockClickDoubleMinimizeEnabled: Bool {
+        windowDockClickDoubleMinimizeEnabled ?? false
+    }
+    public var resolvedWindowDockClickMoveAllEnabled: Bool {
+        windowDockClickMoveAllEnabled ?? false
+    }
+    public var resolvedWindowDockClickMoveAllFlags: CGEventFlags {
+        let flags = ModifierChords.normalized(
+            CGEventFlags(rawValue: windowDockClickMoveAllFlags ?? Self.defaultWindowDockClickMoveAllFlags)
+        )
+        return flags.isEmpty ? .maskShift : flags
+    }
+    public var resolvedWindowDockClickIgnoredBundleIDs: [String] {
+        Array(Set(windowDockClickIgnoredBundleIDs ?? [])).sorted()
+    }
+    public var resolvedWindowDockClickFrontAction: DockClickFrontAction {
+        windowDockClickFrontAction ?? (resolvedWindowDockClickDoubleMinimizeEnabled ? .minimize : .none)
+    }
     public var resolvedMXThumbWheelMode: MXWheelMode {
         mxThumbWheelMode ?? inferredMXThumbWheelMode()
     }
@@ -103,6 +138,7 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public static let defaultWindowThrowFlags = CGEventFlags.maskControl.union(.maskAlternate).rawValue
     public static let defaultWindowOrganizeFlags = CGEventFlags.maskControl.union(.maskCommand).rawValue
     public static let defaultWindowOrganizeKey: UInt16 = 31
+    public static let defaultWindowDockClickMoveAllFlags = CGEventFlags.maskShift.rawValue
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
@@ -148,6 +184,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         windowShakeEnabled: Bool? = nil,
         windowShakeScope: WindowShakeScope? = nil,
         windowDockClickMinimizeEnabled: Bool? = nil,
+        windowDockClickEnabled: Bool? = nil,
+        windowDockClickDoubleMinimizeEnabled: Bool? = nil,
+        windowDockClickMoveAllEnabled: Bool? = nil,
+        windowDockClickMoveAllFlags: UInt64? = nil,
+        windowDockClickIgnoredBundleIDs: [String]? = nil,
+        windowDockClickFrontAction: DockClickFrontAction? = nil,
         frontmostAppBundleID: String? = nil,
         appCategory: MouseAppCategory? = nil,
         isMXDefault: Bool? = nil,
@@ -193,6 +235,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.windowShakeEnabled = windowShakeEnabled
         self.windowShakeScope = windowShakeScope
         self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
+        self.windowDockClickEnabled = windowDockClickEnabled
+        self.windowDockClickDoubleMinimizeEnabled = windowDockClickDoubleMinimizeEnabled
+        self.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
+        self.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
+        self.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
+        self.windowDockClickFrontAction = windowDockClickFrontAction
         self.frontmostAppBundleID = frontmostAppBundleID
         self.appCategory = appCategory
         self.isMXDefault = isMXDefault
@@ -651,6 +699,12 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             windowShakeEnabled: windowShakeEnabled,
             windowShakeScope: windowShakeScope,
             windowDockClickMinimizeEnabled: windowDockClickMinimizeEnabled,
+            windowDockClickEnabled: windowDockClickEnabled,
+            windowDockClickDoubleMinimizeEnabled: windowDockClickDoubleMinimizeEnabled,
+            windowDockClickMoveAllEnabled: windowDockClickMoveAllEnabled,
+            windowDockClickMoveAllFlags: windowDockClickMoveAllFlags,
+            windowDockClickIgnoredBundleIDs: windowDockClickIgnoredBundleIDs,
+            windowDockClickFrontAction: windowDockClickFrontAction,
             frontmostAppBundleID: frontmostAppBundleID,
             appCategory: appCategory,
             isMXDefault: isMXDefault,

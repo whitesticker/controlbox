@@ -21,6 +21,7 @@ enum DockSwipe {
         /// Live Spaces follow: macOS commits at most one desktop per gesture
         /// session, so each full page is ended and a new session starts.
         var locksFullPages = false
+        var location: CGPoint?
 
         private var origin = 0.0
         private var lastDelta = 0.0
@@ -181,7 +182,7 @@ enum DockSwipe {
             } else {
                 speed = 0
             }
-            postPair(offset: offset, axis: axis, phase: phase, exitSpeed: speed)
+            postPair(offset: offset, axis: axis, phase: phase, exitSpeed: speed, location: location)
         }
     }
 
@@ -197,8 +198,9 @@ enum DockSwipe {
     }
 
     /// DualSense button desktop switch only. One Space; 1.5 peeks into the next.
-    static func playOneSpace(axis: Axis, towardPositive: Bool) {
+    static func playOneSpace(axis: Axis, towardPositive: Bool, at location: CGPoint? = nil) {
         let session = Session()
+        session.location = location
         let sign = towardPositive ? 1.0 : -1.0
         let steps = 10
         for step in 1...steps {
@@ -228,7 +230,13 @@ enum DockSwipe {
         CGEventField(rawValue: raw)!
     }
 
-    private static func postPair(offset: Double, axis: Axis, phase: Phase, exitSpeed: Double) {
+    private static func postPair(
+        offset: Double,
+        axis: Axis,
+        phase: Phase,
+        exitSpeed: Double,
+        location: CGPoint? = nil
+    ) {
         let companion = CGEvent(source: nil)
         companion?.setDoubleValueField(field(55), value: 29)
         companion?.setDoubleValueField(field(41), value: 33231)
@@ -262,6 +270,10 @@ enum DockSwipe {
             event?.setDoubleValueField(field(130), value: exitSpeed)
         }
 
+        if let location {
+            event?.location = location
+            companion?.location = location
+        }
         if let event {
             event.post(tap: .cgSessionEventTap)
         }

@@ -45,34 +45,36 @@ struct DockPreviewPane: View {
                         enabled: catalog.enabled,
                         valueText: scaleText
                     )
-                    Toggle("Show Dock icon names", isOn: namesBinding)
                 } footer: {
-                    optionsFooter
+                    footerBullets(
+                        "Hover delay is the first wait; moving to another icon updates immediately.",
+                        "Dock preview size defaults to 130%."
+                    )
                 }
 
-                Section {
-                    LabeledContent("Screen Recording") {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(catalog.hasScreenRecording ? Palette.good : Palette.bad)
-                                .frame(width: 8, height: 8)
-                            Text(catalog.hasScreenRecording ? "Allowed" : "Titles only")
+                if !catalog.hasScreenRecording {
+                    Section {
+                        LabeledContent("Screen Recording") {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(Palette.bad)
+                                    .frame(width: 8, height: 8)
+                                Text("Titles only")
+                            }
                         }
-                    }
-                    if !catalog.hasScreenRecording {
                         Button("Request Screen Recording…") {
                             catalog.requestScreenRecording()
                         }
                         Button("Open Screen Recording Settings") {
                             catalog.openScreenRecordingSettings()
                         }
+                    } footer: {
+                        footerBullets(
+                            "Live thumbnails need Screen Recording.",
+                            "Without it, windows still list by title.",
+                            "Not the same grant as System Audio Recording on Sound."
+                        )
                     }
-                } footer: {
-                    footerBullets(
-                        "Live thumbnails need Screen Recording.",
-                        "Without it, windows still list by title.",
-                        "Not the same grant as System Audio Recording on Sound."
-                    )
                 }
             }
             .formStyle(.grouped)
@@ -102,13 +104,6 @@ struct DockPreviewPane: View {
         )
     }
 
-    private var namesBinding: Binding<Bool> {
-        Binding(
-            get: { catalog.showDockNames },
-            set: { catalog.setShowDockNames($0) }
-        )
-    }
-
     private var scaleBinding: Binding<Double> {
         Binding(
             get: { Double(catalog.cardScale) },
@@ -120,14 +115,6 @@ struct DockPreviewPane: View {
         Binding(
             get: { Double(catalog.switcherCardScale) },
             set: { catalog.setSwitcherCardScale(CGFloat($0)) }
-        )
-    }
-
-    private var optionsFooter: Text {
-        footerBullets(
-            "Hover delay is the first wait; moving to another icon updates immediately.",
-            "Dock preview size defaults to 130%.",
-            "Icon names: off snapshots and clears pinned labels; on restores them. Dock is not restarted."
         )
     }
 

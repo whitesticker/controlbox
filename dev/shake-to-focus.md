@@ -6,11 +6,18 @@ There is no Aero Shake on the Mac. Grabbing a window and shaking it does nothing
 
 ## What we changed
 
-**Shake to focus** and **Minimize on Dock click** live on the Window Management pane. Off until each toggle is on.
+**Shake to focus** and **Dock click** (Switch to Space, When already in front, Move all windows here) live on the Window Management pane. Off until each toggle is on.
 
 Shake a window left and right (native title bar, or while Move is held) to minimize every other visible window. Shake again to restore the ones this gesture hid.
 
-If an app is already front and has a visible window, click its Dock icon to minimize that window. Native Dock clicks still fire (listen-only). No display picker on Dock click.
+Dock click is one plain click, state-driven, layered on the native click (no double-click, no timer):
+
+- App was frontmost at mouse-down with a visible window → **When already in front**: Minimize window / Hide app / nothing. Not fullscreen.
+- No window on any current Space, at least one not minimized → **Switch to Space**: DockSwipe slide of that window’s display (this or another) to its Space. The window does not move. Other-monitor switches hop the pointer to the nearest edge of that display, then put it back as soon as the slide starts. Fullscreen is a Space; never exit it.
+- Everything else (visible but not in front, all minimized, hidden with ⌘H) → native raise / restore / unhide. Control Box does nothing.
+- Modifier chord (default Shift) → **Move all windows here**: restore, gather every non-fullscreen window of that app onto this display, organize. Nothing if that app is fullscreen.
+
+Read the frontmost app at **mouse-down**. Dock activates the clicked app on the same click, so a mouse-up read makes every click look “already in front”. **Ignored apps** skip Dock click. Native Dock clicks still fire (listen-only).
 
 Auto-hide: do not treat the tilesize strip or leftover AX frames as a clickable icon. Hidden Dock chrome is off-screen (full-display layer-20 window). Minimize only when that bar is on-screen **and** the click hits an AX tile (`requireHit`, no 140 px nearest fallback). Close-but-not-touching while the bar is still in must not minimize.
 

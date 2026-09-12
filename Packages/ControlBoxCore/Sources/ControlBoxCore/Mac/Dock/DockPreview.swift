@@ -1187,4 +1187,25 @@ enum DockAX {
         }
         return number.boolValue
     }
+
+    static func setFrame(_ element: AXUIElement, _ frame: CGRect) {
+        var size = frame.size
+        var origin = frame.origin
+        setValue(element, kAXSizeAttribute as CFString, .cgSize, &size)
+        setValue(element, kAXPositionAttribute as CFString, .cgPoint, &origin)
+        size = frame.size
+        origin = frame.origin
+        setValue(element, kAXSizeAttribute as CFString, .cgSize, &size)
+        setValue(element, kAXPositionAttribute as CFString, .cgPoint, &origin)
+    }
+
+    private static func setValue<T>(
+        _ element: AXUIElement,
+        _ attribute: CFString,
+        _ type: AXValueType,
+        _ value: inout T
+    ) {
+        guard let encoded = AXValueCreate(type, &value) else { return }
+        AXUIElementSetAttributeValue(element, attribute, encoded)
+    }
 }

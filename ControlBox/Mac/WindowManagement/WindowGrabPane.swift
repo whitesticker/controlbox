@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import ControlBoxCore
 import SwiftUI
@@ -8,6 +9,7 @@ struct WindowGrabPane: View {
     @State private var chordMessage: String?
     @State private var conflictName: String?
     @State private var recordingOrganize = false
+    @State private var addingIgnoredApp = false
 
     var body: some View {
         NavigationStack {
@@ -40,7 +42,7 @@ struct WindowGrabPane: View {
                         "Hold Move and drag from anywhere.",
                         "Hold Resize and move: grows from the bottom-right; top-left stays put.",
                         "Trackpad, mouse, or DualSense. Accessibility required.",
-                        "These keys cannot match Throw, Display Arrangement, or each other."
+                        "These keys cannot match Throw, Display Arrangement, Dock click move all, or each other."
                     )
                 }
 
@@ -107,17 +109,94 @@ struct WindowGrabPane: View {
                 }
 
                 Section {
-                    Toggle("Minimize on Dock click", isOn: windowDockClickMinimizeBinding)
+                    Toggle(isOn: windowDockClickBinding) {
+                        rowLabel(
+                            "Switch to Space",
+                            "Go to the Space that has the window, on this display or another. The window stays where it is."
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        rowLabel(
+                            "When already in front",
+                            "One click on an app that is in front. Native Dock does nothing here. Fullscreen is left alone."
+                        )
+                        Picker("When already in front", selection: windowDockClickFrontActionBinding) {
+                            Text("Do nothing").tag(DockClickFrontAction.none)
+                            Text("Minimize window").tag(DockClickFrontAction.minimize)
+                            Text("Hide app").tag(DockClickFrontAction.hide)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                } header: {
+                    dockClickHeader("Dock click", "Single click")
                 } footer: {
-                    footerBullets(
-                        "If that app is already front, click its Dock icon to minimize its visible window.",
-                        "Off until this toggle is on. Accessibility required."
-                    )
+                    Text("Everything else stays native: raise, restore, unhide. Accessibility required.")
+                }
+
+                Section {
+                    Toggle(isOn: windowDockClickMoveAllBinding) {
+                        rowLabel(
+                            "Move all windows here",
+                            "Hold the keys, then click. Gathers every window of that app onto this display and organizes them."
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        ModifierChordPicker(
+                            title: "Keys",
+                            flags: windowDockClickMoveAllFlagsBinding,
+                            minimumCount: 1,
+                            occupied: occupancy.occupied(except: "Dock click move all"),
+                            message: $chordMessage,
+                            onConflict: { conflictName = $0 }
+                        )
+                        Text("Cannot match Move, Resize, Throw, or Display Arrangement.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .disabled(!monitor.macMouseProfile.resolvedWindowDockClickMoveAllEnabled)
+                } header: {
+                    Text("Modifier click")
+                }
+
+                Section {
+                    ForEach(ignoredDockClickApps, id: \.self) { bundleID in
+                        HStack(spacing: 10) {
+                            AppBundleIcon(bundleID: bundleID)
+                                .frame(width: 24, height: 24)
+                            Text(appName(for: bundleID))
+                            Spacer()
+                            Button {
+                                monitor.removeWindowDockClickIgnoredApp(bundleID)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove \(appName(for: bundleID))")
+                        }
+                    }
+                    Button("Add App…") {
+                        addingIgnoredApp = true
+                    }
+                } header: {
+                    Text("Ignored apps")
+                } footer: {
+                    Text("These apps keep the native Dock click only.")
                 }
             }
             .formStyle(.grouped)
             .navigationTitle("Window Management")
             .modifierConflictAlert($conflictName)
+            .sheet(isPresented: $addingIgnoredApp) {
+                AddAppSheet(
+                    monitor: monitor,
+                    excludedBundleIDs: Set(ignoredDockClickApps),
+                    onPick: { bundleID, _ in
+                        monitor.addWindowDockClickIgnoredApp(bundleID)
+                    }
+                )
+            }
         }
     }
 
@@ -254,10 +333,69 @@ struct WindowGrabPane: View {
         )
     }
 
-    private var windowDockClickMinimizeBinding: Binding<Bool> {
+    private var windowDockClickBinding: Binding<Bool> {
         Binding(
-            get: { monitor.macMouseProfile.resolvedWindowDockClickMinimizeEnabled },
-            set: { monitor.setWindowDockClickMinimizeEnabled($0) }
+            get: { monitor.macMouseProfile.resolvedWindowDockClickEnabled },
+            set: { monitor.setWindowDockClickEnabled($0) }
         )
+    }
+
+    private var windowDockClickFrontActionBinding: Binding<DockClickFrontAction> {
+        Binding(
+            get: { monitor.macMouseProfile.resolvedWindowDockClickFrontAction },
+            set: { monitor.setWindowDockClickFrontAction($0) }
+        )
+    }
+
+    private var windowDockClickMoveAllBinding: Binding<Bool> {
+        enabledBinding(
+            get: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllEnabled },
+            flags: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllFlags },
+            except: "Dock click move all",
+            set: { monitor.setWindowDockClickMoveAllEnabled($0) }
+        )
+    }
+
+    private var windowDockClickMoveAllFlagsBinding: Binding<UInt64> {
+        Binding(
+            get: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllFlags.rawValue },
+            set: { monitor.setWindowDockClickMoveAllFlags($0) }
+        )
+    }
+
+    private var ignoredDockClickApps: [String] {
+        monitor.macMouseProfile.resolvedWindowDockClickIgnoredBundleIDs
+    }
+
+    private func rowLabel(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func dockClickHeader(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+            Divider()
+            Text(subtitle)
+        }
+    }
+
+    private func appName(for bundleID: String) -> String {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+           let bundle = Bundle(url: url) {
+            let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+                ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
+            if let name, !name.isEmpty { return name }
+        }
+        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleID }),
+           let name = running.localizedName, !name.isEmpty {
+            return name
+        }
+        return bundleID
     }
 }

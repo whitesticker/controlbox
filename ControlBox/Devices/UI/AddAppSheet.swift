@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 
 struct AddAppSheet: View {
     @Bindable var monitor: DualSenseMonitor
+    var excludedBundleIDs: Set<String> = []
+    var onPick: ((String, String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
@@ -51,14 +53,15 @@ struct AddAppSheet: View {
     }
 
     private var filteredRecent: [RecentFrontmostApp] {
-        filter(monitor.recentFrontmostApps, query: query)
+        filter(monitor.recentFrontmostApps.filter { !excludedBundleIDs.contains($0.bundleID) }, query: query)
     }
 
     private var filteredRunning: [RecentFrontmostApp] {
         let running = NSWorkspace.shared.runningApplications.compactMap { app -> RecentFrontmostApp? in
             guard app.activationPolicy == .regular,
                   let bundle = app.bundleIdentifier,
-                  bundle != MouseAppCatalog.controlBoxBundleID
+                  bundle != MouseAppCatalog.controlBoxBundleID,
+                  !excludedBundleIDs.contains(bundle)
             else { return nil }
             let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines)
             return RecentFrontmostApp(bundleID: bundle, name: (name?.isEmpty == false) ? name! : bundle)
@@ -93,7 +96,11 @@ struct AddAppSheet: View {
     }
 
     private func pick(bundleID: String, name: String) {
-        monitor.addMXApp(bundleID: bundleID, name: name)
+        if let onPick {
+            onPick(bundleID, name)
+        } else {
+            monitor.addMXApp(bundleID: bundleID, name: name)
+        }
         dismiss()
     }
 

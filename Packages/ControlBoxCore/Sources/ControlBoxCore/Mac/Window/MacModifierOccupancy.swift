@@ -13,7 +13,9 @@ public struct MacModifierOccupancy: Sendable {
         throwEnabled: Bool,
         throwFlags: CGEventFlags,
         arrangementEnabled: Bool,
-        arrangementFlags: CGEventFlags
+        arrangementFlags: CGEventFlags,
+        dockMoveAllEnabled: Bool = false,
+        dockMoveAllFlags: CGEventFlags = .maskShift
     ) {
         var items: [(name: String, flags: CGEventFlags)] = []
         if moveEnabled {
@@ -27,6 +29,10 @@ public struct MacModifierOccupancy: Sendable {
         }
         if arrangementEnabled {
             items.append(("Display Arrangement", ModifierChords.normalized(arrangementFlags)))
+        }
+        if dockMoveAllEnabled {
+            let flags = ModifierChords.normalized(dockMoveAllFlags)
+            items.append(("Dock click move all", flags.isEmpty ? .maskShift : flags))
         }
         entries = items
     }

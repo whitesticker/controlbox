@@ -22,7 +22,40 @@ struct MacMouseSettings: Codable, Equatable {
     var windowOrganizeKey: UInt16
     var windowShakeEnabled: Bool
     var windowShakeScope: WindowShakeScope
-    var windowDockClickMinimizeEnabled: Bool
+    var windowDockClickEnabled: Bool
+    var windowDockClickFrontAction: DockClickFrontAction
+    var windowDockClickMoveAllEnabled: Bool
+    var windowDockClickMoveAllFlags: UInt64
+    var windowDockClickIgnoredBundleIDs: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case pointerSpeed
+        case wheelScrollSpeed
+        case thumbScrollSpeed
+        case naturalScrolling
+        case smoothScrolling
+        case windowMoveEnabled
+        case windowResizeEnabled
+        case windowThrowEnabled
+        case windowOrganizeEnabled
+        case windowMoveFlags
+        case windowResizeFlags
+        case windowThrowFlags
+        case windowOrganizeFlags
+        case windowOrganizeKey
+        case windowShakeEnabled
+        case windowShakeScope
+        case windowDockClickEnabled
+        case windowDockClickFrontAction
+        case windowDockClickMoveAllEnabled
+        case windowDockClickMoveAllFlags
+        case windowDockClickIgnoredBundleIDs
+    }
+
+    private enum LegacyKeys: String, CodingKey {
+        case windowDockClickMinimizeEnabled
+        case windowDockClickDoubleMinimizeEnabled
+    }
 
     static let defaultsKey = "controlbox.macMouse.v1"
 
@@ -44,7 +77,11 @@ struct MacMouseSettings: Codable, Equatable {
             windowOrganizeKey: MappingProfile.defaultWindowOrganizeKey,
             windowShakeEnabled: false,
             windowShakeScope: .thisDisplay,
-            windowDockClickMinimizeEnabled: false
+            windowDockClickEnabled: false,
+            windowDockClickFrontAction: .none,
+            windowDockClickMoveAllEnabled: false,
+            windowDockClickMoveAllFlags: MappingProfile.defaultWindowDockClickMoveAllFlags,
+            windowDockClickIgnoredBundleIDs: []
         )
     }
 
@@ -71,7 +108,11 @@ struct MacMouseSettings: Codable, Equatable {
             settings.windowOrganizeKey = profile.resolvedWindowOrganizeKey
             settings.windowShakeEnabled = profile.resolvedWindowShakeEnabled
             settings.windowShakeScope = profile.resolvedWindowShakeScope
-            settings.windowDockClickMinimizeEnabled = profile.resolvedWindowDockClickMinimizeEnabled
+            settings.windowDockClickEnabled = profile.resolvedWindowDockClickEnabled
+            settings.windowDockClickFrontAction = profile.resolvedWindowDockClickFrontAction
+            settings.windowDockClickMoveAllEnabled = profile.resolvedWindowDockClickMoveAllEnabled
+            settings.windowDockClickMoveAllFlags = profile.resolvedWindowDockClickMoveAllFlags.rawValue
+            settings.windowDockClickIgnoredBundleIDs = profile.resolvedWindowDockClickIgnoredBundleIDs
         } else {
             settings.pointerSpeed = 0.5
             settings.naturalScrolling = true
@@ -102,7 +143,12 @@ struct MacMouseSettings: Codable, Equatable {
         profile.windowOrganizeKey = windowOrganizeKey
         profile.windowShakeEnabled = windowShakeEnabled
         profile.windowShakeScope = windowShakeScope
-        profile.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
+        profile.windowDockClickEnabled = windowDockClickEnabled
+        profile.windowDockClickDoubleMinimizeEnabled = windowDockClickFrontAction == .minimize
+        profile.windowDockClickFrontAction = windowDockClickFrontAction
+        profile.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
+        profile.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
+        profile.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
     }
 
     var asProfile: MappingProfile {
@@ -128,7 +174,11 @@ struct MacMouseSettings: Codable, Equatable {
         windowOrganizeKey: UInt16,
         windowShakeEnabled: Bool,
         windowShakeScope: WindowShakeScope,
-        windowDockClickMinimizeEnabled: Bool
+        windowDockClickEnabled: Bool,
+        windowDockClickFrontAction: DockClickFrontAction,
+        windowDockClickMoveAllEnabled: Bool,
+        windowDockClickMoveAllFlags: UInt64,
+        windowDockClickIgnoredBundleIDs: [String]
     ) {
         self.pointerSpeed = pointerSpeed
         self.wheelScrollSpeed = wheelScrollSpeed
@@ -146,7 +196,11 @@ struct MacMouseSettings: Codable, Equatable {
         self.windowOrganizeKey = windowOrganizeKey
         self.windowShakeEnabled = windowShakeEnabled
         self.windowShakeScope = windowShakeScope
-        self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
+        self.windowDockClickEnabled = windowDockClickEnabled
+        self.windowDockClickFrontAction = windowDockClickFrontAction
+        self.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
+        self.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
+        self.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -176,9 +230,34 @@ struct MacMouseSettings: Codable, Equatable {
         windowShakeEnabled = try container.decodeIfPresent(Bool.self, forKey: .windowShakeEnabled) ?? false
         windowShakeScope = try container.decodeIfPresent(WindowShakeScope.self, forKey: .windowShakeScope)
             ?? .thisDisplay
-        windowDockClickMinimizeEnabled = try container.decodeIfPresent(
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        let legacyMinimize = try legacy.decodeIfPresent(Bool.self, forKey: .windowDockClickMinimizeEnabled)
+            ?? false
+        windowDockClickEnabled = try container.decodeIfPresent(Bool.self, forKey: .windowDockClickEnabled)
+            ?? legacyMinimize
+        let legacyDoubleMinimize = try legacy.decodeIfPresent(
             Bool.self,
-            forKey: .windowDockClickMinimizeEnabled
+            forKey: .windowDockClickDoubleMinimizeEnabled
         ) ?? false
+        windowDockClickFrontAction = try container.decodeIfPresent(
+            DockClickFrontAction.self,
+            forKey: .windowDockClickFrontAction
+        ) ?? (legacyDoubleMinimize ? .minimize : .none)
+        windowDockClickMoveAllEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .windowDockClickMoveAllEnabled
+        ) ?? false
+        windowDockClickMoveAllFlags = try container.decodeIfPresent(
+            UInt64.self,
+            forKey: .windowDockClickMoveAllFlags
+        ) ?? MappingProfile.defaultWindowDockClickMoveAllFlags
+        windowDockClickIgnoredBundleIDs = Array(
+            Set(
+                try container.decodeIfPresent(
+                    [String].self,
+                    forKey: .windowDockClickIgnoredBundleIDs
+                ) ?? []
+            )
+        ).sorted()
     }
 }
