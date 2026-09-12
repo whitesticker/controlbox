@@ -1,6 +1,6 @@
 # Generic gamepad: `GamepadSession` base, DualSense as a subclass
 
-Status: implemented (2026-09-11). `GamepadFamilySession` owns a pool of `GamepadSession`s; `DualSenseSession` subclasses the reader for Sony touchpad + HID battery. Generic pads are `DeviceKind.gamepad` on Add Device → Bluetooth. Several DualSenses and several Xbox pads can each be a **sidebar** row. Calibration is the same three-column **window** with touchpad / motion panels gated on capabilities.
+Status: shipped in 0.1.46 (2026-09-11). `GamepadFamilySession` owns a pool of `GamepadSession`s; `DualSenseSession` subclasses the reader for Sony touchpad + HID battery. Generic pads are `DeviceKind.gamepad` on Add Device → Bluetooth. Several DualSenses and several Xbox pads can each be a **sidebar** row. Calibration is the same three-column **window** with touchpad / motion panels gated on capabilities.
 
 ## What we found
 

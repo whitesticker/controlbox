@@ -1,5 +1,7 @@
 # App switcher preview stays one app behind after arrows
 
+Shipped in 0.1.46.
+
 ## Symptom
 
 Window cards under Command-Tab only change on Tab. Left/Right after the strip is up leave the preview on the previous app. The next Tab then advances, but it is still one app behind the native highlight.

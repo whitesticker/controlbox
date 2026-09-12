@@ -44,7 +44,8 @@ Control Box stays on your Mac. Nothing is uploaded.
 
 | Device | What you get |
 |---|---|
-| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. Per-app **profile tiles** follow the frontmost app, same as MX mice. |
+| **DualSense / DualSense Edge** | Buttons, sticks, rumble. Touchpad **1-finger** and **2-finger** are separate Gestures. Sticks can be pointer or scroll; L2/R2 can switch tabs with analog travel. Per-app **profile tiles** follow the frontmost app, same as MX mice. Several DualSenses can stay attached at once. |
+| **Game Controller** | Any pad macOS recognises (Xbox, Switch Pro, 8BitDo, generic HID). Face buttons, D-pad, sticks, bumpers, analog triggers, Menu / Options / Home. Several pads at once; Player 1–4 lights the pad LED. Per-app **profile tiles**. No DualSense touchpad. |
 | **Siri Remote (A2540)** | Clickpad pointer, click-wheel scroll, face buttons, live calibration. Per-app **profile tiles** follow the frontmost app. |
 | **MX Master 3 / 3S** | Extra buttons plus the **gesture button** (tap = click, hold + move = swipe). Per-app **profile tiles** follow the frontmost app. Thumb wheel is one mode (scroll, tabs, volume, desktops, …). Free Spin / Ratchet, DPI, thumb-wheel sensitivity, and invert are on **Mouse Settings**. A button can map **Switch wheel mode** to toggle Free Spin / Ratchet. Bluetooth or Logi Bolt; the same mouse is one sidebar row. Easy-Switch **channels** on the device page. |
 | **MX Master 4** | Extra buttons including the **gesture button** and **haptic button**. Same per-app profiles, thumb-wheel modes, and Mouse Settings as 3 / 3S. Bluetooth or Logi Bolt. Easy-Switch **channels** on the device page. |
@@ -101,7 +102,7 @@ Tracked in [dev/roadmap.md](dev/roadmap.md):
 - **Per-app mouse profiles** — different Control mappings when the frontmost app changes
 - **Product page** — static landing page (GitHub Pages is $0; optional custom domain later)
 
-Generic mouse, Xbox, and other TV remotes are later. New hardware should land as a device family, not another special case in the host.
+Generic mouse and other TV remotes are later. New hardware should land as a device family, not another special case in the host.
 
 ## Docs for contributors
 

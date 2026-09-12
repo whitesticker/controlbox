@@ -1,10 +1,10 @@
 cask "controlbox" do
-  version "0.1.45"
-  sha256 "3dd270f46769532ffe2f824a8fa1f4435af77a83d934a0d8d4d52755f8430636"
+  version "0.1.46"
+  sha256 "78a051151f5832b866df55dbe7e2155a4a1815c8ed61eb35b6fe1f486a073dfa"
 
   url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/ControlBox-#{version}.zip"
   name "Control Box"
-  desc "Control your Mac with a DualSense, Siri Remote, MX Master, or MX Mechanical"
+  desc "Control your Mac with a DualSense, Xbox or other gamepad, Siri Remote, MX Master, or MX Mechanical"
   homepage "https://whitesticker.github.io/controlbox/"
 
   depends_on macos: :sonoma
