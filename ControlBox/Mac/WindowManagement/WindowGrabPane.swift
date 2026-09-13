@@ -115,23 +115,20 @@ struct WindowGrabPane: View {
                             "Go to the Space that has the window, on this display or another. The window stays where it is."
                         )
                     }
-                    VStack(alignment: .leading, spacing: 8) {
-                        rowLabel(
-                            "When already in front",
-                            "One click on an app that is in front. Native Dock does nothing here. Fullscreen is left alone."
-                        )
+                    HStack {
+                        Text("When already in front")
+                        Spacer()
                         Picker("When already in front", selection: windowDockClickFrontActionBinding) {
-                            Text("Do nothing").tag(DockClickFrontAction.none)
-                            Text("Minimize window").tag(DockClickFrontAction.minimize)
-                            Text("Hide app").tag(DockClickFrontAction.hide)
+                            Text("Nothing").tag(DockClickFrontAction.none)
+                            Text("Minimize").tag(DockClickFrontAction.minimize)
+                            Text("Hide").tag(DockClickFrontAction.hide)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .fixedSize()
                     }
                 } header: {
                     dockClickHeader("Dock click", "Single click")
-                } footer: {
-                    Text("Everything else stays native: raise, restore, unhide. Accessibility required.")
                 }
 
                 Section {
@@ -141,19 +138,14 @@ struct WindowGrabPane: View {
                             "Hold the keys, then click. Gathers every window of that app onto this display and organizes them."
                         )
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        ModifierChordPicker(
-                            title: "Keys",
-                            flags: windowDockClickMoveAllFlagsBinding,
-                            minimumCount: 1,
-                            occupied: occupancy.occupied(except: "Dock click move all"),
-                            message: $chordMessage,
-                            onConflict: { conflictName = $0 }
-                        )
-                        Text("Cannot match Move, Resize, Throw, or Display Arrangement.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    ModifierChordPicker(
+                        title: "Modifier key",
+                        flags: windowDockClickMoveAllFlagsBinding,
+                        minimumCount: 1,
+                        occupied: occupancy.occupied(except: "Dock click move all"),
+                        message: $chordMessage,
+                        onConflict: { conflictName = $0 }
+                    )
                     .disabled(!monitor.macMouseProfile.resolvedWindowDockClickMoveAllEnabled)
                 } header: {
                     Text("Modifier click")

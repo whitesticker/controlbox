@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -7,15 +8,18 @@ import Foundation
 public enum AppSwitcherPreview {
     public static let overlayTitle = "Control Box App Switcher Preview"
 
+    /// `enabled` shows window cards. `selectEnabled` runs `AppSwitcherSelect`
+    /// for the highlighted app when Command is released. The tap runs if either is on.
     public static func configure(
         enabled: Bool,
+        selectEnabled: Bool = false,
         onChange: @escaping (AppSwitcherPreviewHover?) -> Void
     ) {
-        Controller.shared.configure(enabled: enabled, onChange: onChange)
+        Controller.shared.configure(enabled: enabled, selectEnabled: selectEnabled, onChange: onChange)
     }
 
     public static func stop() {
-        configure(enabled: false, onChange: { _ in })
+        configure(enabled: false, selectEnabled: false, onChange: { _ in })
     }
 
     public static func dismissSwitcher() {
@@ -55,6 +59,12 @@ private final class Controller: @unchecked Sendable {
     private var pendingSteps: [(back: Bool, canStart: Bool)] = []
     private var pendingCommand: Bool?
     private var pendingEscape = false
+    private var selectEnabled = false
+    /// App highlighted by the last Tab / arrow step (our MRU guess). Nil until the strip is up.
+    private var highlighted: NSRunningApplication?
+    /// What the Dock itself says is highlighted, read back from its AX strip.
+    private var dockPicked: NSRunningApplication?
+    private var verifyToken: UInt = 0
 
     var isBusy: Bool {
         lock.lock()
@@ -62,11 +72,16 @@ private final class Controller: @unchecked Sendable {
         return session
     }
 
-    func configure(enabled: Bool, onChange: @escaping (AppSwitcherPreviewHover?) -> Void) {
+    func configure(
+        enabled: Bool,
+        selectEnabled: Bool,
+        onChange: @escaping (AppSwitcherPreviewHover?) -> Void
+    ) {
         lock.lock()
         self.enabled = enabled
+        self.selectEnabled = selectEnabled
         self.onChange = onChange
-        let shouldRun = enabled
+        let shouldRun = enabled || selectEnabled
         lock.unlock()
         if shouldRun {
             start()
@@ -100,6 +115,8 @@ private final class Controller: @unchecked Sendable {
         pendingSteps = []
         pendingCommand = nil
         pendingEscape = false
+        highlighted = nil
+        dockPicked = nil
     }
 
     private func startWorkspace() {
@@ -147,7 +164,13 @@ private final class Controller: @unchecked Sendable {
         }
         let flags = event.flags
         if type == .flagsChanged {
-            pendingCommand = flags.contains(.maskCommand)
+            let command = flags.contains(.maskCommand)
+            if !command, commandDown, session || !pendingSteps.isEmpty {
+                // The Dock still has its strip up at this instant. Ask it which
+                // item is highlighted — that is the app it is about to activate.
+                dockPicked = Self.dockHighlightedApp() ?? dockPicked
+            }
+            pendingCommand = command
             shiftDown = flags.contains(.maskShift)
         } else if type == .keyDown {
             let key = event.getIntegerValueField(.keyboardEventKeycode)
@@ -172,7 +195,8 @@ private final class Controller: @unchecked Sendable {
     private func flush() {
         scheduled = false
         lock.lock()
-        let on = enabled
+        let on = enabled || selectEnabled
+        let select = selectEnabled
         lock.unlock()
         guard on else { return }
 
@@ -180,8 +204,21 @@ private final class Controller: @unchecked Sendable {
             pendingCommand = nil
             commandDown = command
             if !command {
+                // A quick Command-Tab lands Tab and the release in one flush:
+                // still count those steps so the session (and its pick) exists.
+                let steps = pendingSteps
                 pendingSteps = []
+                for step in steps where session || step.canStart {
+                    self.step(back: step.back, publish: false)
+                }
+                // Command up on an open strip: the native switcher activates
+                // the highlighted app. Our Space switch rides on that. The
+                // Dock's own answer beats our MRU guess.
+                let picked = session ? (dockPicked ?? highlighted) : nil
                 endSession()
+                if select, let picked {
+                    AppSwitcherSelect.perform(picked)
+                }
                 return
             }
         }
@@ -193,12 +230,17 @@ private final class Controller: @unchecked Sendable {
         }
         let steps = pendingSteps
         pendingSteps = []
+        var stepped = false
         for step in steps where session || step.canStart {
-            self.step(back: step.back)
+            self.step(back: step.back, publish: true)
+            stepped = true
+        }
+        if stepped, session {
+            verifyHighlightSoon()
         }
     }
 
-    private func step(back: Bool) {
+    private func step(back: Bool, publish shouldPublish: Bool) {
         let apps = liveApps()
         guard apps.count > 1 else {
             endSession()
@@ -212,10 +254,61 @@ private final class Controller: @unchecked Sendable {
         } else {
             index = (index + 1) % apps.count
         }
-        publish(apps[index])
+        dockPicked = nil
+        highlighted = apps[index]
+        if shouldPublish {
+            publish(apps[index])
+        }
+    }
+
+    /// Our MRU is a guess at the Dock's order. Once the Dock has drawn the
+    /// step, read the highlighted item back and correct the cards if we
+    /// guessed wrong.
+    private func verifyHighlightSoon() {
+        verifyToken &+= 1
+        let token = verifyToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
+            guard let self, self.session, self.verifyToken == token else { return }
+            guard let real = Self.dockHighlightedApp() else { return }
+            self.dockPicked = real
+            if real.processIdentifier != self.highlighted?.processIdentifier {
+                self.highlighted = real
+                if let at = self.liveApps().firstIndex(where: { $0.processIdentifier == real.processIdentifier }) {
+                    self.index = at
+                }
+                self.publish(real)
+            }
+        }
+    }
+
+    /// The app the Dock's Command-Tab strip has highlighted right now, or nil
+    /// when the strip is not up. `AXProcessSwitcherList` → focused `AXButton`.
+    private static func dockHighlightedApp() -> NSRunningApplication? {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first
+        else { return nil }
+        let root = AXUIElementCreateApplication(dock.processIdentifier)
+        AXUIElementSetMessagingTimeout(root, 0.03)
+        for list in DockAX.children(of: root) ?? [] {
+            guard DockAX.string(list, kAXSubroleAttribute as CFString) == "AXProcessSwitcherList" else { continue }
+            for button in DockAX.children(of: list) ?? [] where DockAX.bool(button, kAXFocusedAttribute as CFString) {
+                let title = DockAX.string(button, kAXTitleAttribute as CFString)
+                guard !title.isEmpty else { return nil }
+                let apps = NSWorkspace.shared.runningApplications.filter {
+                    $0.activationPolicy == .regular && !$0.isTerminated
+                }
+                return apps.first { $0.localizedName == title }
+                    ?? apps.first { $0.bundleURL?.deletingPathExtension().lastPathComponent == title }
+            }
+            return nil
+        }
+        return nil
     }
 
     private func publish(_ app: NSRunningApplication) {
+        lock.lock()
+        let cards = enabled
+        lock.unlock()
+        guard cards else { return }
         let windows = DockPreviewWindows.list(app: app)
         let id = app.bundleIdentifier ?? app.localizedName ?? "\(app.processIdentifier)"
         if windows.isEmpty {
@@ -237,6 +330,9 @@ private final class Controller: @unchecked Sendable {
         let was = session
         session = false
         index = 0
+        highlighted = nil
+        dockPicked = nil
+        verifyToken &+= 1
         if was {
             onChange(nil)
         }

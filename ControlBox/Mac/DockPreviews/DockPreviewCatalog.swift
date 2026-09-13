@@ -11,6 +11,9 @@ final class DockPreviewCatalog {
     var showDelay = DockPreview.defaultShowDelay
     var cardScale = DockPreview.defaultCardScale
     var switcherCardScale = DockPreview.defaultCardScale
+    var cardSwitchToSpace = false
+    var cardFrontAction: DockClickFrontAction = .none
+    var switcherSelectSwitchToSpace = false
     var hasScreenRecording = false
 
     private var shouldSuppress: () -> Bool = { false }
@@ -18,11 +21,12 @@ final class DockPreviewCatalog {
 
     init() {
         load()
+        applyCardClick()
         refreshScreenRecording()
         if enabled {
             start()
         }
-        if switcherEnabled {
+        if switcherEnabled || switcherSelectSwitchToSpace {
             startSwitcher()
         }
     }
@@ -76,12 +80,43 @@ final class DockPreviewCatalog {
         guard on != switcherEnabled else { return }
         switcherEnabled = on
         persist()
-        if on {
+        applySwitcher()
+    }
+
+    func setSwitcherSelectSwitchToSpace(_ on: Bool) {
+        guard on != switcherSelectSwitchToSpace else { return }
+        switcherSelectSwitchToSpace = on
+        persist()
+        applySwitcher()
+    }
+
+    private func applySwitcher() {
+        if switcherEnabled || switcherSelectSwitchToSpace {
             startSwitcher()
         } else {
             AppSwitcherPreview.stop()
+        }
+        if !switcherEnabled {
             AppSwitcherPreviewOverlay.shared.hide()
         }
+    }
+
+    func setCardSwitchToSpace(_ on: Bool) {
+        guard on != cardSwitchToSpace else { return }
+        cardSwitchToSpace = on
+        persist()
+        applyCardClick()
+    }
+
+    func setCardFrontAction(_ action: DockClickFrontAction) {
+        guard action != cardFrontAction else { return }
+        cardFrontAction = action
+        persist()
+        applyCardClick()
+    }
+
+    private func applyCardClick() {
+        DockCardClick.configure(switchEnabled: cardSwitchToSpace, frontAction: cardFrontAction)
     }
 
     func refreshScreenRecording() {
@@ -116,7 +151,10 @@ final class DockPreviewCatalog {
 
     private func startSwitcher() {
         AppSwitcherPreviewOverlay.shared.cardScale = switcherCardScale
-        AppSwitcherPreview.configure(enabled: true) { hover in
+        AppSwitcherPreview.configure(
+            enabled: switcherEnabled,
+            selectEnabled: switcherSelectSwitchToSpace
+        ) { hover in
             if let hover {
                 DockPreview.dismiss()
                 AppSwitcherPreviewOverlay.shared.show(hover)
@@ -132,7 +170,10 @@ final class DockPreviewCatalog {
             switcherEnabled: switcherEnabled,
             showDelay: showDelay,
             cardScale: cardScale,
-            switcherCardScale: switcherCardScale
+            switcherCardScale: switcherCardScale,
+            cardSwitchToSpace: cardSwitchToSpace,
+            cardFrontAction: cardFrontAction,
+            switcherSelectSwitchToSpace: switcherSelectSwitchToSpace
         )
         if let data = try? JSONEncoder().encode(store) {
             UserDefaults.standard.set(data, forKey: Self.defaultsKey)
@@ -153,6 +194,9 @@ final class DockPreviewCatalog {
             max(store.switcherCardScale ?? DockPreview.defaultCardScale, DockPreview.minCardScale),
             DockPreview.maxSwitcherCardScale
         )
+        cardSwitchToSpace = store.cardSwitchToSpace ?? false
+        cardFrontAction = store.cardFrontAction ?? .none
+        switcherSelectSwitchToSpace = store.switcherSelectSwitchToSpace ?? false
         if let backup = store.labelBackup, !backup.isEmpty {
             DockFileLabel.restore(backup)
             persist()
@@ -167,6 +211,9 @@ final class DockPreviewCatalog {
         var showDelay: TimeInterval
         var cardScale: CGFloat?
         var switcherCardScale: CGFloat?
+        var cardSwitchToSpace: Bool?
+        var cardFrontAction: DockClickFrontAction?
+        var switcherSelectSwitchToSpace: Bool?
         var showDockNames: Bool?
         var labelBackup: [DockFileLabel.BackupItem]?
     }

@@ -327,8 +327,13 @@ struct DockPreviewCard: View {
                 if compact {
                     AppSwitcherPreview.dismissSwitcher()
                     AppSwitcherPreviewOverlay.shared.hide()
+                    DockPreview.focus(window)
+                } else {
+                    DockCardClick.perform(
+                        window,
+                        frontPID: NSWorkspace.shared.frontmostApplication?.processIdentifier
+                    )
                 }
-                DockPreview.focus(window)
                 DockPreviewOverlay.shared.hide()
             } label: {
                 VStack(alignment: .leading, spacing: 6 * model.cardScale) {

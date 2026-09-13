@@ -294,6 +294,44 @@ private final class Controller: @unchecked Sendable {
     }
 
     private func isFullscreenWindow(_ window: DockPreviewWindow) -> Bool {
+        DockWindowState.isFullscreen(window)
+    }
+
+    private func isVisible(on screen: NSScreen, _ window: DockPreviewWindow) -> Bool {
+        DockWindowState.isVisible(on: screen, window)
+    }
+
+    private func isVisibleElsewhere(than screen: NSScreen, _ window: DockPreviewWindow) -> Bool {
+        !window.isMinimized && window.isOnScreen && !displayContains(screen, window.bounds)
+    }
+
+    private func displayContains(_ screen: NSScreen, _ bounds: CGRect) -> Bool {
+        DockWindowState.displayContains(screen, bounds)
+    }
+
+    private func mostRecent(
+        _ windows: [DockPreviewWindow],
+        zOrder: [CGWindowID: Int]
+    ) -> DockPreviewWindow? {
+        DockWindowState.mostRecent(windows, zOrder: zOrder)
+    }
+
+    private func zIndex(_ window: DockPreviewWindow, _ zOrder: [CGWindowID: Int]) -> Int {
+        DockWindowState.zIndex(window, zOrder)
+    }
+
+    private func relatedPIDs(for app: NSRunningApplication) -> Set<pid_t> {
+        DockWindowState.relatedPIDs(for: app)
+    }
+
+    private static func windowZOrder() -> [CGWindowID: Int] {
+        DockWindowState.windowZOrder()
+    }
+}
+
+/// Window state shared by Dock-icon clicks and preview-card clicks.
+enum DockWindowState {
+    static func isFullscreen(_ window: DockPreviewWindow) -> Bool {
         if window.isMinimized { return false }
         if WindowSpaces.isFullscreen(window.windowID, pid: window.pid) { return true }
         if DockPreviewFocus.isFullscreen(window) { return true }
@@ -306,34 +344,39 @@ private final class Controller: @unchecked Sendable {
         return false
     }
 
-    private func isVisible(on screen: NSScreen, _ window: DockPreviewWindow) -> Bool {
+    static func isVisible(on screen: NSScreen, _ window: DockPreviewWindow) -> Bool {
         !window.isMinimized && window.isOnScreen && displayContains(screen, window.bounds)
     }
 
-    private func isVisibleElsewhere(than screen: NSScreen, _ window: DockPreviewWindow) -> Bool {
-        !window.isMinimized && window.isOnScreen && !displayContains(screen, window.bounds)
+    /// On-screen on whichever display currently shows its Space.
+    static func isVisibleAnywhere(_ window: DockPreviewWindow) -> Bool {
+        !window.isMinimized && window.isOnScreen
     }
 
-    private func displayContains(_ screen: NSScreen, _ bounds: CGRect) -> Bool {
+    static func displayContains(_ screen: NSScreen, _ bounds: CGRect) -> Bool {
         let frame = WindowLayout.quartzFrame(from: screen.frame).insetBy(dx: -2, dy: -2)
         return frame.contains(CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
-    private func mostRecent(
+    static func screen(containing bounds: CGRect) -> NSScreen? {
+        NSScreen.screens.first { displayContains($0, bounds) }
+    }
+
+    static func mostRecent(
         _ windows: [DockPreviewWindow],
         zOrder: [CGWindowID: Int]
     ) -> DockPreviewWindow? {
         windows.min { zIndex($0, zOrder) < zIndex($1, zOrder) }
     }
 
-    private func zIndex(_ window: DockPreviewWindow, _ zOrder: [CGWindowID: Int]) -> Int {
+    static func zIndex(_ window: DockPreviewWindow, _ zOrder: [CGWindowID: Int]) -> Int {
         if window.windowID != 0, let index = zOrder[window.windowID] {
             return index
         }
         return Int.max
     }
 
-    private func relatedPIDs(for app: NSRunningApplication) -> Set<pid_t> {
+    static func relatedPIDs(for app: NSRunningApplication) -> Set<pid_t> {
         var pids: Set<pid_t> = [app.processIdentifier]
         let bid = app.bundleIdentifier ?? ""
         for running in NSWorkspace.shared.runningApplications {
@@ -344,7 +387,7 @@ private final class Controller: @unchecked Sendable {
         return pids
     }
 
-    private static func windowZOrder() -> [CGWindowID: Int] {
+    static func windowZOrder() -> [CGWindowID: Int] {
         let options: CGWindowListOption = [.excludeDesktopElements]
         let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
         var order: [CGWindowID: Int] = [:]

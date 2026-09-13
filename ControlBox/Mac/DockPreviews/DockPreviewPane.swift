@@ -76,6 +76,46 @@ struct DockPreviewPane: View {
                         )
                     }
                 }
+
+                Section {
+                    Toggle(isOn: cardSwitchBinding) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Switch to Space")
+                            Text("A card on another Space slides that display to it.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    HStack {
+                        Text("When already in front")
+                        Spacer()
+                        Picker("When already in front", selection: cardFrontActionBinding) {
+                            Text("Nothing").tag(DockClickFrontAction.none)
+                            Text("Minimize").tag(DockClickFrontAction.minimize)
+                            Text("Hide").tag(DockClickFrontAction.hide)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                } header: {
+                    Text("Card click")
+                }
+
+                Section {
+                    Toggle(isOn: switcherSelectBinding) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Switch to Space")
+                            Text("Pick an app in Command-Tab that has no window on a current Space: go to the Space that has one, on this display or another.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                } header: {
+                    Text("App switcher select")
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Dock Previews")
@@ -115,6 +155,27 @@ struct DockPreviewPane: View {
         Binding(
             get: { Double(catalog.switcherCardScale) },
             set: { catalog.setSwitcherCardScale(CGFloat($0)) }
+        )
+    }
+
+    private var cardSwitchBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.cardSwitchToSpace },
+            set: { catalog.setCardSwitchToSpace($0) }
+        )
+    }
+
+    private var cardFrontActionBinding: Binding<DockClickFrontAction> {
+        Binding(
+            get: { catalog.cardFrontAction },
+            set: { catalog.setCardFrontAction($0) }
+        )
+    }
+
+    private var switcherSelectBinding: Binding<Bool> {
+        Binding(
+            get: { catalog.switcherSelectSwitchToSpace },
+            set: { catalog.setSwitcherSelectSwitchToSpace($0) }
         )
     }
 

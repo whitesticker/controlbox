@@ -61,6 +61,21 @@ enum WindowSpaces {
         return false
     }
 
+    /// For a window that owns a fullscreen Space: is that Space current on its
+    /// display? Nil when the window does not own a fullscreen Space.
+    static func fullscreenSpaceIsCurrent(_ windowID: CGWindowID) -> Bool? {
+        guard windowID != 0, let cid = connectionID(),
+              let displays = managedDisplays(cid: cid) else { return nil }
+        for display in displays {
+            let spaces = display["Spaces"] as? [[String: Any]] ?? []
+            guard let owner = spaces.first(where: { ownsWindow(windowID, space: $0) }),
+                  let id = topID(owner) else { continue }
+            let current = topID(display["Current Space"] as? [String: Any] ?? [:])
+            return current == id
+        }
+        return nil
+    }
+
     private struct Query {
         var windowID: CGWindowID
         var pid: pid_t
@@ -82,6 +97,13 @@ enum WindowSpaces {
             guard !Task.isCancelled else { return }
             guard let step = snapshot(query, from: home, cid: cid) else { return }
             if step.from == step.to { return }
+            // Something else is already sliding this display (Apple's own
+            // activation of a fullscreen app). A swipe on top of that
+            // cancels or overshoots it. Let it land, then re-check.
+            if isAnimating(step.uuid, cid: cid) {
+                await waitWhileAnimating(step.uuid, cid: cid)
+                continue
+            }
             if !pointerOnDisplay(step.point) {
                 parkCursor(at: step.point)
                 parked = true
@@ -228,6 +250,16 @@ enum WindowSpaces {
             if now != 0, now != from { return }
             try? await Task.sleep(nanoseconds: 8_000_000)
         }
+    }
+
+    private static func waitWhileAnimating(_ uuid: String, cid: Int32) async {
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline, isAnimating(uuid, cid: cid) {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 16_000_000)
+        }
+        // The current-Space read can lag the end of the slide by a frame.
+        try? await Task.sleep(nanoseconds: 32_000_000)
     }
 
     private static func waitForMove(from: UInt64, uuid: String, cid: Int32) async {
