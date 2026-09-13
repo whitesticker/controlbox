@@ -6,7 +6,7 @@ There is no Aero Shake on the Mac. Grabbing a window and shaking it does nothing
 
 ## What we changed
 
-**Shake to focus** and **Dock click** (Switch to Space, When already in front, Move all windows here) live on the Window Management pane. Off until each toggle is on.
+**Shake to focus** and **Dock click** (Switch to Space, When already in front) live on the Window Management pane. Off until each toggle is on.
 
 Shake a window left and right (native title bar, or while Move is held) to minimize every other visible window. Shake again to restore the ones this gesture hid.
 
@@ -14,8 +14,9 @@ Dock click is one plain click, state-driven, layered on the native click (no dou
 
 - App was frontmost at mouse-down with a visible window → **When already in front**: Minimize window / Hide app / nothing. Not fullscreen.
 - No window on any current Space, at least one not minimized → **Switch to Space**: DockSwipe slide of that window’s display (this or another) to its Space. The window does not move. Other-monitor switches hop the pointer to the nearest edge of that display, then put it back as soon as the slide starts. Fullscreen is a Space; never exit it.
-- Everything else (visible but not in front, all minimized, hidden with ⌘H) → native raise / restore / unhide. Control Box does nothing.
-- Modifier chord (default Shift) → **Move all windows here**: restore, gather every non-fullscreen window of that app onto this display, organize. Nothing if that app is fullscreen.
+- Everything else (visible but not in front, all minimized, hidden with ⌘H, any modifier held) → native. Control Box does nothing.
+
+**Move all windows here** (modifier click, gather that app onto this display) was removed in 0.1.48: it could not reach windows on other Spaces. See [move-windows-across-spaces.md](move-windows-across-spaces.md).
 
 Read the frontmost app at **mouse-down**. Dock activates the clicked app on the same click, so a mouse-up read makes every click look “already in front”. **Ignored apps** skip Dock click. Native Dock clicks still fire (listen-only).
 

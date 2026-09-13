@@ -47,8 +47,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var windowDockClickMinimizeEnabled: Bool?
     public var windowDockClickEnabled: Bool?
     public var windowDockClickDoubleMinimizeEnabled: Bool?
-    public var windowDockClickMoveAllEnabled: Bool?
-    public var windowDockClickMoveAllFlags: UInt64?
     public var windowDockClickIgnoredBundleIDs: [String]?
     /// What a plain Dock click does when that app is already in front. Nil migrates the old minimize toggle.
     public var windowDockClickFrontAction: DockClickFrontAction?
@@ -108,15 +106,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public var resolvedWindowDockClickDoubleMinimizeEnabled: Bool {
         windowDockClickDoubleMinimizeEnabled ?? false
     }
-    public var resolvedWindowDockClickMoveAllEnabled: Bool {
-        windowDockClickMoveAllEnabled ?? false
-    }
-    public var resolvedWindowDockClickMoveAllFlags: CGEventFlags {
-        let flags = ModifierChords.normalized(
-            CGEventFlags(rawValue: windowDockClickMoveAllFlags ?? Self.defaultWindowDockClickMoveAllFlags)
-        )
-        return flags.isEmpty ? .maskShift : flags
-    }
     public var resolvedWindowDockClickIgnoredBundleIDs: [String] {
         Array(Set(windowDockClickIgnoredBundleIDs ?? [])).sorted()
     }
@@ -138,7 +127,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
     public static let defaultWindowThrowFlags = CGEventFlags.maskControl.union(.maskAlternate).rawValue
     public static let defaultWindowOrganizeFlags = CGEventFlags.maskControl.union(.maskCommand).rawValue
     public static let defaultWindowOrganizeKey: UInt16 = 31
-    public static let defaultWindowDockClickMoveAllFlags = CGEventFlags.maskShift.rawValue
 
     public static let fallbackDPILevels = [400, 800, 1000, 1200, 1600, 2000, 2400, 3200, 4000]
     public static let defaultSensorDPI = 1000
@@ -186,8 +174,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         windowDockClickMinimizeEnabled: Bool? = nil,
         windowDockClickEnabled: Bool? = nil,
         windowDockClickDoubleMinimizeEnabled: Bool? = nil,
-        windowDockClickMoveAllEnabled: Bool? = nil,
-        windowDockClickMoveAllFlags: UInt64? = nil,
         windowDockClickIgnoredBundleIDs: [String]? = nil,
         windowDockClickFrontAction: DockClickFrontAction? = nil,
         frontmostAppBundleID: String? = nil,
@@ -237,8 +223,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
         self.windowDockClickMinimizeEnabled = windowDockClickMinimizeEnabled
         self.windowDockClickEnabled = windowDockClickEnabled
         self.windowDockClickDoubleMinimizeEnabled = windowDockClickDoubleMinimizeEnabled
-        self.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
-        self.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
         self.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
         self.windowDockClickFrontAction = windowDockClickFrontAction
         self.frontmostAppBundleID = frontmostAppBundleID
@@ -701,8 +685,6 @@ public struct MappingProfile: Codable, Equatable, Identifiable, Sendable {
             windowDockClickMinimizeEnabled: windowDockClickMinimizeEnabled,
             windowDockClickEnabled: windowDockClickEnabled,
             windowDockClickDoubleMinimizeEnabled: windowDockClickDoubleMinimizeEnabled,
-            windowDockClickMoveAllEnabled: windowDockClickMoveAllEnabled,
-            windowDockClickMoveAllFlags: windowDockClickMoveAllFlags,
             windowDockClickIgnoredBundleIDs: windowDockClickIgnoredBundleIDs,
             windowDockClickFrontAction: windowDockClickFrontAction,
             frontmostAppBundleID: frontmostAppBundleID,

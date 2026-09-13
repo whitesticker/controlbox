@@ -1389,7 +1389,7 @@ final class DualSenseMonitor {
         }
         let profile = macMouseProfile
         let ignored = profile.resolvedWindowDockClickIgnoredBundleIDs.joined(separator: ",")
-        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowThrowEnabled)|\(profile.resolvedWindowOrganizeEnabled)|\(profile.resolvedWindowShakeEnabled)|\(profile.resolvedWindowShakeScope)|\(profile.resolvedWindowDockClickEnabled)|\(profile.resolvedWindowDockClickFrontAction)|\(profile.resolvedWindowDockClickMoveAllEnabled)|\(profile.resolvedWindowDockClickMoveAllFlags.rawValue)|\(ignored)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)|\(profile.resolvedWindowThrowFlags)|\(profile.resolvedWindowOrganizeFlags)|\(profile.resolvedWindowOrganizeKey)"
+        let signature = "mac|\(profile.resolvedWindowMoveEnabled)|\(profile.resolvedWindowResizeEnabled)|\(profile.resolvedWindowThrowEnabled)|\(profile.resolvedWindowOrganizeEnabled)|\(profile.resolvedWindowShakeEnabled)|\(profile.resolvedWindowShakeScope)|\(profile.resolvedWindowDockClickEnabled)|\(profile.resolvedWindowDockClickFrontAction)|\(ignored)|\(profile.resolvedWindowMoveFlags)|\(profile.resolvedWindowResizeFlags)|\(profile.resolvedWindowThrowFlags)|\(profile.resolvedWindowOrganizeFlags)|\(profile.resolvedWindowOrganizeKey)"
         guard signature != lastWindowGrabSignature else { return }
         lastWindowGrabSignature = signature
         WindowGrab.configure(
@@ -1415,8 +1415,6 @@ final class DualSenseMonitor {
         DockClick.configure(
             switchEnabled: profile.resolvedWindowDockClickEnabled,
             frontAction: profile.resolvedWindowDockClickFrontAction,
-            moveAllEnabled: profile.resolvedWindowDockClickMoveAllEnabled,
-            moveAllFlags: profile.resolvedWindowDockClickMoveAllFlags,
             ignoredBundleIDs: profile.resolvedWindowDockClickIgnoredBundleIDs
         )
     }
@@ -1484,18 +1482,6 @@ final class DualSenseMonitor {
         updateMacMouse { $0.windowDockClickFrontAction = action }
     }
 
-    func setWindowDockClickMoveAllEnabled(_ enabled: Bool) {
-        updateMacMouse { $0.windowDockClickMoveAllEnabled = enabled }
-    }
-
-    func setWindowDockClickMoveAllFlags(_ flags: UInt64) {
-        updateMacMouse {
-            $0.windowDockClickMoveAllFlags = flags == 0
-                ? MappingProfile.defaultWindowDockClickMoveAllFlags
-                : flags
-        }
-    }
-
     func addWindowDockClickIgnoredApp(_ bundleID: String) {
         let id = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return }
@@ -1527,9 +1513,7 @@ final class DualSenseMonitor {
             throwEnabled: profile.resolvedWindowThrowEnabled,
             throwFlags: profile.resolvedWindowThrowFlags,
             arrangementEnabled: arrangementEnabled,
-            arrangementFlags: arrangementFlags,
-            dockMoveAllEnabled: profile.resolvedWindowDockClickMoveAllEnabled,
-            dockMoveAllFlags: profile.resolvedWindowDockClickMoveAllFlags
+            arrangementFlags: arrangementFlags
         )
     }
 

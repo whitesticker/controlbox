@@ -7,32 +7,23 @@ import Foundation
 /// click is state-driven: app already in front with a visible window → the
 /// front action (minimize / hide); no visible window on any current Space →
 /// switch that display to the window's Space. Everything else stays native.
-/// A modifier chord gathers every window of that app onto this display.
+/// Clicks with any modifier held are left alone.
 public enum DockClick {
     public static func configure(
         switchEnabled: Bool,
         frontAction: DockClickFrontAction,
-        moveAllEnabled: Bool,
-        moveAllFlags: CGEventFlags,
         ignoredBundleIDs: [String] = []
     ) {
         Controller.shared.configure(
             switchEnabled: switchEnabled,
             frontAction: frontAction,
-            moveAllEnabled: moveAllEnabled,
-            moveAllFlags: moveAllFlags,
             ignoredBundleIDs: ignoredBundleIDs
         )
     }
 
     public static func stop() {
         WindowSpaces.cancel()
-        configure(
-            switchEnabled: false,
-            frontAction: .none,
-            moveAllEnabled: false,
-            moveAllFlags: .maskShift
-        )
+        configure(switchEnabled: false, frontAction: .none)
     }
 }
 
@@ -42,8 +33,6 @@ private final class Controller: @unchecked Sendable {
     private let lock = NSLock()
     private var switchEnabled = false
     private var frontAction: DockClickFrontAction = .none
-    private var moveAllEnabled = false
-    private var moveAllFlags: CGEventFlags = .maskShift
     private var ignoredBundleIDs = Set<String>()
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
@@ -59,18 +48,13 @@ private final class Controller: @unchecked Sendable {
     func configure(
         switchEnabled: Bool,
         frontAction: DockClickFrontAction,
-        moveAllEnabled: Bool,
-        moveAllFlags: CGEventFlags,
         ignoredBundleIDs: [String]
     ) {
         lock.lock()
         self.switchEnabled = switchEnabled
         self.frontAction = frontAction
-        self.moveAllEnabled = moveAllEnabled
-        let flags = ModifierChords.normalized(moveAllFlags)
-        self.moveAllFlags = flags.isEmpty ? .maskShift : flags
         self.ignoredBundleIDs = Set(ignoredBundleIDs)
-        let shouldRun = switchEnabled || frontAction != .none || moveAllEnabled
+        let shouldRun = switchEnabled || frontAction != .none
         lock.unlock()
         if shouldRun {
             start()
@@ -148,18 +132,15 @@ private final class Controller: @unchecked Sendable {
         lock.lock()
         let switching = switchEnabled
         let front = frontAction
-        let moveAll = moveAllEnabled
-        let moveFlags = moveAllFlags
         let ignored = ignoredBundleIDs
         lock.unlock()
-        guard switching || front != .none || moveAll, let down = downPoint, let up = upPoint else { return }
+        guard switching || front != .none, let down = downPoint, let up = upPoint else { return }
         let frontPID = downFrontPID
         downPoint = nil
         upPoint = nil
-        let mods = ModifierChords.live(downFlags)
-        let moveChord = ModifierChords.normalized(moveFlags)
-        let isMoveAll = moveAll && !moveChord.isEmpty && mods == moveChord
-        guard mods.isEmpty || isMoveAll else { return }
+        // Modified clicks (Command-click reveals in Finder, Option-click hides
+        // others, and so on) stay native.
+        guard ModifierChords.live(downFlags).isEmpty else { return }
         guard hypot(up.x - down.x, up.y - down.y) < 10 else { return }
         if DockMenu.isVisible() { return }
         let cocoa = WindowLayout.cocoaFrame(
@@ -177,7 +158,6 @@ private final class Controller: @unchecked Sendable {
                 app: app,
                 dest: dest,
                 wasFront: frontPID != 0 && self.relatedPIDs(for: app).contains(frontPID),
-                isMoveAll: isMoveAll,
                 switching: switching,
                 front: front
             )
@@ -189,7 +169,6 @@ private final class Controller: @unchecked Sendable {
         app: NSRunningApplication,
         dest: NSScreen,
         wasFront: Bool,
-        isMoveAll: Bool,
         switching: Bool,
         front: DockClickFrontAction
     ) {
@@ -201,21 +180,7 @@ private final class Controller: @unchecked Sendable {
         let zOrder = Self.windowZOrder()
         let onThis = windows.filter { isVisible(on: dest, $0) }
         let elsewhere = windows.filter { isVisibleElsewhere(than: dest, $0) }
-        let minimized = windows.filter(\.isMinimized)
         let visibleAnywhere = onThis + elsewhere
-
-        if isMoveAll {
-            guard !windows.isEmpty else { return }
-            if let current = mostRecent(windows, zOrder: zOrder), isFullscreenWindow(current) { return }
-            gatherAndOrganize(
-                (visibleAnywhere + minimized).filter { !isFullscreenWindow($0) },
-                visible: WindowLayout.quartzFrame(from: dest.visibleFrame),
-                zOrder: zOrder,
-                app: app
-            )
-            DockPreview.dismiss()
-            return
-        }
 
         // No window list at all (AX missed it, e.g. some fullscreen apps):
         // switching by pid is the only thing we can add.
@@ -267,32 +232,6 @@ private final class Controller: @unchecked Sendable {
         DockPreview.dismiss()
     }
 
-    @MainActor
-    private func gatherAndOrganize(
-        _ windows: [DockPreviewWindow],
-        visible: CGRect,
-        zOrder: [CGWindowID: Int],
-        app: NSRunningApplication
-    ) {
-        let moving = windows.sorted { zIndex($0, zOrder) > zIndex($1, zOrder) }
-        guard !moving.isEmpty else {
-            app.activate(options: [.activateIgnoringOtherApps])
-            return
-        }
-        for window in moving where window.isMinimized {
-            DockPreviewFocus.restore(window)
-        }
-        let frames = WindowLayout.grid(count: moving.count, in: visible)
-        for (index, window) in moving.enumerated() where index < frames.count {
-            DockPreviewFocus.setFrame(window, frames[index])
-        }
-        if let front = mostRecent(moving, zOrder: zOrder) {
-            DockPreviewFocus.raise(front)
-        } else {
-            app.activate(options: [.activateIgnoringOtherApps])
-        }
-    }
-
     private func isFullscreenWindow(_ window: DockPreviewWindow) -> Bool {
         DockWindowState.isFullscreen(window)
     }
@@ -314,10 +253,6 @@ private final class Controller: @unchecked Sendable {
         zOrder: [CGWindowID: Int]
     ) -> DockPreviewWindow? {
         DockWindowState.mostRecent(windows, zOrder: zOrder)
-    }
-
-    private func zIndex(_ window: DockPreviewWindow, _ zOrder: [CGWindowID: Int]) -> Int {
-        DockWindowState.zIndex(window, zOrder)
     }
 
     private func relatedPIDs(for app: NSRunningApplication) -> Set<pid_t> {

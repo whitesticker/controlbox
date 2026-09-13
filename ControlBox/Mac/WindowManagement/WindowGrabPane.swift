@@ -42,7 +42,7 @@ struct WindowGrabPane: View {
                         "Hold Move and drag from anywhere.",
                         "Hold Resize and move: grows from the bottom-right; top-left stays put.",
                         "Trackpad, mouse, or DualSense. Accessibility required.",
-                        "These keys cannot match Throw, Display Arrangement, Dock click move all, or each other."
+                        "These keys cannot match Throw, Display Arrangement, or each other."
                     )
                 }
 
@@ -129,26 +129,6 @@ struct WindowGrabPane: View {
                     }
                 } header: {
                     dockClickHeader("Dock click", "Single click")
-                }
-
-                Section {
-                    Toggle(isOn: windowDockClickMoveAllBinding) {
-                        rowLabel(
-                            "Move all windows here",
-                            "Hold the keys, then click. Gathers every window of that app onto this display and organizes them."
-                        )
-                    }
-                    ModifierChordPicker(
-                        title: "Modifier key",
-                        flags: windowDockClickMoveAllFlagsBinding,
-                        minimumCount: 1,
-                        occupied: occupancy.occupied(except: "Dock click move all"),
-                        message: $chordMessage,
-                        onConflict: { conflictName = $0 }
-                    )
-                    .disabled(!monitor.macMouseProfile.resolvedWindowDockClickMoveAllEnabled)
-                } header: {
-                    Text("Modifier click")
                 }
 
                 Section {
@@ -336,22 +316,6 @@ struct WindowGrabPane: View {
         Binding(
             get: { monitor.macMouseProfile.resolvedWindowDockClickFrontAction },
             set: { monitor.setWindowDockClickFrontAction($0) }
-        )
-    }
-
-    private var windowDockClickMoveAllBinding: Binding<Bool> {
-        enabledBinding(
-            get: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllEnabled },
-            flags: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllFlags },
-            except: "Dock click move all",
-            set: { monitor.setWindowDockClickMoveAllEnabled($0) }
-        )
-    }
-
-    private var windowDockClickMoveAllFlagsBinding: Binding<UInt64> {
-        Binding(
-            get: { monitor.macMouseProfile.resolvedWindowDockClickMoveAllFlags.rawValue },
-            set: { monitor.setWindowDockClickMoveAllFlags($0) }
         )
     }
 

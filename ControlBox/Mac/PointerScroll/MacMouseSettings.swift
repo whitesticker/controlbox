@@ -24,8 +24,6 @@ struct MacMouseSettings: Codable, Equatable {
     var windowShakeScope: WindowShakeScope
     var windowDockClickEnabled: Bool
     var windowDockClickFrontAction: DockClickFrontAction
-    var windowDockClickMoveAllEnabled: Bool
-    var windowDockClickMoveAllFlags: UInt64
     var windowDockClickIgnoredBundleIDs: [String]
 
     private enum CodingKeys: String, CodingKey {
@@ -47,8 +45,6 @@ struct MacMouseSettings: Codable, Equatable {
         case windowShakeScope
         case windowDockClickEnabled
         case windowDockClickFrontAction
-        case windowDockClickMoveAllEnabled
-        case windowDockClickMoveAllFlags
         case windowDockClickIgnoredBundleIDs
     }
 
@@ -79,8 +75,6 @@ struct MacMouseSettings: Codable, Equatable {
             windowShakeScope: .thisDisplay,
             windowDockClickEnabled: false,
             windowDockClickFrontAction: .none,
-            windowDockClickMoveAllEnabled: false,
-            windowDockClickMoveAllFlags: MappingProfile.defaultWindowDockClickMoveAllFlags,
             windowDockClickIgnoredBundleIDs: []
         )
     }
@@ -110,8 +104,6 @@ struct MacMouseSettings: Codable, Equatable {
             settings.windowShakeScope = profile.resolvedWindowShakeScope
             settings.windowDockClickEnabled = profile.resolvedWindowDockClickEnabled
             settings.windowDockClickFrontAction = profile.resolvedWindowDockClickFrontAction
-            settings.windowDockClickMoveAllEnabled = profile.resolvedWindowDockClickMoveAllEnabled
-            settings.windowDockClickMoveAllFlags = profile.resolvedWindowDockClickMoveAllFlags.rawValue
             settings.windowDockClickIgnoredBundleIDs = profile.resolvedWindowDockClickIgnoredBundleIDs
         } else {
             settings.pointerSpeed = 0.5
@@ -146,8 +138,6 @@ struct MacMouseSettings: Codable, Equatable {
         profile.windowDockClickEnabled = windowDockClickEnabled
         profile.windowDockClickDoubleMinimizeEnabled = windowDockClickFrontAction == .minimize
         profile.windowDockClickFrontAction = windowDockClickFrontAction
-        profile.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
-        profile.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
         profile.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
     }
 
@@ -176,8 +166,6 @@ struct MacMouseSettings: Codable, Equatable {
         windowShakeScope: WindowShakeScope,
         windowDockClickEnabled: Bool,
         windowDockClickFrontAction: DockClickFrontAction,
-        windowDockClickMoveAllEnabled: Bool,
-        windowDockClickMoveAllFlags: UInt64,
         windowDockClickIgnoredBundleIDs: [String]
     ) {
         self.pointerSpeed = pointerSpeed
@@ -198,8 +186,6 @@ struct MacMouseSettings: Codable, Equatable {
         self.windowShakeScope = windowShakeScope
         self.windowDockClickEnabled = windowDockClickEnabled
         self.windowDockClickFrontAction = windowDockClickFrontAction
-        self.windowDockClickMoveAllEnabled = windowDockClickMoveAllEnabled
-        self.windowDockClickMoveAllFlags = windowDockClickMoveAllFlags
         self.windowDockClickIgnoredBundleIDs = windowDockClickIgnoredBundleIDs
     }
 
@@ -243,14 +229,6 @@ struct MacMouseSettings: Codable, Equatable {
             DockClickFrontAction.self,
             forKey: .windowDockClickFrontAction
         ) ?? (legacyDoubleMinimize ? .minimize : .none)
-        windowDockClickMoveAllEnabled = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .windowDockClickMoveAllEnabled
-        ) ?? false
-        windowDockClickMoveAllFlags = try container.decodeIfPresent(
-            UInt64.self,
-            forKey: .windowDockClickMoveAllFlags
-        ) ?? MappingProfile.defaultWindowDockClickMoveAllFlags
         windowDockClickIgnoredBundleIDs = Array(
             Set(
                 try container.decodeIfPresent(

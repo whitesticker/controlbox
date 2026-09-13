@@ -58,6 +58,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [mx-wheel-modes.md](mx-wheel-modes.md) | Thumb wheel uses one continuous mode; main wheel stays native |
 | [mx-smartshift.md](mx-smartshift.md) | Free Spin / Ratchet + SmartShift sensitivity; Calibration thumb-wheel gain |
 | [mx-wheel-fires-thumb.md](mx-wheel-fires-thumb.md) | Main-wheel CGEvents pulse the thumb mapping |
+| [move-windows-across-spaces.md](move-windows-across-spaces.md) | Dock modifier click could not pull another app’s window off its Space (feature removed) |
 | [window-grab-only-own-app.md](window-grab-only-own-app.md) | Window grab moves Control Box but not Finder, Safari, or other apps |
 | [night-shift-hijack-hang.md](night-shift-hijack-hang.md) | App beachballs on launch while Night Shift take-over is on |
 | [night-shift-flips-dark-mode.md](night-shift-flips-dark-mode.md) | Relaunch forces Dark while Night Shift take-over is on |
