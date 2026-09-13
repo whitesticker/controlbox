@@ -44,6 +44,14 @@ enum DeviceKind: String, Codable, Equatable {
         return "device-dualsense-filled"
     }
 
+    var sidebarEmoji: String {
+        if self == .appleTVRemote { return "📺" }
+        if isMXMaster { return "🖱️" }
+        if isMXKeyboard { return "⌨️" }
+        if isGamepad { return "🎮" }
+        return "🔌"
+    }
+
     var usesMXMasterHIDPP: Bool {
         switch self {
         case .logitechMXMaster, .logitechMXMaster3, .logitechMXMaster3S, .logitechMXMaster4,

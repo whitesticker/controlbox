@@ -15,70 +15,87 @@ struct ContentView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var showAddDevice = false
     @State private var selection: SidebarItem = .displays
+    @Namespace private var sidebarSelectionAnimation
 
     var body: some View {
         NavigationSplitView {
-            List(selection: sidebarSelection) {
-                Section {
-                    macRow(.displays)
-                    macRow(.nightShift)
-                    macRow(.displayArrangement)
-                    macRow(.sound)
-                    macRow(.caffeinate)
-                    macRow(.systemMonitor)
-                    macRow(.pointerScroll)
-                    macRow(.windowGrab)
-                    macRow(.capsLock)
-                    macRow(.dockPreview)
-                } header: {
-                    SidebarGroupHeader("Mac")
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Control Box")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                    Spacer()
                 }
-                Section {
-                    if monitor.sidebarDevices.isEmpty {
-                        Text("No devices yet")
-                            .font(SidebarType.row)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(DeviceSidebarType.allCases) { type in
-                            let devices = monitor.sidebarDevices
-                                .filter { $0.kind.sidebarType == type }
-                                .sorted {
-                                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                                }
-                            if !devices.isEmpty {
-                                Section {
-                                    let showBrand = Set(devices.map(\.kind.brand)).count > 1
-                                    ForEach(devices) { device in
-                                        DeviceSidebarRow(device: device, showBrand: showBrand)
-                                            .tag(SidebarItem.device(device.id))
+                .frame(height: 52, alignment: .center)
+                .padding(.horizontal, 20)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        SidebarGroupHeader("Mac")
+                        macRow(.displays)
+                        macRow(.nightShift)
+                        macRow(.displayArrangement)
+                        macRow(.sound)
+                        macRow(.caffeinate)
+                        macRow(.systemMonitor)
+                        macRow(.pointerScroll)
+                        macRow(.windowGrab)
+                        macRow(.capsLock)
+                        macRow(.dockPreview)
+
+                        SidebarGroupHeader("Devices")
+                        if monitor.sidebarDevices.isEmpty {
+                            Text("No devices yet")
+                                .font(SidebarType.row)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(DeviceSidebarType.allCases) { type in
+                                let devices = monitor.sidebarDevices
+                                    .filter { $0.kind.sidebarType == type }
+                                    .sorted {
+                                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                                     }
-                                } header: {
-                                    SidebarTypeHeader(type.title)
+                                if !devices.isEmpty {
+                                    Section {
+                                        let showBrand = Set(devices.map(\.kind.brand)).count > 1
+                                        ForEach(devices) { device in
+                                            sidebarButton(
+                                                .device(device.id),
+                                                tint: deviceTint(for: device.kind)
+                                            ) {
+                                                DeviceSidebarRow(device: device, showBrand: showBrand)
+                                            }
+                                        }
+                                    } header: {
+                                        SidebarTypeHeader(type.title)
+                                    }
                                 }
                             }
                         }
+
+                        SidebarGroupHeader("App")
+                        sidebarButton(.permissions, tint: SidebarItem.permissions.tint) {
+                            HStack(spacing: 8) {
+                                SettingsGlyph(
+                                    emoji: SidebarItem.permissions.emoji,
+                                    tint: SidebarItem.permissions.tint
+                                )
+                                Text(SidebarItem.permissions.title)
+                                    .font(SidebarType.row)
+                                Spacer(minLength: 8)
+                                Circle()
+                                    .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
+                                    .frame(width: 8, height: 8)
+                            }
+                        }
+                        macRow(.settings)
                     }
-                } header: {
-                    SidebarGroupHeader("Devices")
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 16)
                 }
-                Section {
-                    HStack(spacing: 8) {
-                        SettingsGlyph(name: SidebarItem.permissions.glyph, tint: SidebarItem.permissions.tint)
-                        Text(SidebarItem.permissions.title)
-                            .font(SidebarType.row)
-                        Spacer(minLength: 8)
-                        Circle()
-                            .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
-                            .frame(width: 8, height: 8)
-                    }
-                    .tag(SidebarItem.permissions)
-                    macRow(.settings)
-                } header: {
-                    SidebarGroupHeader("App")
-                }
-            }
-            .listStyle(.sidebar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+
                 VStack(spacing: 0) {
                     Divider()
                     Button {
@@ -166,24 +183,69 @@ struct ContentView: View {
     }
 
     private func macRow(_ item: SidebarItem) -> some View {
-        HStack(spacing: 8) {
-            SettingsGlyph(name: item.glyph, tint: item.tint, system: item.systemGlyph)
-            Text(item.title)
-                .font(SidebarType.row)
+        sidebarButton(item, tint: item.tint) {
+            HStack(spacing: 8) {
+                SettingsGlyph(emoji: item.emoji, tint: item.tint)
+                Text(item.title)
+                    .font(SidebarType.row)
+            }
         }
-        .tag(item)
     }
 
-    private var sidebarSelection: Binding<SidebarItem> {
-        Binding(
-            get: { selection },
-            set: { item in
+    private func sidebarButton<Label: View>(
+        _ item: SidebarItem,
+        tint: Color,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
                 selection = item
-                if case .device(let id) = item {
-                    monitor.selectDevice(id: id)
-                }
             }
-        )
+            if case .device(let id) = item {
+                monitor.selectDevice(id: id)
+            }
+        } label: {
+            ZStack(alignment: .leading) {
+                if selection == item {
+                    SidebarSelectionBubble(tint: tint)
+                        .matchedGeometryEffect(
+                            id: "sidebar-selection",
+                            in: sidebarSelectionAnimation
+                        )
+                }
+
+                label()
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func deviceTint(for kind: DeviceKind) -> Color {
+        kind == .appleTVRemote
+            ? Color(red: 0.35, green: 0.34, blue: 0.84)
+            : Color(red: 0.20, green: 0.48, blue: 0.96)
+    }
+}
+
+private struct SidebarSelectionBubble: View {
+    let tint: Color
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+    }
+
+    var body: some View {
+        shape
+            .fill(.regularMaterial)
+            .overlay {
+                shape.fill(tint.opacity(0.23))
+            }
+            .shadow(color: .black.opacity(0.34), radius: 8, y: 6)
+            .shadow(color: tint.opacity(0.16), radius: 11)
     }
 }
 
@@ -194,7 +256,7 @@ private struct DeviceSidebarRow: View {
     var body: some View {
         HStack(spacing: 8) {
             SettingsGlyph(
-                name: device.glyph,
+                emoji: device.kind.sidebarEmoji,
                 tint: device.kind == .appleTVRemote
                     ? Color(red: 0.35, green: 0.34, blue: 0.84)
                     : Color(red: 0.20, green: 0.48, blue: 0.96)

@@ -51,26 +51,22 @@ enum SidebarItem: Hashable, Identifiable {
         }
     }
 
-    var glyph: String {
+    var emoji: String {
         switch self {
-        case .displays: return "display-brightness-filled"
-        case .nightShift: return "night-shift-filled"
-        case .displayArrangement: return "display-arrangement-filled"
-        case .sound: return "sound-filled"
-        case .caffeinate: return "caffeinate-filled"
-        case .systemMonitor: return "system-monitor-filled"
-        case .pointerScroll: return "pointer-scroll-filled"
-        case .windowGrab: return "window-management-filled"
-        case .capsLock: return "caps-lock-filled"
-        case .dockPreview: return "dock-previews-filled"
-        case .permissions: return "permissions-filled"
-        case .settings: return "gearshape.fill"
-        case .device: return DeviceKind.dualSense.paneGlyph
+        case .displays: return "💡"
+        case .nightShift: return "🌖"
+        case .displayArrangement: return "🖥️"
+        case .sound: return "🔊"
+        case .caffeinate: return "☕️"
+        case .systemMonitor: return "📟"
+        case .pointerScroll: return "🖱️"
+        case .windowGrab: return "🧲"
+        case .capsLock: return "⬆️"
+        case .dockPreview: return "🔎"
+        case .permissions: return "🔐"
+        case .settings: return "⚙️"
+        case .device: return "🎮"
         }
-    }
-
-    var systemGlyph: Bool {
-        self == .settings
     }
 
     var tint: Color {
@@ -93,24 +89,15 @@ enum SidebarItem: Hashable, Identifiable {
 }
 
 struct SettingsGlyph: View {
-    let name: String
+    let emoji: String
     let tint: Color
-    var system: Bool = false
 
     var body: some View {
-        glyphImage
-            .resizable()
-            .renderingMode(.template)
-            .scaledToFit()
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.22), radius: 0.4, y: 0.5)
-            .padding(system ? 6.5 : 4.5)
+        Text(emoji)
+            .font(.system(size: 16))
+            .shadow(color: .black.opacity(0.28), radius: 0.8, y: 0.6)
             .frame(width: 30, height: 30)
             .modifier(SettingsGlyphGlass(tint: tint))
-    }
-
-    private var glyphImage: Image {
-        system ? Image(systemName: name) : Image(name)
     }
 }
 
@@ -124,18 +111,19 @@ private struct SettingsGlyphGlass: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular.tint(tint), in: shape)
+            content.glassEffect(.regular.tint(tint.opacity(0.42)), in: shape)
         } else {
             content
                 .background {
                     ZStack {
-                        shape.fill(tint)
+                        shape.fill(.ultraThinMaterial)
+                        shape.fill(tint.opacity(0.34))
                         shape.fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.42),
-                                    Color.white.opacity(0.06),
-                                    Color.black.opacity(0.22)
+                                    Color.white.opacity(0.38),
+                                    Color.white.opacity(0.04),
+                                    Color.black.opacity(0.16)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
