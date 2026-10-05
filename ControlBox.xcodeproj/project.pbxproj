@@ -234,7 +234,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.49;
+				MARKETING_VERSION = 0.1.50;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-F$(SDKROOT)/System/Library/PrivateFrameworks",
@@ -283,7 +283,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.49;
+				MARKETING_VERSION = 0.1.50;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-F$(SDKROOT)/System/Library/PrivateFrameworks",
