@@ -3,7 +3,7 @@ import ControlBoxCore
 import IOKit.hid
 
 /// HID++ 2.0 client for MX Mechanical / Mini. Settings only: backlight,
-/// lighting effect, battery saving, battery percent.
+/// lighting effect, battery saving, battery percent, OS layout.
 /// Do not seize. Do not divert keys. Do not open Bolt `C548`. Do not treat
 /// keyboard reports as HID++ (only report IDs `0x10` / `0x11`).
 final class MXKeyboardReader {
@@ -43,6 +43,7 @@ final class MXKeyboardReader {
     private var nameIndex: UInt8?
     private var hostsInfoIndex: UInt8?
     private var changeHostIndex: UInt8?
+    private var multiPlatformIndex: UInt8?
     private var backlightConfig: BacklightConfig?
     private var consecutiveTimeouts = 0
     private var easySwitchLoadAttempts = 0
@@ -177,6 +178,8 @@ final class MXKeyboardReader {
         snapshot.wirelessProductID = wpid
         snapshot.status = "Talking to \(name) over Logi Bolt…"
         snapshot.easySwitchHosts = []
+        snapshot.osLayouts = []
+        snapshot.osLayout = nil
         lock.unlock()
         probeDeviceIndices([UInt8(link.slot)])
         return true
@@ -228,6 +231,72 @@ final class MXKeyboardReader {
                 config.options &= ~Self.powerSaveBit
             }
             return Self.effectUnchanged
+        }
+    }
+
+    func setOSLayout(_ platformIndex: UInt8) {
+        guard let multiPlatformIndex else { return }
+        lock.lock()
+        let previous = snapshot.osLayout
+        let known = snapshot.osLayouts.contains { $0.platformIndex == platformIndex }
+        lock.unlock()
+        guard known, previous != platformIndex else { return }
+        publish { $0.osLayout = platformIndex }
+        request(
+            featureIndex: multiPlatformIndex,
+            function: 3,
+            params: LogitechMultiPlatform.setHostPlatformParameters(platformIndex)
+        ) { [weak self] data in
+            if data == nil {
+                self?.readOSLayouts()
+            }
+        }
+    }
+
+    private func readOSLayouts() {
+        guard let multiPlatformIndex else { return }
+        request(featureIndex: multiPlatformIndex, function: 0, params: []) { [weak self] data in
+            guard let self,
+                  let info = LogitechMultiPlatform.info(payload: data),
+                  info.canSetPlatform,
+                  info.descriptorCount > 0
+            else { return }
+            self.readPlatformDescriptors(
+                index: 0,
+                count: info.descriptorCount,
+                found: [],
+                currentPlatform: info.currentPlatform
+            )
+        }
+    }
+
+    private func readPlatformDescriptors(
+        index: Int,
+        count: Int,
+        found: [LogitechMultiPlatform.Descriptor],
+        currentPlatform: UInt8
+    ) {
+        guard let multiPlatformIndex else { return }
+        guard index < count else {
+            let options = LogitechMultiPlatform.options(from: found)
+            publish {
+                $0.osLayouts = options
+                $0.osLayout = options.contains { $0.platformIndex == currentPlatform } ? currentPlatform : nil
+            }
+            return
+        }
+        request(featureIndex: multiPlatformIndex, function: 1, params: [UInt8(index)]) { [weak self] data in
+            guard let self else { return }
+            var next = found
+            if let descriptor = LogitechMultiPlatform.descriptor(payload: data) {
+                next.append(descriptor)
+            }
+            self.readPlatformDescriptors(
+                index: index + 1,
+                count: count,
+                found: next,
+                currentPlatform: currentPlatform
+            )
         }
     }
 
@@ -339,6 +408,8 @@ final class MXKeyboardReader {
         snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
         snapshot.easySwitchHosts = []
+        snapshot.osLayouts = []
+        snapshot.osLayout = nil
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3])
     }
@@ -411,7 +482,11 @@ final class MXKeyboardReader {
             self.lookup(Self.backlight2Feature) { [weak self] backlight in
                 guard let self else { return }
                 self.backlightIndex = backlight
-                self.finishSetup()
+                self.lookup(LogitechMultiPlatform.featureID) { [weak self] multiPlatform in
+                    guard let self else { return }
+                    self.multiPlatformIndex = multiPlatform
+                    self.finishSetup()
+                }
             }
         }
     }
@@ -434,6 +509,7 @@ final class MXKeyboardReader {
         readNameIfNeeded()
         readBattery()
         readBacklight()
+        readOSLayouts()
         startBatteryTimer()
         loadEasySwitchHosts()
     }
@@ -724,6 +800,7 @@ final class MXKeyboardReader {
         nameIndex = nil
         hostsInfoIndex = nil
         changeHostIndex = nil
+        multiPlatformIndex = nil
         backlightConfig = nil
         easySwitchLoadAttempts = 0
     }

@@ -1,3 +1,4 @@
+import ControlBoxCore
 import Foundation
 
 enum MXKeyboardBacklightEffect: UInt8, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
@@ -42,6 +43,9 @@ struct MXKeyboardSnapshot: Equatable, Sendable {
     var supportedEffects: [MXKeyboardBacklightEffect] = MXKeyboardBacklightEffect.allCases.filter(\.showsInPicker)
     var batterySavingSupported = false
     var batterySaving = false
+    /// HID++ `0x4531` key layouts for the current Easy-Switch channel. Empty when unsupported.
+    var osLayouts: [LogitechPlatformOption] = []
+    var osLayout: UInt8?
 
     var batteryAvailable = false
     var batteryPercent: Int?

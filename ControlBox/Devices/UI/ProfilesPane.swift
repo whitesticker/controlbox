@@ -1914,6 +1914,23 @@ struct DeviceProfilePane: View {
                         Toggle("Battery saving", isOn: keyboardBatterySavingBinding)
                             .disabled(disabled || !live.batterySavingSupported)
                     }
+                    if keyboardLayoutOption(.macOS) != nil, keyboardLayoutOption(.windows) != nil {
+                        devicePageDivider()
+                        devicePageRow {
+                            HStack {
+                                Text("OS layout")
+                                Spacer()
+                                Picker("OS layout", selection: keyboardOSLayoutBinding) {
+                                    Text("macOS").tag(LogitechHostOS?.some(.macOS))
+                                    Text("Windows").tag(LogitechHostOS?.some(.windows))
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                                .fixedSize()
+                            }
+                            .disabled(disabled)
+                        }
+                    }
                 }
                 .background(
                     Palette.fill(colorScheme).opacity(0.34),
@@ -1933,6 +1950,7 @@ struct DeviceProfilePane: View {
             bullets(
                 "Backlight and battery saving are stored on the keyboard.",
                 "Battery saving turns the backlight off when charge is critically low.",
+                "OS layout is stored on the keyboard for the current Easy-Switch channel.",
                 "Quit Logi Options+ if HID++ stays disconnected."
             )
         }
@@ -1965,6 +1983,23 @@ struct DeviceProfilePane: View {
         Binding(
             get: { monitor.mxKeyboardSnapshot.batterySaving },
             set: { monitor.setKeyboardBatterySaving($0) }
+        )
+    }
+
+    private func keyboardLayoutOption(_ os: LogitechHostOS) -> LogitechPlatformOption? {
+        monitor.mxKeyboardSnapshot.osLayouts.first { $0.os == os }
+    }
+
+    private var keyboardOSLayoutBinding: Binding<LogitechHostOS?> {
+        Binding(
+            get: {
+                let live = monitor.mxKeyboardSnapshot
+                return live.osLayouts.first { $0.platformIndex == live.osLayout }?.os
+            },
+            set: { os in
+                guard let os, let option = keyboardLayoutOption(os) else { return }
+                monitor.setKeyboardOSLayout(option.platformIndex)
+            }
         )
     }
 

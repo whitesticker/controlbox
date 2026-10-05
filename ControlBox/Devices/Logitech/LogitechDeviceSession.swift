@@ -32,6 +32,7 @@ protocol LogitechKeyboardDevice: AnyObject {
     func setBacklightEnabled(_ enabled: Bool)
     func setBacklightEffect(_ effect: MXKeyboardBacklightEffect)
     func setBatterySaving(_ enabled: Bool)
+    func setOSLayout(_ platformIndex: UInt8)
     func reloadEasySwitchHosts()
     func setFriendlyName(_ name: String)
 }

@@ -2,7 +2,7 @@
 
 Shipped 2026-08-31. Live hardware was **MX Mechanical Mini** over Bluetooth, product **`0xB367`**, name **MX MCHNCL M**. Full-size Mechanical is **`0xB366`**.
 
-This family is settings-only: backlight, lighting effect, battery saving, battery %. No key divert, no remapping, no **Control this Mac**.
+This family is settings-only: backlight, lighting effect, battery saving, OS layout, battery %. No key divert, no remapping, no **Control this Mac**.
 
 ## What the machine exposes
 
@@ -23,6 +23,13 @@ There is no separate `0xFF00` collection. Match product IDs only. Do not treat n
 | Device Name | `0x0005` | Sidebar label |
 | Unified Battery | `0x1004` | Percent; 5 min while HID++ is ready |
 | Backlight2 | `0x1982` | On/off, lighting effect, battery saving |
+| Multi-Platform | `0x4531` | OS layout for the current Easy-Switch channel |
+
+### OS layout (`0x4531`)
+
+Read 2026-10-05 from MX Mechanical Mini over Bolt. fn0 `getFeatureInfos` → `03 00 03 03 03 01 00`: flags (bit 1 = can set), reserved, descriptor count, platform count, host count, current host, **current host platform**. fn1 `getPlatformDescriptor(i)` → platform index, descriptor index, OS mask (big-endian): `0` Windows `0x0100`, `1` macOS `0x2000`, `2` iOS `0x4000`. fn2 `getHostPlatform(0xFF)` → host, status, platform. fn3 `setHostPlatform(0xFF, platform)` writes the current channel. That Mini was on **Windows** (platform `0`).
+
+The keyboard page shows an **OS layout** segmented control (**macOS | Windows**, same row style as Dock click **When already in front**), only when flag bit 1 is set and both macOS and Windows descriptors exist. iOS and other platforms are parsed but not shown. Parsing is `LogitechMultiPlatform` in Core (Solaar `MultiPlatform` order).
 
 Effects: Static, Breathing, Contrast, Reaction, Random, Waves. Firmware **None** stays hidden unless the keyboard is already on it.
 

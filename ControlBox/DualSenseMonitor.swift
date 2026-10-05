@@ -615,6 +615,11 @@ final class DualSenseMonitor {
         mxKeyboardSnapshot = keyboard.snapshot
     }
 
+    func setKeyboardOSLayout(_ platformIndex: UInt8) {
+        keyboard.setOSLayout(platformIndex)
+        mxKeyboardSnapshot = keyboard.snapshot
+    }
+
     func isLiveKeyboardSelection(_ live: MXKeyboardSnapshot? = nil) -> Bool {
         guard let record = selectedRecord, record.isMXKeyboard else { return false }
         let live = live ?? mxKeyboardSnapshot

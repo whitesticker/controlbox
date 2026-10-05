@@ -95,7 +95,7 @@ enum DeviceKind: String, Codable, Equatable {
         case .logitechMouse:
             return "Pointer, scrolling, and the controls this mouse reports over HID++."
         case .logitechMXMechanical, .logitechMXMechanicalMini:
-            return "Backlight, lighting effect, battery saving, and battery. Keys stay native."
+            return "Backlight, lighting effect, battery saving, OS layout, and battery. Keys stay native."
         case .unsupported:
             return "Control Box does not attach this device yet."
         }

@@ -51,6 +51,10 @@ final class MXKeyboardSession: DeviceFamilySession {
         reader.setBatterySaving(enabled)
     }
 
+    func setOSLayout(_ platformIndex: UInt8) {
+        reader.setOSLayout(platformIndex)
+    }
+
     func reloadEasySwitchHosts() {
         reader.reloadEasySwitchHosts()
     }

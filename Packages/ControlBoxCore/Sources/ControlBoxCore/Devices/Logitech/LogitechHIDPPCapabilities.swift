@@ -23,6 +23,7 @@ public enum LogitechHIDPPFeatureID {
     public static let adjustableDPI: UInt16 = 0x2201
     public static let extendedAdjustableDPI: UInt16 = 0x2202
     public static let pointerScale: UInt16 = 0x2205
+    public static let multiPlatform: UInt16 = LogitechMultiPlatform.featureID
 }
 
 public struct LogitechHIDPPCapabilities: Equatable, Codable, Sendable {
