@@ -20,9 +20,9 @@ Match used vendor + product (+ serial when present): unique models failed to mat
 
 ## Fix
 
-DDC matching and Apple-silicon I2C now follow **MonitorControl** (`Arm64DDC.swift`, MIT). Credit is on the Displays page. License text is `Packages/ControlBoxCore/NOTICE-MonitorControl`.
+Display control is the vendored third-party engine in `ControlBox/Mac/DisplayBrightness/Engine/` (credit and license in `THIRD_PARTY_NOTICES`). Display Arrangement still uses the package `Arm64DDC.swift` for identity.
 
-What we took from them:
+Matching rules:
 
 - Depth-first IORegistry walk: last `AppleCLCD2` / `IOMobileFramebufferShim` identity, then the next `DCPAVServiceProxy` on that port
 - Score each (Core Graphics display, IORegistry service) and greedily take from highest score, unique display ID + service location
@@ -33,6 +33,6 @@ What we took from them:
 
 Do not walk past `dcpext` and recursively search `DisplayAttributes`. Do not treat leftover DDC services as extra monitors. FineTune is GPL; do not copy it.
 
-Iterator order on this Mac interleaves framebuffer then that port’s proxy. That is why MonitorControl’s last-framebuffer rule works here. An ioreg dump that looks like sibling subtrees is not the same as `IORegistryEntryCreateIterator` order.
+Iterator order on this Mac interleaves framebuffer then that port’s proxy. That is why the last-framebuffer rule works here. An ioreg dump that looks like sibling subtrees is not the same as `IORegistryEntryCreateIterator` order.
 
-Code: `Packages/ControlBoxCore/Sources/ControlBoxCore/Mac/Display/Arm64DDC.swift`, `DisplayBrightness.swift`.
+Code: `ControlBox/Mac/DisplayBrightness/Engine/Arm64DDC.swift`, `Packages/ControlBoxCore/Sources/ControlBoxCore/Mac/Display/Arm64DDC.swift`.

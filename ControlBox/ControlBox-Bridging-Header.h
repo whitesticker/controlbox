@@ -3,3 +3,4 @@
 #import <IOKit/hidsystem/IOHIDServiceClient.h>
 #import <IOKit/hid/IOHIDEventServiceKeys.h>
 #import <IOKit/hidsystem/IOHIDParameter.h>
+#import "Mac/DisplayBrightness/Engine/DisplayEngine-Bridging.h"

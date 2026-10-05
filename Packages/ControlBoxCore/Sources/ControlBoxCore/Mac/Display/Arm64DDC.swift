@@ -1,8 +1,5 @@
-// Derived from MonitorControl (MIT).
-// Copyright © MonitorControl. @JoniVR, @theOneyouseek, @waydabber and others
-// https://github.com/MonitorControl/MonitorControl
+// Third-party code; see THIRD_PARTY_NOTICES.
 //
-// Matching, dummy detection, and DDC/CI packet format follow that project.
 // IOAVService is loaded from IOKit (not a public Swift type).
 
 import CoreGraphics
@@ -92,7 +89,7 @@ enum Arm64DDC {
         return transact(service: service, send: &send, reply: &reply)
     }
 
-    /// MonitorControl dummy EDID (AOC 28E850) plus BetterDisplay dummies.
+    /// Dummy-plug EDID (AOC 28E850) plus BetterDisplay dummies.
     static func isDummy(_ service: IORegService) -> Bool {
         if service.manufacturerID == "AOC", service.productName == "28E850" { return true }
         if service.productName.lowercased().contains("dummy") { return true }

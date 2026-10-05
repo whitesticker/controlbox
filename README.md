@@ -29,7 +29,7 @@ Control Box stays on your Mac. Nothing is uploaded.
 
 | Pane | What you get |
 |---|---|
-| **Display Brightness** | Per-panel brightness (and contrast on supported externals). Optional one slider for all displays, which keeps each panel’s relative mix. Optional menu bar extra with those sliders. DDC/CI on Apple silicon from [MonitorControl](https://github.com/MonitorControl/MonitorControl). |
+| **Display Brightness** | Per-panel brightness (and contrast on supported externals). Optional one slider for all displays, which keeps each panel’s relative mix. Optional menu bar extra with those sliders. Volume on externals, brightness keys for externals, and an Advanced section per monitor. Third-party credits are in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). |
 | **Night Shift** | f.lux-style 24-hour curve for system Night Shift yellowness. The top is warmer than System Settings More Warm. Off until you turn the pane on. Drag knots, or add and remove them. Apple’s sunset schedule is paused while Control Box is driving it. Optional Light/Dark at sunset or custom hours. Optional follow dims or brightens external monitors with the curve (±10% by default). |
 | **Display Arrangement** | Save and apply layout presets (positions, main display, mirror) for the screens that are plugged in now. Keyboard shortcut plus a layout HUD. |
 | **Sound** | Output volume, then a per-app mixer. Optional menu bar extra with the same sliders. Needs System Audio Recording for per-app volume. |

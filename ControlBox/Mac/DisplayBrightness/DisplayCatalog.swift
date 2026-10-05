@@ -9,22 +9,26 @@ final class DisplayCatalog {
     var displays: [AttachedDisplay] = []
     var unifiedEnabled = false
     var unifiedBrightness = 1.0
+    /// Bumped when engine settings change so settings rows re-read `prefs`.
+    var settingsRevision = 0
 
+    @ObservationIgnored let engine = DisplayEngine()
     private var mix: [String: Double] = [:]
-    private var lastScreenSignature = ""
     private var lastUserWrite = Date.distantPast
-    private var fetching = false
     private static let defaultsKey = "controlbox.displayBrightness.v1"
-    private static let ddcQueue = DispatchQueue(label: "controlbox.display-ddc", qos: .userInteractive)
-    private static let ddcLock = NSLock()
-    private static var pendingDDC: [String: (value: Double, id: String, field: String)] = [:]
-    private static var inflightDDC: Set<String> = []
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let store = try? JSONDecoder().decode(Store.self, from: data) {
             unifiedEnabled = store.unifiedEnabled
         }
+        engine.onDisplaysChanged = { [weak self] in
+            MainActor.assumeIsolated { self?.reload() }
+        }
+    }
+
+    func start() {
+        engine.start()
     }
 
     var adjustableDisplays: [AttachedDisplay] {
@@ -34,21 +38,22 @@ final class DisplayCatalog {
     var canUnify: Bool { adjustableDisplays.count >= 2 }
 
     func refresh(readHardware: Bool = true) {
-        let signature = Self.screenSignature()
-        if !readHardware, signature == lastScreenSignature, !displays.isEmpty {
-            return
-        }
-        guard !fetching else { return }
-        fetching = true
-        let screens = DisplayBrightness.snapshotScreens()
-        Task.detached(priority: .userInitiated) {
-            let list = DisplayBrightness.connectedDisplays(screens: screens, readHardware: true)
-            await MainActor.run {
-                self.fetching = false
-                self.lastScreenSignature = Self.screenSignature()
-                self.applyFetched(list)
-            }
-        }
+        reload()
+    }
+
+    /// Re-runs the engine's display setup after a settings change that needs it.
+    func reconfigure() {
+        engine.configure()
+        settingsRevision += 1
+    }
+
+    func noteSettingsChanged() {
+        settingsRevision += 1
+        reload()
+    }
+
+    func engineDisplay(id: String) -> Display? {
+        DisplayManager.shared.displays.first { $0.prefsId == id }
     }
 
     func setUnifiedEnabled(_ on: Bool) {
@@ -77,11 +82,87 @@ final class DisplayCatalog {
     var onDisplaysChanged: (() -> Void)?
 
     func setBrightness(_ value: Double, id: String, origin: BrightnessOrigin = .user) {
-        setValue(value, id: id, field: "brightness", origin: origin)
+        setValue(value, id: id, command: .brightness, origin: origin)
     }
 
     func setContrast(_ value: Double, id: String) {
-        setValue(value, id: id, field: "contrast", origin: .user)
+        setValue(value, id: id, command: .contrast, origin: .user)
+    }
+
+    func setVolume(_ value: Double, id: String) {
+        setValue(value, id: id, command: .audioSpeakerVolume, origin: .user)
+    }
+
+    private func reload() {
+        let list = DisplayManager.shared.displays.filter { !$0.isDummy }.map(Self.attached)
+        for display in DisplayManager.shared.displays {
+            let id = display.prefsId
+            for command in [Command.brightness, .contrast, .audioSpeakerVolume] {
+                display.sliderHandler[command] = SliderHandler { [weak self] value, _ in
+                    MainActor.assumeIsolated {
+                        self?.engineValueChanged(id: id, command: command, value: Double(value))
+                    }
+                }
+            }
+        }
+        applyFetched(list)
+    }
+
+    private static func attached(_ display: Display) -> AttachedDisplay {
+        let friendly = display.readPrefAsString(key: .friendlyName)
+        let name = friendly.isEmpty ? display.name : friendly
+        let enabled = !display.readPrefAsBool(key: .isDisabled)
+        if let apple = display as? AppleDisplay {
+            return AttachedDisplay(
+                id: display.prefsId,
+                name: name,
+                detail: apple.isBuiltIn() ? "Built-in Display" : "Apple Display",
+                brightness: Double(apple.getBrightness()),
+                canAdjustBrightness: enabled,
+                isBuiltIn: apple.isBuiltIn()
+            )
+        }
+        guard let other = display as? OtherDisplay else {
+            return AttachedDisplay(
+                id: display.prefsId,
+                name: name,
+                detail: "No Control",
+                brightness: 1,
+                canAdjustBrightness: false,
+                isBuiltIn: display.isBuiltIn()
+            )
+        }
+        let hardware = !other.isSw()
+        let detail: String
+        if other.isSwOnly() {
+            detail = "No Control"
+        } else if other.isSw() {
+            detail = "Hardware (DDC) disabled"
+        } else {
+            detail = "Hardware (DDC)"
+        }
+        return AttachedDisplay(
+            id: display.prefsId,
+            name: name,
+            detail: detail,
+            brightness: Double(other.getBrightness()),
+            contrast: Double(other.readPrefAsFloat(for: .contrast)),
+            volume: Double(other.setupSliderCurrentValue(command: .audioSpeakerVolume)),
+            canAdjustBrightness: enabled && hardware && !other.readPrefAsBool(key: .unavailableDDC, for: .brightness),
+            canAdjustContrast: enabled && hardware && !other.readPrefAsBool(key: .unavailableDDC, for: .contrast),
+            canAdjustVolume: enabled && hardware && !other.readPrefAsBool(key: .unavailableDDC, for: .audioSpeakerVolume),
+            isBuiltIn: false
+        )
+    }
+
+    private func engineValueChanged(id: String, command: Command, value: Double) {
+        guard let index = displays.firstIndex(where: { $0.id == id }) else { return }
+        switch command {
+        case .brightness: displays[index].brightness = value
+        case .contrast: displays[index].contrast = value
+        case .audioSpeakerVolume: displays[index].volume = value
+        default: break
+        }
     }
 
     private func applyFetched(_ next: [AttachedDisplay]) {
@@ -144,7 +225,7 @@ final class DisplayCatalog {
             setValue(
                 min(max(unifiedBrightness * ratio, 0), 1),
                 id: display.id,
-                field: "brightness",
+                command: .brightness,
                 origin: .user
             )
         }
@@ -160,68 +241,41 @@ final class DisplayCatalog {
     private func setValue(
         _ value: Double,
         id: String,
-        field: String,
+        command: Command,
         origin: BrightnessOrigin
     ) {
         lastUserWrite = Date()
-        if origin == .user, field == "brightness" {
+        if origin == .user, command == .brightness {
             onUserBrightnessChange?(id, value)
         }
-        if let index = displays.firstIndex(where: { $0.id == id }) {
-            if field == "brightness" {
-                displays[index].brightness = value
-            } else {
-                displays[index].contrast = value
-            }
+        engineValueChanged(id: id, command: command, value: value)
+        guard app != nil, engine.sleepID == 0, engine.reconfigureID == 0, let display = engineDisplay(id: id) else { return }
+        let value = Float(value)
+        if command == .brightness, let appleDisplay = display as? AppleDisplay {
+            _ = appleDisplay.setBrightness(value)
+        } else if let otherDisplay = display as? OtherDisplay {
+            Self.valueChangedOtherDisplay(otherDisplay: otherDisplay, command: command, value: value)
         }
-        if id.hasPrefix("cg:") {
-            if field == "brightness" {
-                DisplayBrightness.setBrightness(value, id: id)
-            } else {
-                DisplayBrightness.setContrast(value, id: id)
-            }
+    }
+
+    private static func valueChangedOtherDisplay(otherDisplay: OtherDisplay, command: Command, value: Float) {
+        // For the speaker volume slider, also set/unset the mute command when the value is changed from/to 0
+        if command == .audioSpeakerVolume, (otherDisplay.readPrefAsInt(for: .audioMuteScreenBlank) == 1 && value > 0) || (otherDisplay.readPrefAsInt(for: .audioMuteScreenBlank) != 1 && value == 0) {
+            otherDisplay.toggleMute(fromVolumeSlider: true)
+        }
+        if command == Command.brightness {
+            _ = otherDisplay.setBrightness(value)
             return
-        }
-        let token = "\(id):\(field)"
-        Self.ddcLock.lock()
-        Self.pendingDDC[token] = (value, id, field)
-        Self.ddcLock.unlock()
-        Self.pumpDDC(token)
-    }
-
-    private static func pumpDDC(_ token: String) {
-        ddcQueue.async {
-            ddcLock.lock()
-            guard !inflightDDC.contains(token),
-                  let pending = pendingDDC.removeValue(forKey: token) else {
-                ddcLock.unlock()
-                return
-            }
-            inflightDDC.insert(token)
-            ddcLock.unlock()
-
-            if pending.field == "brightness" {
-                DisplayBrightness.setBrightness(pending.value, id: pending.id)
+        } else if !otherDisplay.isSw() {
+            if command == Command.audioSpeakerVolume {
+                if !otherDisplay.readPrefAsBool(key: .enableMuteUnmute) || value != 0 {
+                    otherDisplay.writeDDCValues(command: command, value: otherDisplay.convValueToDDC(for: command, from: value))
+                }
             } else {
-                DisplayBrightness.setContrast(pending.value, id: pending.id)
+                otherDisplay.writeDDCValues(command: command, value: otherDisplay.convValueToDDC(for: command, from: value))
             }
-
-            ddcLock.lock()
-            inflightDDC.remove(token)
-            let again = pendingDDC[token] != nil
-            ddcLock.unlock()
-            if again {
-                pumpDDC(token)
-            }
+            otherDisplay.savePref(value, for: command)
         }
-    }
-
-    private static func screenSignature() -> String {
-        NSScreen.screens.compactMap { screen in
-            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue
-        }
-        .sorted()
-        .joined(separator: ",")
     }
 
     private struct Store: Codable {

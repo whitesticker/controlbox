@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             AppSettings.shared.applyDockPolicy()
         }
+        displayCatalog.start()
         SystemMonitorMenuBarHost.shared.start()
         MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
         CaffeinateMenuBarHost.shared.start(catalog: caffeinateCatalog)
