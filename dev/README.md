@@ -34,6 +34,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [mx-master-4-ble-haptic.md](mx-master-4-ble-haptic.md) | BLE MX4 haptic/HID++ live on the mouse report, not `0xFF00` |
 | [mx-mechanical-hid.md](mx-mechanical-hid.md) | BLE MX Mechanical HID++ lives on the keyboard device; settings only |
 | [logi-bolt-receiver.md](logi-bolt-receiver.md) | Bolt-only MX 3S / 4 never attach; `C548` is slots, not the mouse |
+| [bolt-pair-mouse-asks-keyboard-code.md](bolt-pair-mouse-asks-keyboard-code.md) | Bolt pairing a mouse asks for a typed keyboard code |
 | [haptic-swipe-scales-with-dpi.md](haptic-swipe-scales-with-dpi.md) | High DPI makes hold-to-swipe much faster than 1000 DPI |
 | [dockswipe-down-skips-app-expose.md](dockswipe-down-skips-app-expose.md) | Swipe down never opens App Exposé |
 | [haptic-tap-starts-swipe.md](haptic-tap-starts-swipe.md) | A tap also peeks Spaces or Mission Control |

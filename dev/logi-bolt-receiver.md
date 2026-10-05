@@ -67,7 +67,7 @@ Open **only** vendor `0xFF00` on `C548` (match VendorID + ProductID + usage page
 | `0xC0` | Discovery. Short write: timeout seconds, action `01` start / `02` cancel. |
 | `0xC1` | Long write only: `action, slot, address[6], auth, entropy`. `01` pair, `03` unpair. |
 
-Notifications (receiver index `0xFF`): `0x4f` discovered device (address at `[10:15]`, kind `[16]`, auth `[7]`, WPID `[8:9]`); `0x4d` passkey (`[3]` = digit count, then ASCII digits — leading zeros matter); `0x4e` keypress (`00` started, `01` registered, `02` erased, `03` cleared, `04` completed); `0x53` discovery status; `0x54` pairing status; `0x41` / `0x40` connect / disconnect.
+Notifications (receiver index `0xFF`): `0x4f` discovered device (part `[5]`; part 0: kind `[7]`, WPID `[8:9]`, address `[10:15]`, auth `[18]`; part 1: name length `[6]`, name from `[7]`; see [bolt-pair-mouse-asks-keyboard-code.md](bolt-pair-mouse-asks-keyboard-code.md)); `0x4d` passkey (`[3]` = digit count, then ASCII digits — leading zeros matter); `0x4e` keypress (`00` started, `01` registered, `02` erased, `03` cleared, `04` completed); `0x53` discovery status; `0x54` pairing status; `0x41` / `0x40` connect / disconnect.
 
 Entropy: mouse `0x0A` (10 clicks, MSB first, **RIGHT=1 / LEFT=0**, then Left+Right together); keyboard `0x14` (type the ASCII string, then Return). Auth comes from the `0x4f` frame (`0x02` mouse, `0x01` keyboard observed). Do not send entropy `0x00`.
 

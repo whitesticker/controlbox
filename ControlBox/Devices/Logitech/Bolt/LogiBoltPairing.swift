@@ -207,9 +207,9 @@ final class LogiBoltPairingSession {
         }
         guard part == 0 else { return }
         let address = Array(report[10..<16])
-        let deviceClass = LogiBoltDeviceClass(raw: Int(report[16]))
+        let deviceClass = LogiBoltDeviceClass(raw: Int(report[7]))
         let wpid = Int(report[8]) | (Int(report[9]) << 8)
-        let auth = report[7]
+        let auth = report[18]
         if let index = discovered.firstIndex(where: { $0.address == address }) {
             discovered[index].wpid = wpid
             discovered[index].deviceClass = deviceClass
