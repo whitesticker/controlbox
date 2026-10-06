@@ -104,6 +104,7 @@ final class LogitechDeviceSession: DeviceFamilySession {
         let sameModel = hidppMouseReaders.filter { reader in
             let current = reader.current.logitechKey
             return reader.current.connected
+                && !DeviceIdentity.unitsConflict(current, key)
                 && current.connection == key.connection
                 && current.wirelessProductID == key.wirelessProductID
                 && DeviceIdentity.logitechNamesEquivalent(current.name, key.name)
@@ -132,9 +133,10 @@ final class LogitechDeviceSession: DeviceFamilySession {
                 DeviceIdentity.sameLogitech($0, device.logitechKey)
             }
         }
-        var claimedBoltSlots = Set(hidppMouseReaders.compactMap(\.boltSlotID))
+        // A reader that still owes a slot its original reporting keeps that slot.
+        var claimedBoltSlots = Set(hidppMouseReaders.compactMap { $0.boltSlotID ?? $0.pendingBoltSlotID })
         for reader in hidppMouseReaders {
-            let currentID = reader.boltSlotID
+            let currentID = reader.boltSlotID ?? reader.pendingBoltSlotID
             let candidates = boltCandidates
                 .filter { $0.deviceKind.isMXMaster }
                 .filter { device in
@@ -165,8 +167,19 @@ final class LogitechDeviceSession: DeviceFamilySession {
             reader.detachBolt()
             return
         }
-        guard let device = preferredBoltDevice(candidates, currentID: reader.boltSlotID) else {
-            reader.detachBolt()
+        var pool = candidates
+        if reader.boltSlotID == nil, let pending = reader.pendingBoltSlotID {
+            pool = candidates.filter { "\($0.receiverID)-\($0.slot)" == pending }
+        }
+        guard let device = preferredBoltDevice(
+            pool,
+            currentID: reader.boltSlotID ?? reader.pendingBoltSlotID
+        ) else {
+            if let slotID = reader.boltSlotID, isPairedButOffline(slotID, in: catalog) {
+                reader.boltLinkLost()
+            } else {
+                reader.detachBolt()
+            }
             return
         }
         let slotID = "\(device.receiverID)-\(device.slot)"
@@ -215,6 +228,19 @@ final class LogitechDeviceSession: DeviceFamilySession {
         ) {
             catalog.releaseTalkLink(link)
         }
+    }
+
+    private func isPairedButOffline(_ slotID: String, in catalog: LogiBoltCatalog) -> Bool {
+        catalog.receivers
+            .flatMap(\.devices)
+            .contains { "\($0.receiverID)-\($0.slot)" == slotID && !$0.online }
+    }
+
+    /// Mac wake or a return to this user session: firmware may have dropped diverts
+    /// without the receiver or Bluetooth telling us, so set every live mouse up again.
+    func handleSystemWake() {
+        boltCatalog?.recheckLinks()
+        hidppMouseReaders.forEach { $0.reconfigure(reason: "Setting up buttons again after wake…") }
     }
 
     private func preferredBoltDevice(

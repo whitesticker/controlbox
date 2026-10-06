@@ -366,6 +366,31 @@ enum DeviceIdentity {
         String(format: "%08X", unit)
     }
 
+    /// Bolt slots use the 8-hex HID++ unit ID as their address.
+    static func looksLikeUnitToken(_ value: String) -> Bool {
+        value.count == 8 && value.allSatisfy(\.isHexDigit)
+    }
+
+    /// Both sides are one physical unit each and they are different units.
+    /// A conflict vetoes every weaker match (row ID, name, model).
+    static func unitsConflict(_ lhs: LogitechDeviceKey, _ rhs: LogitechDeviceKey) -> Bool {
+        guard let left = unit(of: lhs), let right = unit(of: rhs) else { return false }
+        return left != right
+    }
+
+    /// Two hardware addresses, or two unit tokens: each names one unit, so a
+    /// shared product name says nothing about whether they are the same mouse.
+    static func addressesNameUnits(_ lhs: String, _ rhs: String) -> Bool {
+        (looksLikeHardwareAddress(lhs) && looksLikeHardwareAddress(rhs))
+            || (looksLikeUnitToken(lhs) && looksLikeUnitToken(rhs))
+    }
+
+    private static func unit(of key: LogitechDeviceKey) -> UInt32? {
+        if let unit = nonzeroUnit(key.unitID) { return unit }
+        guard looksLikeUnitToken(key.address) else { return nil }
+        return nonzeroUnit(UInt32(key.address, radix: 16))
+    }
+
     private static func nonzeroUnit(_ unit: UInt32?) -> UInt32? {
         guard let unit, unit != 0 else { return nil }
         return unit
@@ -421,6 +446,7 @@ enum BluetoothDeviceCatalog {
         let hid = HIDNameIndex.load()
         var devices: [ConnectedBluetoothDevice] = []
         var seen = Set<String>()
+        var addressesByName: [String: Set<String>] = [:]
         let hidPads = hid.records.map {
             GamepadHIDPad(
                 name: $0.product,
@@ -464,11 +490,18 @@ enum BluetoothDeviceCatalog {
             let name = record.product.isEmpty
                 ? (kind.isSupported ? kind.title : "Unknown device")
                 : record.product
-            if seen.contains(name.lowercased()) { continue }
-            let token = record.address.isEmpty ? name.lowercased() : record.address.lowercased()
+            // Same-name collections of one device collapse; two same-name devices with
+            // different addresses (two MX Master 3S) both stay.
+            let nameKey = name.lowercased()
+            let address = record.address.lowercased()
+            if let seenAddresses = addressesByName[nameKey],
+               address.isEmpty || seenAddresses.contains("") || seenAddresses.contains(address) {
+                continue
+            }
+            let token = record.address.isEmpty ? nameKey : address
             let identity = "\(record.vendorID):\(record.productID):\(token)"
             guard seen.insert(identity).inserted else { continue }
-            seen.insert(name.lowercased())
+            addressesByName[nameKey, default: []].insert(address)
             devices.append(
                 ConnectedBluetoothDevice(
                     id: "hid:\(identity)",

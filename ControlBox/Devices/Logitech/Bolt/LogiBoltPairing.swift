@@ -247,10 +247,10 @@ final class LogiBoltPairingSession {
         guard report.count > 7 else { return "" }
         let length = min(Int(report[6]), max(report.count - 7, 0))
         if length > 0 {
-            let parsed = LogiBoltSupport.ascii(report[7..<(7 + length)]).trimmingCharacters(in: .whitespaces)
+            let parsed = LogiBoltSupport.name(report[7..<(7 + length)]).trimmingCharacters(in: .whitespaces)
             if !parsed.isEmpty { return parsed }
         }
-        return LogiBoltSupport.ascii(report[6..<report.count]).trimmingCharacters(in: .whitespaces)
+        return LogiBoltSupport.name(report[6..<report.count]).trimmingCharacters(in: .whitespaces)
     }
 
     private func authSequence() -> [UInt8] {

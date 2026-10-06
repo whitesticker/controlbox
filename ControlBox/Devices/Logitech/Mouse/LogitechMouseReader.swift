@@ -68,6 +68,8 @@ struct MXMasterSnapshot: Equatable, Sendable {
     var unitID: UInt32 = 0
     var wirelessProductID = 0
     var easySwitchHosts: [MXEasySwitchHost] = []
+    /// HID++ `0x0007` name limit in UTF-8 bytes. Nil until the mouse answers.
+    var friendlyNameMaxLength: Int?
 
     var logitechKey: LogitechDeviceKey {
         LogitechDeviceKey(
@@ -112,6 +114,7 @@ struct MXMasterSnapshot: Equatable, Sendable {
             && unitID == other.unitID
             && wirelessProductID == other.wirelessProductID
             && easySwitchHosts == other.easySwitchHosts
+            && friendlyNameMaxLength == other.friendlyNameMaxLength
     }
 
     var settingsStatus: String {
@@ -180,6 +183,11 @@ final class LogitechMouseReader {
     private var confirmedReportingCIDs = Set<UInt16>()
     private var routingGeneration = 0
     private var pendingRestoreRouteID: String?
+    private var restoreAttempts = 0
+    private var wheelRestoreAttempts = 0
+    private static let maxRestoreAttempts = 10
+    private var boltAttachment: (name: String, kind: DeviceKind, address: String, unitID: UInt32, wpid: Int)?
+    private var lastReconfigureAt = Date.distantPast
     private var gestureOrigin = CGPoint.zero
     private var gestureDelta = CGSize.zero
     private var pointerOrigin = CGPoint.zero
@@ -383,6 +391,12 @@ final class LogitechMouseReader {
 
     var boltSlotID: String? { boltLink.map { "\($0.receiverID)-\($0.slot)" } }
 
+    /// Bolt slot whose original reporting this reader still has to put back.
+    var pendingBoltSlotID: String? {
+        guard let pendingRestoreRouteID, pendingRestoreRouteID.hasPrefix("bolt:") else { return nil }
+        return String(pendingRestoreRouteID.dropFirst("bolt:".count))
+    }
+
     var hidppCapabilities: LogitechHIDPPCapabilities { featureCatalog.capabilities }
 
     var hidppControls: [LogitechHIDPPControlDescriptor] { controls }
@@ -496,6 +510,9 @@ final class LogitechMouseReader {
         model = resolvedModel
         clearGestureOwnership()
         boltLink = link
+        boltAttachment = (name, kind, address, unitID, wpid)
+        restoreAttempts = 0
+        wheelRestoreAttempts = 0
         link.onReport = { [weak self] report in
             guard let self else { return }
             if Thread.isMainThread {
@@ -547,6 +564,7 @@ final class LogitechMouseReader {
         snapshot.wirelessProductID = wpid
         snapshot.status = "Talking to \(name) over Logi Bolt…"
         snapshot.easySwitchHosts = []
+        snapshot.friendlyNameMaxLength = nil
         lock.unlock()
         probeDeviceIndices([UInt8(link.slot)])
         return true
@@ -554,6 +572,59 @@ final class LogitechMouseReader {
 
     func detachBolt() {
         detachBolt(restoreNative: true)
+    }
+
+    /// The receiver says the mouse is gone. Nothing can be written, so keep the
+    /// originals and put them back (then divert again) when the link returns.
+    func boltLinkLost() {
+        guard boltLink != nil else { return }
+        markRestorePendingWithoutWrites()
+        detachBolt(restoreNative: false)
+    }
+
+    /// Run full HID++ setup again on the same route. Used after Mac wake, a
+    /// user-session switch, and when the mouse reports it needs reconfiguring
+    /// (`0x1D4B`), because the firmware forgets diverts across those.
+    func reconfigure(reason: String) {
+        guard running, ready else { return }
+        guard Date().timeIntervalSince(lastReconfigureAt) > 3 else { return }
+        lastReconfigureAt = Date()
+        if let link = boltLink, let attachment = boltAttachment {
+            markRestorePendingWithoutWrites()
+            detachBolt(restoreNative: false)
+            let attached = attachBolt(
+                link,
+                name: attachment.name,
+                kind: attachment.kind,
+                address: attachment.address,
+                unitID: attachment.unitID,
+                wpid: attachment.wpid
+            )
+            if attached {
+                setStatus(reason)
+            } else {
+                onIdentityChanged?()
+            }
+            return
+        }
+        guard hidppDevice != nil else { return }
+        markRestorePendingWithoutWrites()
+        recoverAttempts = 0
+        notePipeDropped(reason, restoreNative: false)
+    }
+
+    private func markRestorePendingWithoutWrites() {
+        let hasOwnedState = !ownedReportingCIDs.isEmpty
+            || ownsHiresWheelMode
+            || ownsThumbWheelRouting
+        if hasOwnedState, let currentRouteID {
+            pendingRestoreRouteID = currentRouteID
+        }
+        confirmedReportingCIDs.removeAll()
+        wheelRoutingGeneration += 1
+        hidppClient.cancelAll()
+        pressed.removeAll()
+        applyPressed([])
     }
 
     private func detachBolt(restoreNative: Bool) {
@@ -1331,6 +1402,8 @@ final class LogitechMouseReader {
         stopBatteryTimer()
         ready = false
         hidppDevice = device
+        restoreAttempts = 0
+        wheelRestoreAttempts = 0
         lastAppliedOSDPI = -1
         lastAppliedOSPointerSpeed = -1.0
         _ = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -1348,6 +1421,7 @@ final class LogitechMouseReader {
         snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
         snapshot.easySwitchHosts = []
+        snapshot.friendlyNameMaxLength = nil
         lock.unlock()
         probeDeviceIndices([0xFF, 0x00, 1, 2, 3, 4, 5, 6])
     }
@@ -1426,9 +1500,11 @@ final class LogitechMouseReader {
         scheduleRecover()
     }
 
-    private func notePipeDropped(_ reason: String) {
+    private func notePipeDropped(_ reason: String, restoreNative: Bool = true) {
         guard running else { return }
-        restoreNativeReporting()
+        if restoreNative {
+            restoreNativeReporting()
+        }
         ready = false
         consecutiveTimeouts = 0
         hidppClient.cancelAll()
@@ -1650,7 +1726,12 @@ final class LogitechMouseReader {
             if self.ownedReportingCIDs.isEmpty {
                 self.clearPendingRestoreIfComplete()
                 completion()
+            } else if self.restoreAttempts >= Self.maxRestoreAttempts {
+                // Originals stay recorded for quit; setup must not wait forever on a stuck write.
+                self.pendingRestoreRouteID = nil
+                completion()
             } else {
+                self.restoreAttempts += 1
                 self.setStatus("Restoring previous mouse reporting…")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     self?.restorePendingCIDReporting(completion: completion)
@@ -2303,6 +2384,47 @@ final class LogitechMouseReader {
         readBattery()
         startBatteryTimer()
         loadEasySwitchHosts()
+        loadFriendlyNameLimit()
+        lookupFeature(
+            LogitechHIDPPFeatureID.wirelessDeviceStatus,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { _ in }
+    }
+
+    private func loadFriendlyNameLimit() {
+        lookupFeature(
+            MXFriendlyNameHIDPP.featureID,
+            countsTowardTimeouts: false,
+            allowShortReport: false,
+            dropsPipeOnError: false
+        ) { [weak self] index in
+            guard let self, let index else { return }
+            MXFriendlyNameHIDPP.readMaxLength(
+                featureIndex: index,
+                request: { [weak self] feature, function, params, completion in
+                    guard let self else {
+                        completion(nil)
+                        return
+                    }
+                    self.request(
+                        featureIndex: feature,
+                        function: function,
+                        params: params,
+                        countsTowardTimeouts: false,
+                        allowShortReport: false,
+                        dropsPipeOnError: false,
+                        completion: completion
+                    )
+                }
+            ) { [weak self] limit in
+                guard let self, let limit else { return }
+                self.lock.lock()
+                self.snapshot.friendlyNameMaxLength = limit
+                self.lock.unlock()
+            }
+        }
     }
 
     private func loadEasySwitchHosts() {
@@ -2442,7 +2564,16 @@ final class LogitechMouseReader {
                 guard let self, self.wheelRoutingGeneration == generation else { return }
                 self.clearPendingRestoreIfComplete()
                 self.lastWheelConfig = nil
+                if self.ownsHiresWheelMode || self.ownsThumbWheelRouting,
+                   self.wheelRestoreAttempts >= Self.maxRestoreAttempts {
+                    self.pendingRestoreRouteID = nil
+                    if self.managed {
+                        self.applyWheelRouting()
+                    }
+                    return
+                }
                 if self.ownsHiresWheelMode || self.ownsThumbWheelRouting {
+                    self.wheelRestoreAttempts += 1
                     self.setStatus("Restoring previous wheel reporting…")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         self?.applyWheelRouting()
@@ -2788,6 +2919,17 @@ final class LogitechMouseReader {
                 handleAnalytics(payload)
             } else if swID == 0 {
                 noteLastEvent(String(format: "reprog fn%d %@", function, Self.hex(payload)))
+            }
+            return
+        }
+        if let statusIndex = featureCatalog[LogitechHIDPPFeatureID.wirelessDeviceStatus],
+           featureIndex == statusIndex,
+           function == 0 {
+            // Payload byte 1 == 1: the device lost its software configuration (reconnect / power-on).
+            if payload.count > 1, payload[payload.startIndex + 1] == 1 {
+                DispatchQueue.main.async { [weak self] in
+                    self?.reconfigure(reason: "Mouse reconnected. Setting up buttons again…")
+                }
             }
             return
         }

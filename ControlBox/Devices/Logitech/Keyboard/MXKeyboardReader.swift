@@ -178,6 +178,7 @@ final class MXKeyboardReader {
         snapshot.wirelessProductID = wpid
         snapshot.status = "Talking to \(name) over Logi Bolt…"
         snapshot.easySwitchHosts = []
+        snapshot.friendlyNameMaxLength = nil
         snapshot.osLayouts = []
         snapshot.osLayout = nil
         lock.unlock()
@@ -408,6 +409,7 @@ final class MXKeyboardReader {
         snapshot.wirelessProductID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
         snapshot.status = "Talking to \(product) over HID++…"
         snapshot.easySwitchHosts = []
+        snapshot.friendlyNameMaxLength = nil
         snapshot.osLayouts = []
         snapshot.osLayout = nil
         lock.unlock()
@@ -512,6 +514,26 @@ final class MXKeyboardReader {
         readOSLayouts()
         startBatteryTimer()
         loadEasySwitchHosts()
+        loadFriendlyNameLimit()
+    }
+
+    private func loadFriendlyNameLimit() {
+        lookup(MXFriendlyNameHIDPP.featureID) { [weak self] index in
+            guard let self, let index else { return }
+            MXFriendlyNameHIDPP.readMaxLength(
+                featureIndex: index,
+                request: { [weak self] feature, function, params, completion in
+                    guard let self else {
+                        completion(nil)
+                        return
+                    }
+                    self.request(featureIndex: feature, function: function, params: params, completion: completion)
+                }
+            ) { [weak self] limit in
+                guard let limit else { return }
+                self?.publish { $0.friendlyNameMaxLength = limit }
+            }
+        }
     }
 
     private func readNameIfNeeded() {

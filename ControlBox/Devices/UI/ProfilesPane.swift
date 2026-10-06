@@ -293,7 +293,12 @@ struct DeviceProfilePane: View {
         devicePageCard {
             VStack(alignment: .leading, spacing: 0) {
                 devicePageRow {
-                    TextField("Name", text: deviceNameBinding)
+                    DeviceNameField(
+                        name: record.displayName,
+                        byteLimit: monitor.selectedFriendlyNameLimit,
+                        onRename: { monitor.renameSelectedDevice($0) }
+                    )
+                    .id(record.id)
                 }
 
                 Divider()
@@ -1182,13 +1187,6 @@ struct DeviceProfilePane: View {
         Binding(
             get: { monitor.selectedRecord?.selectedProfileID ?? "" },
             set: { monitor.selectProfile($0) }
-        )
-    }
-
-    private var deviceNameBinding: Binding<String> {
-        Binding(
-            get: { monitor.selectedRecord?.displayName ?? "" },
-            set: { monitor.renameSelectedDevice($0) }
         )
     }
 
@@ -2163,6 +2161,43 @@ struct DeviceProfilePane: View {
                 customizingGestureSlot = nil
             }
         )
+    }
+}
+
+/// Device name with the hardware's UTF-8 byte limit (Chinese characters are 3 bytes each).
+private struct DeviceNameField: View {
+    let name: String
+    let byteLimit: Int?
+    let onRename: (String) -> Void
+
+    @State private var text = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("Name", text: $text)
+            if let byteLimit {
+                Text("\(text.utf8.count)/\(byteLimit)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(text.utf8.count >= byteLimit ? .primary : .secondary)
+                    .help("This device stores up to \(byteLimit) bytes. Most letters are 1 byte; Chinese characters are 3.")
+            }
+        }
+        .onAppear { text = name }
+        .onChange(of: name) { _, newName in
+            if newName != text.trimmingCharacters(in: .whitespacesAndNewlines) {
+                text = newName
+            }
+        }
+        .onChange(of: text) { _, newText in
+            if let byteLimit, newText.utf8.count > byteLimit {
+                text = MXFriendlyNameHIDPP.clipped(newText, maxBytes: byteLimit)
+                return
+            }
+            if newText.trimmingCharacters(in: .whitespacesAndNewlines) != name {
+                onRename(newText)
+            }
+        }
     }
 }
 

@@ -26,14 +26,42 @@ enum MXFriendlyNameHIDPP {
             return
         }
         request(featureIndex, 0, []) { data in
-            var maxLen = 14
-            if let data, data.count > 1 {
-                let reported = Int(data[1])
-                if reported > 0 { maxLen = min(reported, 32) }
-            }
-            let bytes = Array(trimmed.utf8.prefix(maxLen))
+            let maxLen = maxLength(from: data) ?? fallbackMaxLength
+            let bytes = Array(clipped(trimmed, maxBytes: maxLen).utf8)
             write(bytes: bytes, offset: 0, featureIndex: featureIndex, request: request, completion: completion)
         }
+    }
+
+    static let fallbackMaxLength = 14
+
+    /// `getFriendlyNameLen` byte 1: the longest name the device stores, in UTF-8 bytes.
+    static func readMaxLength(
+        featureIndex: UInt8,
+        request: @escaping Request,
+        completion: @escaping (Int?) -> Void
+    ) {
+        request(featureIndex, 0, []) { data in
+            completion(maxLength(from: data))
+        }
+    }
+
+    /// Longest prefix of whole characters that fits in `maxBytes` UTF-8 bytes.
+    static func clipped(_ name: String, maxBytes: Int) -> String {
+        var result = ""
+        var used = 0
+        for character in name {
+            let size = character.utf8.count
+            if used + size > maxBytes { break }
+            result.append(character)
+            used += size
+        }
+        return result
+    }
+
+    private static func maxLength(from data: Data?) -> Int? {
+        guard let data, data.count > 1 else { return nil }
+        let reported = Int(data[data.startIndex + 1])
+        return reported > 0 ? min(reported, 32) : nil
     }
 
     private static func write(

@@ -35,9 +35,9 @@ enum LogiBoltSupport {
     }
 
     static func isLinkEstablished(_ report: [UInt8]) -> Bool {
-        guard report.count > 2, report[2] == 0x41 else { return false }
-        let flags = report.count > 3 ? report[3] : 0
-        return flags & linkNotEstablishedFlag == 0
+        guard report.count > 4, report[2] == 0x41 else { return false }
+        // report[3] is the protocol (0x10 on Bolt); the link flags are report[4].
+        return report[4] & linkNotEstablishedFlag == 0
     }
 
     static func hidManagerMatch() -> [String: Any] {
@@ -106,6 +106,19 @@ enum LogiBoltSupport {
 
     static func intProperty(_ key: String, _ device: IOHIDDevice) -> Int {
         (IOHIDDeviceGetProperty(device, key as CFString) as? NSNumber)?.intValue ?? 0
+    }
+
+    /// Receiver names are UTF-8 cut to fit one report, so the last character may be partial.
+    static func name(_ bytes: ArraySlice<UInt8>) -> String {
+        let bytes = Array(bytes)
+        for drop in 0...min(3, bytes.count) {
+            if let text = String(bytes: bytes.dropLast(drop), encoding: .utf8) {
+                return String(String.UnicodeScalarView(
+                    text.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+                ))
+            }
+        }
+        return ascii(bytes[...])
     }
 
     static func ascii(_ bytes: ArraySlice<UInt8>) -> String {

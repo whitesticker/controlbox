@@ -56,6 +56,8 @@ struct MXKeyboardSnapshot: Equatable, Sendable {
     var unitID: UInt32 = 0
     var wirelessProductID = 0
     var easySwitchHosts: [MXEasySwitchHost] = []
+    /// HID++ `0x0007` name limit in UTF-8 bytes. Nil until the keyboard answers.
+    var friendlyNameMaxLength: Int?
 
     var logitechKey: LogitechDeviceKey {
         LogitechDeviceKey(

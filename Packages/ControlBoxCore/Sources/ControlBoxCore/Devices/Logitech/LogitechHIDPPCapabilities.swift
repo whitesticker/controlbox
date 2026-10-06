@@ -16,6 +16,7 @@ public enum LogitechHIDPPFeatureID {
     public static let hapticFeedback: UInt16 = 0x19B0
     public static let forceSensing: UInt16 = 0x19C0
     public static let reprogrammableControlsV4: UInt16 = 0x1B04
+    public static let wirelessDeviceStatus: UInt16 = 0x1D4B
     public static let smartShift: UInt16 = 0x2110
     public static let smartShiftEnhanced: UInt16 = 0x2111
     public static let highResolutionWheel: UInt16 = 0x2121

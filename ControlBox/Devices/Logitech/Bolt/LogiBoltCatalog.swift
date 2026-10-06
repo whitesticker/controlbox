@@ -101,6 +101,14 @@ final class LogiBoltCatalog {
         }
     }
 
+    /// After Mac wake the receiver may have missed or never sent link changes.
+    /// Re-arm notifications and re-read slots; the fake-arrival probe reports each link.
+    func recheckLinks() {
+        guard pairing == nil || pairing?.phase.isFinished == true else { return }
+        flagsReady.removeAll()
+        refresh()
+    }
+
     func unpair(receiverID: String, slot: Int, completion: @escaping (String?) -> Void) {
         guard pairing == nil else {
             completion("Finish pairing first.")
@@ -553,7 +561,7 @@ final class LogiBoltCatalog {
                 return
             }
             let length = min(Int(bytes[6]), max(bytes.count - 7, 0))
-            let name = LogiBoltSupport.ascii(bytes[7..<(7 + length)])
+            let name = LogiBoltSupport.name(bytes[7..<(7 + length)])
             completion(name.trimmingCharacters(in: .whitespaces))
         }
     }

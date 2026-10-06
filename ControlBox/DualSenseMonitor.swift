@@ -99,7 +99,12 @@ final class DualSenseMonitor {
             if items.contains(where: { DeviceIdentity.sameLogitech($0.logitechKey, record.logitechKey) }) {
                 continue
             }
-            let live = connectedDevices.first { recordsMatch(record, $0) && $0.isConnected }
+            let live = connectedDevices.first { $0.isConnected && $0.id == record.id }
+                ?? connectedDevices.first {
+                    $0.isConnected
+                        && deviceRecord(for: $0.id) == nil
+                        && recordsMatch(record, $0)
+                }
             items.append(
                 SidebarDevice(
                     id: record.id,
@@ -171,6 +176,8 @@ final class DualSenseMonitor {
     private var controlActivity: NSObjectProtocol?
     private var observers: [NSObjectProtocol] = []
     private var workspaceObserver: NSObjectProtocol?
+    private var wakeObservers: [NSObjectProtocol] = []
+    private var wakeWork: DispatchWorkItem?
     private var lastAudioProbe = Date.distantPast
     private var lastTrustProbe = Date.distantPast
     private var lastDeviceProbe = Date.distantPast
@@ -258,6 +265,7 @@ final class DualSenseMonitor {
         syncGamepadFamily()
 
         startFrontmostAppWatcher()
+        startWakeWatcher()
 
         let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -267,6 +275,28 @@ final class DualSenseMonitor {
         timer.tolerance = 1.0 / 600.0
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
+    }
+
+    /// Radios reconnect a moment after wake; give them time before re-sending diverts.
+    private func startWakeWatcher() {
+        guard wakeObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            wakeObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.scheduleDeviceSetupAfterWake()
+                }
+            })
+        }
+    }
+
+    private func scheduleDeviceSetupAfterWake() {
+        wakeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.logitech.handleSystemWake()
+        }
+        wakeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
     }
 
     private func startFrontmostAppWatcher() {
@@ -364,6 +394,9 @@ final class DualSenseMonitor {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
             self.workspaceObserver = nil
         }
+        wakeObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        wakeObservers.removeAll()
+        wakeWork?.cancel()
         familySessions.forEach { $0.stop() }
         mouseScrollTap.stop()
         mxWheelEngines.values.forEach { $0.reset() }
@@ -891,8 +924,20 @@ final class DualSenseMonitor {
         }
     }
 
+    /// UTF-8 byte limit the selected device reports for its stored name; nil when it has none.
+    var selectedFriendlyNameLimit: Int? {
+        guard let record = selectedRecord else { return nil }
+        if record.isMXKeyboard { return mxKeyboardSnapshot.friendlyNameMaxLength }
+        if record.isMXMaster { return reader(for: record)?.current.friendlyNameMaxLength }
+        return nil
+    }
+
     func renameSelectedDevice(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let limit = selectedFriendlyNameLimit {
+            trimmed = MXFriendlyNameHIDPP.clipped(trimmed, maxBytes: limit)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         updateSelectedRecord { record in
             record.customName = trimmed.isEmpty ? nil : trimmed
         }
@@ -1564,28 +1609,28 @@ final class DualSenseMonitor {
     }
 
     private func matchingRecord(for device: ConnectedBluetoothDevice) -> DeviceRecord? {
-        if let exact = deviceRecords.first(where: { $0.id == device.id }) {
-            return exact
-        }
-        return deviceRecords.first { recordsMatch($0, device) }
+        matchingRecordIndex(for: device).map { deviceRecords[$0] }
     }
 
     private func matchingRecordIndex(for device: ConnectedBluetoothDevice) -> Int? {
-        if let index = deviceRecords.firstIndex(where: { $0.id == device.id }) {
+        if let index = deviceRecords.firstIndex(where: { $0.id == device.id && recordsMatch($0, device) }) {
             return index
         }
         return deviceRecords.firstIndex { recordsMatch($0, device) }
     }
 
     private func recordsMatch(_ record: DeviceRecord, _ device: ConnectedBluetoothDevice) -> Bool {
+        let logitech = record.kind.isMXMaster || record.kind.isMXKeyboard
+            || device.deviceKind.isMXMaster || device.deviceKind.isMXKeyboard
+        // Bolt row IDs name a receiver slot, not a mouse; a different unit in that slot is a different row.
+        if logitech, DeviceIdentity.unitsConflict(record.logitechKey, device.logitechKey) { return false }
         if record.id == device.id { return true }
         if DeviceIdentity.sameLogitech(record.logitechKey, device.logitechKey) { return true }
         if DeviceIdentity.same(record.address, device.address) { return true }
         guard record.kind == device.deviceKind else { return false }
         if record.kind.isGamepad { return false }
-        if record.kind.isMXMaster || record.kind.isMXKeyboard {
-            if DeviceIdentity.looksLikeHardwareAddress(record.address),
-               DeviceIdentity.looksLikeHardwareAddress(device.address) {
+        if logitech {
+            if DeviceIdentity.addressesNameUnits(record.address, device.address) {
                 return false
             }
             return namesMatch(record.name, device.name)
@@ -1639,6 +1684,7 @@ final class DualSenseMonitor {
         let fallback = deviceRecords.indices.filter { index in
             let record = deviceRecords[index]
             return record.remembered
+                && !DeviceIdentity.unitsConflict(record.logitechKey, live.logitechKey)
                 && (live.kind != .logitechMouse
                     || (!DeviceIdentity.isConcrete(record.address)
                         && record.unitID == nil))
@@ -1802,6 +1848,11 @@ final class DualSenseMonitor {
             deviceRecords = decoded.map { record in
                 var next = record
                 next.remembered = true
+                if let unit = next.unitID, unit != 0,
+                   DeviceIdentity.looksLikeUnitToken(next.address),
+                   next.address.uppercased() != DeviceIdentity.unitToken(unit) {
+                    next.address = DeviceIdentity.unitToken(unit)
+                }
                 if next.profiles.isEmpty {
                     let profile = MappingProfile.makeDefault(
                         isAppleTVRemote: next.isAppleTVRemote,
@@ -1909,11 +1960,7 @@ final class DualSenseMonitor {
         }
         mergeLiveKeyboard(keyboard.snapshot, into: &devices)
         collapseConnectedLogitech(&devices)
-        for index in devices.indices {
-            if let record = matchingRecord(for: devices[index]) {
-                devices[index].id = record.id
-            }
-        }
+        assignRecordIDs(&devices)
         connectedDevices = devices
 
         for device in devices where device.isSupported && device.isConnected {
@@ -1933,6 +1980,57 @@ final class DualSenseMonitor {
             ensureRecord(for: selectedDeviceID)
         }
         persistDeviceRecords()
+    }
+
+    /// Each saved row backs at most one connected device. Identity (unit ID or
+    /// address) claims first so a name-only match cannot take another mouse's row.
+    private func assignRecordIDs(_ devices: inout [ConnectedBluetoothDevice]) {
+        var assigned = [String?](repeating: nil, count: devices.count)
+        var claimed = Set<String>()
+        let passes: [(DeviceRecord, ConnectedBluetoothDevice) -> Bool] = [
+            { [unowned self] record, device in
+                self.recordsMatch(record, device)
+                    && (DeviceIdentity.sameLogitech(record.logitechKey, device.logitechKey)
+                        || DeviceIdentity.same(record.address, device.address))
+            },
+            { [unowned self] record, device in
+                record.id == device.id && self.recordsMatch(record, device)
+            },
+            { [unowned self] record, device in
+                self.recordsMatch(record, device)
+            },
+        ]
+        for matches in passes {
+            for index in devices.indices where assigned[index] == nil {
+                guard let record = deviceRecords.first(where: {
+                    !claimed.contains($0.id) && matches($0, devices[index])
+                }) else { continue }
+                assigned[index] = record.id
+                claimed.insert(record.id)
+            }
+        }
+        let recordIDs = Set(deviceRecords.map(\.id))
+        var used = claimed
+        for index in devices.indices {
+            if let id = assigned[index] {
+                devices[index].id = id
+                continue
+            }
+            guard recordIDs.contains(devices[index].id) || used.contains(devices[index].id) else {
+                used.insert(devices[index].id)
+                continue
+            }
+            let base = devices[index].unitID.map { "\(devices[index].id)-\(DeviceIdentity.unitToken($0))" }
+                ?? "\(devices[index].id)-\(index)"
+            var id = base
+            var suffix = 2
+            while recordIDs.contains(id) || used.contains(id) {
+                id = "\(base)#\(suffix)"
+                suffix += 1
+            }
+            devices[index].id = id
+            used.insert(id)
+        }
     }
 
     private var isMenuTracking: Bool {
