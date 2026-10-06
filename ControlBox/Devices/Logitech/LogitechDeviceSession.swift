@@ -20,7 +20,7 @@ protocol LogitechMouseDevice: AnyObject {
     func applySmoothScrolling(_ enabled: Bool)
     func applyScrollDirection(_ natural: Bool)
     func reloadEasySwitchHosts()
-    func setFriendlyName(_ name: String)
+    func setFriendlyName(_ name: String, completion: @escaping (Bool) -> Void)
 }
 
 extension LogitechMouseReader: LogitechMouseDevice {}
@@ -34,7 +34,7 @@ protocol LogitechKeyboardDevice: AnyObject {
     func setBatterySaving(_ enabled: Bool)
     func setOSLayout(_ platformIndex: UInt8)
     func reloadEasySwitchHosts()
-    func setFriendlyName(_ name: String)
+    func setFriendlyName(_ name: String, completion: @escaping (Bool) -> Void)
 }
 
 extension MXKeyboardSession: LogitechKeyboardDevice {}

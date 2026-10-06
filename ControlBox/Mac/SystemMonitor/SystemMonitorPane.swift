@@ -8,12 +8,6 @@ struct SystemMonitorPane: View {
             Form {
                 Section {
                     Toggle("Show in menu bar", isOn: $store.menuBarEnabled)
-                } footer: {
-                    footerBullets(
-                        "Separate extra with live network speed. The Control Box icon stays.",
-                        "Click for CPU, GPU, memory, disk, sensors, and battery.",
-                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
-                    )
                 }
 
                 Section {
@@ -42,10 +36,7 @@ struct SystemMonitorPane: View {
                 } header: {
                     Text("Dashboard rows")
                 } footer: {
-                    footerBullets(
-                        "Drag to reorder.",
-                        "Off hides the row from the extra."
-                    )
+                    Text("Drag to reorder.")
                 }
             }
             .formStyle(.grouped)

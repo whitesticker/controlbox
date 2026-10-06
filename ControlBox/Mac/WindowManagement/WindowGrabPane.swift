@@ -15,7 +15,9 @@ struct WindowGrabPane: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Move window", isOn: windowMoveEnabledBinding)
+                    Toggle(isOn: windowMoveEnabledBinding) {
+                        SettingsRowLabel("Move window", "Hold Move and drag from anywhere.")
+                    }
                     ModifierChordPicker(
                         title: "Move keys",
                         flags: windowMoveFlagsBinding,
@@ -38,16 +40,16 @@ struct WindowGrabPane: View {
                             .foregroundStyle(.red)
                     }
                 } footer: {
-                    footerBullets(
-                        "Hold Move and drag from anywhere.",
-                        "Hold Resize and move: grows from the bottom-right; top-left stays put.",
-                        "Trackpad, mouse, or DualSense. Accessibility required.",
-                        "These keys cannot match Throw, Display Arrangement, or each other."
-                    )
+                    Text("Accessibility required.")
                 }
 
                 Section {
-                    Toggle("Throw window", isOn: windowThrowEnabledBinding)
+                    Toggle(isOn: windowThrowEnabledBinding) {
+                        SettingsRowLabel(
+                            "Throw window",
+                            "Hold and move to snap to a 3×3 grid of the screen."
+                        )
+                    }
                     ModifierChordPicker(
                         title: "Throw keys",
                         flags: windowThrowFlagsBinding,
@@ -56,16 +58,15 @@ struct WindowGrabPane: View {
                         message: $chordMessage,
                         onConflict: { conflictName = $0 }
                     )
-                } footer: {
-                    footerBullets(
-                        "Hold and move: snaps the window under the cursor to a 3×3 map of that screen.",
-                        "Corners = quarters, edges = halves, center = full.",
-                        "Off until this toggle is on."
-                    )
                 }
 
                 Section {
-                    Toggle("Organize windows", isOn: windowOrganizeEnabledBinding)
+                    Toggle(isOn: windowOrganizeEnabledBinding) {
+                        SettingsRowLabel(
+                            "Organize windows",
+                            "Tiles windows on the pointer’s screen; press again to shuffle."
+                        )
+                    }
                     HStack {
                         Text("Shortcut")
                         Spacer()
@@ -84,35 +85,30 @@ struct WindowGrabPane: View {
                             onCancel: { recordingOrganize = false }
                         )
                     }
-                } footer: {
-                    footerBullets(
-                        "Tiles visible windows on the pointer’s screen. Press again to shuffle.",
-                        "Default Control-Command-O. Off until this toggle is on.",
-                        "Cannot reuse Display Arrangement’s number or arrow keys with the same modifiers."
-                    )
                 }
 
                 Section {
-                    Toggle("Shake to focus", isOn: windowShakeEnabledBinding)
-                    Picker("Hide other windows on", selection: windowShakeScopeBinding) {
+                    Toggle(isOn: windowShakeEnabledBinding) {
+                        SettingsRowLabel(
+                            "Shake to focus",
+                            "Shake a window to hide the others; shake again to restore."
+                        )
+                    }
+                    Picker(selection: windowShakeScopeBinding) {
                         Text("This display").tag(WindowShakeScope.thisDisplay)
                         Text("All displays").tag(WindowShakeScope.allDisplays)
+                    } label: {
+                        Text("Hide other windows on")
                     }
                     .pickerStyle(.radioGroup)
                     .disabled(!monitor.macMouseProfile.resolvedWindowShakeEnabled)
-                } footer: {
-                    footerBullets(
-                        "Shake a window (title bar, or while Move is held) to hide the others. Shake again to restore.",
-                        "This display / All displays is the physical monitor, not a Space.",
-                        "Off until this toggle is on. Accessibility required."
-                    )
                 }
 
                 Section {
                     Toggle(isOn: windowDockClickBinding) {
-                        rowLabel(
+                        SettingsRowLabel(
                             "Switch to Space",
-                            "Go to the Space that has the window, on this display or another. The window stays where it is."
+                            "Go to the Space with the window, on any display."
                         )
                     }
                     HStack {
@@ -321,16 +317,6 @@ struct WindowGrabPane: View {
 
     private var ignoredDockClickApps: [String] {
         monitor.macMouseProfile.resolvedWindowDockClickIgnoredBundleIDs
-    }
-
-    private func rowLabel(_ title: String, _ subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private func dockClickHeader(_ title: String, _ subtitle: String) -> some View {

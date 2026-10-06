@@ -34,20 +34,26 @@ struct DeviceProfilePane: View {
                     }
 
                     Section {
-                        deviceDetailsCard(for: record, device: device)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                        DeviceNameField(
+                            name: record.displayName,
+                            byteLimit: monitor.selectedFriendlyNameLimit,
+                            noun: record.isMXKeyboard ? "keyboard" : "mouse",
+                            status: monitor.friendlyNameWrites[record.id],
+                            onCommit: { [id = record.id] in monitor.renameDevice(id, to: $0) }
+                        )
+                        .id(record.id)
+                        deviceBatteryRow(for: record)
+                        Text(deviceDetails(for: record, device: device))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     } header: {
                         Text("Device")
-                    } footer: {
-                        Text(deviceNameFooter(for: record))
                     }
 
                     if record.isMXKeyboard {
                         easySwitchSection(
                             hosts: monitor.mxKeyboardSnapshot.easySwitchHosts,
-                            noun: "keyboard",
                             canRefresh: monitor.mxKeyboardSnapshot.hidppReady,
                             onRefresh: { monitor.reloadEasySwitch(isKeyboard: true) }
                         )
@@ -58,23 +64,14 @@ struct DeviceProfilePane: View {
                             || monitor.mxSnapshot(for: record.id).hidppCapabilities.easySwitch {
                             easySwitchSection(
                                 hosts: monitor.mxMasterSnapshot.easySwitchHosts,
-                                noun: "mouse",
                                 canRefresh: monitor.mxMasterSnapshot.connected,
                                 onRefresh: { monitor.reloadEasySwitch(isKeyboard: false) }
                             )
                         }
 
                         if record.isGamepad || record.isAppleTVRemote {
-                            Section {
-                                devicePageListRow {
-                                    controllerAnalogBox(for: record)
-                                }
-                                devicePageListRow {
-                                    controllerPointerScrollBox(for: record)
-                                }
-                            } header: {
-                                Text("Analog & pointer")
-                            }
+                            controllerAnalogSection(for: record)
+                            controllerPointerScrollSection(for: record)
                         }
 
                         if record.isMXMaster, showsMXProfiles(for: record) {
@@ -191,12 +188,6 @@ struct DeviceProfilePane: View {
                                 }
                             }
                         }
-                    } footer: {
-                        if record.isMXMaster {
-                            Text("Calibration shows live button and gesture capture. Mouse Settings contains DPI, Free Spin / Ratchet, and thumb-wheel settings.")
-                        } else {
-                            Text("Live capture of this device’s buttons and motion.")
-                        }
                     }
                     }
 
@@ -205,11 +196,7 @@ struct DeviceProfilePane: View {
                             Button("Delete Device…", role: .destructive) {
                                 monitor.removeSelectedDevice()
                             }
-                        } footer: {
-                            bullets(
-                                "Removes it from the sidebar.",
-                                "Add Device brings it back."
-                            )
+                            .rowCaption("Add Device brings it back.")
                         }
                     }
                 }
@@ -286,51 +273,7 @@ struct DeviceProfilePane: View {
         monitor.sidebarDevices.first { $0.id == monitor.selectedDeviceID }
     }
 
-    private func deviceDetailsCard(
-        for record: DeviceRecord,
-        device: SidebarDevice
-    ) -> some View {
-        devicePageCard {
-            VStack(alignment: .leading, spacing: 0) {
-                devicePageRow {
-                    DeviceNameField(
-                        name: record.displayName,
-                        byteLimit: monitor.selectedFriendlyNameLimit,
-                        onRename: { monitor.renameSelectedDevice($0) }
-                    )
-                    .id(record.id)
-                }
-
-                Divider()
-                    .padding(.leading, 12)
-
-                devicePageRow {
-                    deviceBatteryRow(for: record)
-                }
-
-                Divider()
-                    .padding(.leading, 12)
-
-                Text(deviceDetailsFooter(for: record, device: device))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 7)
-                    .padding(.bottom, 9)
-            }
-            .background(
-                Palette.fill(colorScheme).opacity(0.34),
-                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-            }
-        }
-    }
-
-    private func deviceDetailsFooter(
+    private func deviceDetails(
         for record: DeviceRecord,
         device: SidebarDevice
     ) -> String {
@@ -361,13 +304,6 @@ struct DeviceProfilePane: View {
         let player = device.gamepadPlayerIndex ?? record.gamepadPlayerIndex
         guard let player, (1...4).contains(player) else { return nil }
         return player
-    }
-
-    private func deviceNameFooter(for record: DeviceRecord) -> String {
-        if record.isMXMaster || record.isMXKeyboard {
-            return "Name is shown in the sidebar and stored on this device. Bluetooth Settings may update after reconnect."
-        }
-        return "Name is shown in the sidebar."
     }
 
     private func deviceBatteryRow(for record: DeviceRecord) -> some View {
@@ -433,217 +369,77 @@ struct DeviceProfilePane: View {
     }
 
     @ViewBuilder
-    private func controllerAnalogBox(for record: DeviceRecord) -> some View {
+    private func controllerAnalogSection(for record: DeviceRecord) -> some View {
         if record.isAppleTVRemote {
-            devicePageBox(
-                "Analog",
-                footer: bullets(
-                    "One setting for this remote across every app profile.",
-                    "Slow slides stay precise; flicks cover more of the screen.",
-                    "Pointer does not move while Select is pressed."
-                )
-            ) {
-                devicePageRow {
-                    Toggle("Clickpad", isOn: analogToggle(.appleTVClickpad, on: .pointer))
-                }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Clickwheel", isOn: analogToggle(.appleTVWheel, on: .scroll))
-                }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Pointer acceleration", isOn: accelerationBinding)
-                        .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
-                }
+            Section {
+                Toggle("Clickpad", isOn: analogToggle(.appleTVClickpad, on: .pointer))
+                Toggle("Clickwheel", isOn: analogToggle(.appleTVWheel, on: .scroll))
+                Toggle("Pointer acceleration", isOn: accelerationBinding)
+                .disabled(monitor.selectedProfile.mode(for: .appleTVClickpad) == .off)
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
                    monitor.selectedProfile.mode(for: .appleTVClickpad) != .off {
-                    devicePageDivider()
-                    devicePageRow {
-                        SettingsSlider("Amount", value: accelerationAmountBinding)
-                    }
+                    SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
+            } header: {
+                Text("Analog")
             }
         } else {
             let capabilities = record.resolvedGamepadCapabilities
-            devicePageBox(
-                "Analog",
-                footer: footerBullets(gamepadAnalogFooter(capabilities))
-            ) {
-                devicePageRow {
-                    analogPicker("Left stick", source: .dualSenseLeftStick)
-                }
-                devicePageDivider()
-                devicePageRow {
-                    analogPicker("Right stick", source: .dualSenseRightStick)
-                }
+            Section {
+                analogPicker("Left stick", source: .dualSenseLeftStick)
+                analogPicker("Right stick", source: .dualSenseRightStick)
                 if capabilities.touchpad {
-                    devicePageDivider()
-                    devicePageRow {
-                        analogPicker("Touchpad analog", source: .dualSenseTouchpad)
-                    }
+                    analogPicker(
+                        "Touchpad analog",
+                        subtitle: "Swipes are under Touchpad gestures.",
+                        source: .dualSenseTouchpad
+                    )
                 }
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Pointer acceleration", isOn: accelerationBinding)
-                        .disabled(!gamepadHasPointerSource(record))
-                }
+                Toggle("Pointer acceleration", isOn: accelerationBinding)
+                .disabled(!gamepadHasPointerSource(record))
                 if (monitor.selectedProfile.pointerAcceleration ?? true),
                    gamepadHasPointerSource(record) {
-                    devicePageDivider()
-                    devicePageRow {
-                        SettingsSlider("Amount", value: accelerationAmountBinding)
-                    }
+                    SettingsSlider("Amount", value: accelerationAmountBinding)
                 }
                 if capabilities.haptics {
-                    devicePageDivider()
-                    devicePageRow {
-                        Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
-                    }
+                    Toggle("Haptic feedback", isOn: hapticFeedbackBinding)
                 }
+            } header: {
+                Text("Analog")
             }
         }
     }
 
-    private func gamepadAnalogFooter(_ capabilities: GamepadCapabilities) -> [String] {
-        var lines = [
-            "One setting for this gamepad across every app profile.",
-            "Sticks only move or scroll if that source is on."
-        ]
-        if capabilities.touchpad {
-            lines.append("Touchpad analog is pointer/scroll; swipes are under Touchpad gestures.")
-        }
-        lines.append("Acceleration: small moves stay precise, flicks speed up.")
-        if capabilities.haptics {
-            lines.append("Haptic rumble on button press.")
-        }
-        return lines
-    }
-
-    private func controllerPointerScrollBox(for record: DeviceRecord) -> some View {
-        devicePageBox(
-            "Pointer & scroll",
-            footer: record.isAppleTVRemote
-                ? bullets(
-                    "One setting for this remote across every app profile.",
-                    "Pointer speed: stick, clickpad, and touchpad.",
-                    "Scroll speed: only when that analog is set to Scroll.",
-                    "Natural matches the Mac."
-                )
-                : bullets(
-                    "One setting for this gamepad across every app profile.",
-                    record.resolvedGamepadCapabilities.touchpad
-                        ? "Pointer speed: stick and touchpad."
-                        : "Pointer speed: sticks.",
-                    record.resolvedGamepadCapabilities.touchpad
-                        ? "Scroll speed / acceleration: only when a stick or Touchpad analog is set to Scroll."
-                        : "Scroll speed / acceleration: only when a stick is set to Scroll.",
-                    "Natural matches the Mac."
-                )
-        ) {
-            devicePageRow {
-                SettingsSlider("Pointer speed", value: pointerSpeedBinding)
-            }
-            devicePageDivider()
-            devicePageRow {
-                SettingsSlider("Scroll speed", value: wheelSpeedBinding)
-            }
+    private func controllerPointerScrollSection(for record: DeviceRecord) -> some View {
+        Section {
+            SettingsSlider(
+                "Pointer speed",
+                value: pointerSpeedBinding
+            )
+            SettingsSlider(
+                "Scroll speed",
+                value: wheelSpeedBinding
+            )
             if record.isGamepad {
-                devicePageDivider()
-                devicePageRow {
-                    Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
-                        .disabled(!hasAnalogScrollSource(record))
-                }
+                Toggle("Scroll acceleration", isOn: scrollAccelerationBinding)
+                    .disabled(!hasAnalogScrollSource(record))
                 if (monitor.selectedProfile.scrollAcceleration == true),
                    hasAnalogScrollSource(record) {
-                    devicePageDivider()
-                    devicePageRow {
-                        SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
-                    }
+                    SettingsSlider("Amount", value: scrollAccelerationAmountBinding)
                 }
             }
-            devicePageDivider()
-            devicePageRow {
-                Picker("Scroll direction", selection: scrollDirectionBinding) {
-                    Text("Natural").tag("natural")
-                    Text("Standard").tag("standard")
-                }
-                .pickerStyle(.radioGroup)
+            Picker(selection: scrollDirectionBinding) {
+                Text("Natural").tag("natural")
+                Text("Standard").tag("standard")
+            } label: {
+                Text("Scroll direction")
             }
+            .pickerStyle(.radioGroup)
+        } header: {
+            Text("Pointer & scroll")
+        } footer: {
+            Text("Analog and pointer settings apply to every app profile.")
         }
-    }
-
-    private func devicePageCard<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 7) {
-            content()
-        }
-        .padding(10)
-        .background(
-            Palette.surface(colorScheme),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-    }
-
-    private func devicePageListRow<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-    }
-
-    private func devicePageBox<Content: View>(
-        _ title: String,
-        footer: Text,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.45)
-                .padding(.horizontal, 12)
-                .padding(.top, 9)
-                .padding(.bottom, 3)
-
-            content()
-
-            footer
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 3)
-                .padding(.bottom, 9)
-        }
-        .background(
-            Palette.fill(colorScheme).opacity(0.34),
-            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-    }
-
-    private func devicePageRow<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-    }
-
-    private func devicePageDivider() -> some View {
-        Divider()
-            .padding(.leading, 12)
     }
 
     @ViewBuilder
@@ -709,18 +505,20 @@ struct DeviceProfilePane: View {
         } footer: {
             bullets(
                 "Two separate Gestures, like the MX gesture button.",
-                "Hold and move for the four directions; lift without moving is Click.",
+                "Hold and move for four directions; lift without moving to click.",
                 "Physical click is Touchpad click under System."
             )
         }
     }
 
     @ViewBuilder
-    private func analogPicker(_ title: String, source: AnalogSource) -> some View {
-        Picker(title, selection: analogBinding(source)) {
+    private func analogPicker(_ title: String, subtitle: String? = nil, source: AnalogSource) -> some View {
+        Picker(selection: analogBinding(source)) {
             ForEach([AnalogMode.off, .pointer, .scroll], id: \.self) { mode in
                 Text(mode.title).tag(mode)
             }
+        } label: {
+            SettingsRowLabel(title, subtitle)
         }
     }
 
@@ -825,22 +623,14 @@ struct DeviceProfilePane: View {
                     .transition(.opacity)
                 customGestureShortcutEditors(for: button, set: set)
             } else {
-                Text("Built-in presets are read-only. Choose Custom to make your own gesture set.")
+                Text("Presets are read-only. Choose Custom to edit.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .transition(.opacity)
             }
         }
-        .padding(10)
-        .background(
-            Palette.fill(colorScheme).opacity(0.30),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-        .padding(.top, 7)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 
     private func customGestureSetSelector(
@@ -1122,7 +912,7 @@ struct DeviceProfilePane: View {
     @ViewBuilder
     private func selectRow(for record: DeviceRecord) -> some View {
         HStack(alignment: .center, spacing: 10) {
-            Text("Select")
+            SettingsRowLabel("Select", "Double-tap for a double-click.")
             Spacer(minLength: 8)
             selectPicker(
                 caption: "Click",
@@ -1161,11 +951,6 @@ struct DeviceProfilePane: View {
         Section {
             Toggle("Control this Mac", isOn: controlEnabledBinding)
             Toggle("Allow while Control Box is focused", isOn: controlWhileFocusedBinding)
-        } footer: {
-            bullets(
-                "Sends this device’s inputs to the Mac.",
-                "Skipped while Control Box is frontmost, unless the second switch is on."
-            )
         }
     }
 
@@ -1325,125 +1110,72 @@ struct DeviceProfilePane: View {
     @ViewBuilder
     private func controllerProfilesSections(for record: DeviceRecord) -> some View {
         Section {
-            devicePageListRow {
-                devicePageCard {
-                    appProfileSelectorCard(for: record)
-                }
-            }
+            appProfileSelectorCard(for: record)
+                .listRowSeparator(.hidden)
             if record.isGamepad, record.resolvedGamepadCapabilities.touchpad {
-                devicePageListRow {
-                    controllerProfileBox("1-finger swipe") {
-                        controllerProfileRow {
-                            mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
-                        }
+                profileGroupBox(
+                    "Touchpad gestures",
+                    footer: bullets(
+                        "Hold and move for four directions; lift without moving to click.",
+                        "Physical click is Touchpad click under System."
+                    )
+                ) {
+                    profileGroupRow {
+                        mxActionRow("1-finger swipe", button: .touchpadOneFinger, record: record)
                     }
-                }
-                devicePageListRow {
-                    controllerProfileBox("2-finger swipe") {
-                        controllerProfileRow {
-                            mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
-                        }
+                    Divider().padding(.leading, 12)
+                    profileGroupRow {
+                        mxActionRow("2-finger swipe", button: .touchpadTwoFinger, record: record)
                     }
                 }
             }
             ForEach(buttonGroups(for: record)) { group in
-                devicePageListRow {
-                    controllerButtonBox(group, record: record)
+                profileGroupBox(group.title, footer: controllerButtonFooter(group, record: record)) {
+                    ForEach(group.buttons, id: \.self) { button in
+                        profileGroupRow {
+                            if button == .clickSelect {
+                                selectRow(for: record)
+                            } else if button.canOwnGestures {
+                                mxActionRow(
+                                    mxLabel(for: button, record: record),
+                                    button: button,
+                                    record: record
+                                )
+                            } else {
+                                let mapped = record.selectedProfile.bindings[button]
+                                    ?? (button.isMXScrollDirection ? .scroll : .none)
+                                actionRow(
+                                    mxLabel(for: button, record: record),
+                                    button: button,
+                                    current: mapped
+                                )
+                            }
+                        }
+                        if button != group.buttons.last {
+                            Divider().padding(.leading, 12)
+                        }
+                    }
                 }
             }
         } header: {
             Text("Profiles")
-        } footer: {
-            if record.isGamepad, record.resolvedGamepadCapabilities.touchpad {
-                bullets(
-                    "Two separate Touchpad Gestures, like the MX gesture button.",
-                    "Hold and move for the four directions; lift without moving is Click.",
-                    "Physical click is Touchpad click under System."
-                )
-            }
         }
     }
 
-    private func controllerButtonBox(
-        _ group: DeviceButtonGroup,
-        record: DeviceRecord
-    ) -> some View {
-        controllerProfileBox(
-            group.title,
-            footer: controllerButtonFooter(group, record: record)
-        ) {
-            ForEach(group.buttons, id: \.self) { button in
-                controllerProfileRow {
-                    if button == .clickSelect {
-                        selectRow(for: record)
-                    } else if button.canOwnGestures {
-                        mxActionRow(
-                            mxLabel(for: button, record: record),
-                            button: button,
-                            record: record
-                        )
-                    } else {
-                        let mapped = record.selectedProfile.bindings[button]
-                            ?? (button.isMXScrollDirection ? .scroll : .none)
-                        actionRow(
-                            mxLabel(for: button, record: record),
-                            button: button,
-                            current: mapped
-                        )
-                    }
-                }
-
-                if button != group.buttons.last {
-                    Divider().padding(.leading, 12)
-                }
-            }
-
-        }
-    }
-
-    private func controllerButtonFooter(
-        _ group: DeviceButtonGroup,
-        record: DeviceRecord
-    ) -> Text? {
-        if group.id == "clickpad" {
-            return bullets(
-                "Double-tap Select for a double-click.",
-                "Hold for the Hold action."
-            )
-        }
-        if group.id == "sticks" {
-            return Text("L3 and R3 are stick clicks.")
-        }
-        if group.id == "shoulders", record.isGamepad {
-            let layout = record.resolvedGamepadLayout
-            let l2 = layout.label(for: .l2)
-            let r2 = layout.label(for: .r2)
-            let l1 = layout.label(for: .l1)
-            let r1 = layout.label(for: .r1)
-            return bullets(
-                "\(l2) / \(r2) are analog. Previous/Next tab uses travel: mid pull = one tab, full hold = repeat.",
-                "\(l1) / \(r1) are click buttons."
-            )
-        }
-        return nil
-    }
-
-    private func controllerProfileBox<Content: View>(
-        _ title: String? = nil,
+    private func profileGroupBox<Content: View>(
+        _ title: String,
         footer: Text? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let title {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.45)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 9)
-                    .padding(.bottom, 3)
-            }
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.45)
+                .padding(.horizontal, 12)
+                .padding(.top, 9)
+                .padding(.bottom, 3)
 
             content()
 
@@ -1455,7 +1187,7 @@ struct DeviceProfilePane: View {
                     .padding(.top, 3)
                     .padding(.bottom, 9)
             } else {
-                Color.clear.frame(height: 2)
+                Color.clear.frame(height: 4)
             }
         }
         .background(
@@ -1466,15 +1198,35 @@ struct DeviceProfilePane: View {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
         }
+        .padding(.vertical, 3)
+        .listRowSeparator(.hidden)
     }
 
-    private func controllerProfileRow<Content: View>(
+    private func profileGroupRow<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
+    }
+
+    private func controllerButtonFooter(
+        _ group: DeviceButtonGroup,
+        record: DeviceRecord
+    ) -> Text? {
+        if group.id == "sticks" {
+            return Text("L3 and R3 are stick clicks.")
+        }
+        if group.id == "shoulders", record.isGamepad {
+            let layout = record.resolvedGamepadLayout
+            let l2 = layout.label(for: .l2)
+            let r2 = layout.label(for: .r2)
+            let l1 = layout.label(for: .l1)
+            let r1 = layout.label(for: .r1)
+            return Text("\(l2) / \(r2) tab switching: half pull = one tab, full hold = repeat.")
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -1494,53 +1246,33 @@ struct DeviceProfilePane: View {
         } ?? []
 
         Section {
-            devicePageListRow {
-                devicePageCard {
-                    appProfileSelectorCard(for: record)
-                }
-            }
+            appProfileSelectorCard(for: record)
+                .listRowSeparator(.hidden)
             if !gestureButtons.isEmpty {
-                devicePageListRow {
-                    mxProfileMappingBox("Gesture-capable controls", buttons: gestureButtons, record: record)
-                }
+                mxMappingBox("Gesture-capable controls", buttons: gestureButtons, record: record)
             }
             if !otherButtons.isEmpty {
-                devicePageListRow {
-                    mxProfileMappingBox("Other buttons", buttons: otherButtons, record: record)
-                }
+                mxMappingBox("Other buttons", buttons: otherButtons, record: record)
             }
             if groups.contains(where: { $0.id == "thumb-wheel" }) {
-                devicePageListRow {
-                    mxThumbWheelModeBox()
-                }
+                mxThumbWheelBox()
             }
             if !mainButtons.isEmpty {
-                devicePageListRow {
-                    mxProfileMappingBox("Buttons", buttons: mainButtons, record: record)
-                }
+                mxMappingBox("Buttons", buttons: mainButtons, record: record)
             }
         } header: {
             Text("Profiles")
         }
     }
 
-    private func mxProfileMappingBox(
+    private func mxMappingBox(
         _ title: String,
         buttons: [DeviceButton],
         record: DeviceRecord
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.45)
-                .padding(.horizontal, 12)
-                .padding(.top, 9)
-                .padding(.bottom, 3)
-
+        profileGroupBox(title) {
             ForEach(buttons, id: \.self) { button in
-                VStack(spacing: 0) {
+                profileGroupRow {
                     if isGestureCapable(button, for: record) {
                         mxActionRow(
                             mxLabel(for: button, record: record),
@@ -1557,63 +1289,31 @@ struct DeviceProfilePane: View {
                         )
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-
                 if button != buttons.last {
-                    Divider()
-                        .padding(.leading, 12)
+                    Divider().padding(.leading, 12)
                 }
             }
-
-            Color.clear.frame(height: 2)
-        }
-        .background(
-            Palette.fill(colorScheme).opacity(0.34),
-            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
         }
     }
 
-    private func mxThumbWheelModeBox() -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Thumb wheel")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.45)
-                .padding(.horizontal, 12)
-                .padding(.top, 9)
-                .padding(.bottom, 3)
-
-            LabeledContent("Action") {
-                Picker("Action", selection: mxThumbWheelModeBinding) {
-                    ForEach(MXWheelMode.thumbWheelOptions, id: \.self) { mode in
-                        Text(mode.title).tag(mode)
+    private func mxThumbWheelBox() -> some View {
+        profileGroupBox("Thumb wheel") {
+            profileGroupRow {
+                LabeledContent {
+                    Picker("Action", selection: mxThumbWheelModeBinding) {
+                        ForEach(MXWheelMode.thumbWheelOptions, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                } label: {
+                    Text("Action")
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
+                .labeledContentStyle(CenteredLabeledContentStyle())
             }
-            .labeledContentStyle(CenteredLabeledContentStyle())
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-
-            Color.clear.frame(height: 2)
         }
-        .background(
-            Palette.fill(colorScheme).opacity(0.34),
-            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
-        }
-        .help("One action for both directions of the thumb wheel.")
     }
 
     private func appProfileSelectorCard(for record: DeviceRecord) -> some View {
@@ -1770,49 +1470,25 @@ struct DeviceProfilePane: View {
     @ViewBuilder
     private func easySwitchSection(
         hosts: [MXEasySwitchHost],
-        noun: String,
         canRefresh: Bool,
         onRefresh: @escaping () -> Void
     ) -> some View {
         let columns = (0..<3).map { index in
             hosts.first(where: { $0.index == index }) ?? MXEasySwitchHost.pending(index: index)
         }
-        let pending = columns.allSatisfy(\.isPending)
         Section {
-            devicePageCard {
-                HStack(alignment: .top, spacing: 8) {
-                    ForEach(columns) { host in
-                        easySwitchTile(host)
-                    }
-                }
-                .padding(10)
-                .background(
-                    Palette.fill(colorScheme).opacity(0.42),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(columns) { host in
+                    easySwitchTile(host)
                 }
             }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            .padding(.vertical, 3)
         } header: {
             HStack {
                 Text("Easy-Switch")
                 Spacer()
                 Button("Refresh", action: onRefresh)
                     .disabled(!canRefresh)
-            }
-        } footer: {
-            if pending {
-                bullets(
-                    "This \(noun) can stay paired with up to three computers.",
-                    "Channel names show once this \(noun) answers."
-                )
-            } else {
-                bullets("This \(noun) can stay paired with up to three computers.")
             }
         }
     }
@@ -1892,65 +1568,42 @@ struct DeviceProfilePane: View {
         let liveForRecord = monitor.isLiveKeyboardSelection(live)
         let disabled = !liveForRecord
         Section {
-            devicePageCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    devicePageRow {
-                        Toggle("Backlight", isOn: keyboardBacklightBinding)
-                            .disabled(disabled || !live.backlightSupported)
-                    }
-                    devicePageDivider()
-                    devicePageRow {
-                        Picker("Lighting effect", selection: keyboardEffectBinding) {
-                            ForEach(keyboardPickerEffects) { effect in
-                                Text(effect.title).tag(effect)
-                            }
-                        }
-                        .disabled(disabled || !live.backlightSupported)
-                    }
-                    devicePageDivider()
-                    devicePageRow {
-                        Toggle("Battery saving", isOn: keyboardBatterySavingBinding)
-                            .disabled(disabled || !live.batterySavingSupported)
-                    }
-                    if keyboardLayoutOption(.macOS) != nil, keyboardLayoutOption(.windows) != nil {
-                        devicePageDivider()
-                        devicePageRow {
-                            HStack {
-                                Text("OS layout")
-                                Spacer()
-                                Picker("OS layout", selection: keyboardOSLayoutBinding) {
-                                    Text("macOS").tag(LogitechHostOS?.some(.macOS))
-                                    Text("Windows").tag(LogitechHostOS?.some(.windows))
-                                }
-                                .pickerStyle(.segmented)
-                                .labelsHidden()
-                                .fixedSize()
-                            }
-                            .disabled(disabled)
-                        }
-                    }
-                }
-                .background(
-                    Palette.fill(colorScheme).opacity(0.34),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Palette.hairline(colorScheme), lineWidth: 1)
+            Toggle("Backlight", isOn: keyboardBacklightBinding)
+                .disabled(disabled || !live.backlightSupported)
+            Picker("Lighting effect", selection: keyboardEffectBinding) {
+                ForEach(keyboardPickerEffects) { effect in
+                    Text(effect.title).tag(effect)
                 }
             }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            .disabled(disabled || !live.backlightSupported)
+            Toggle(isOn: keyboardBatterySavingBinding) {
+                SettingsRowLabel(
+                    "Battery saving",
+                    "Turns the backlight off when charge is critically low."
+                )
+            }
+            .disabled(disabled || !live.batterySavingSupported)
+            if keyboardLayoutOption(.macOS) != nil, keyboardLayoutOption(.windows) != nil {
+                HStack {
+                    SettingsRowLabel(
+                        "OS layout",
+                        "Per Easy-Switch channel."
+                    )
+                    Spacer()
+                    Picker("OS layout", selection: keyboardOSLayoutBinding) {
+                        Text("macOS").tag(LogitechHostOS?.some(.macOS))
+                        Text("Windows").tag(LogitechHostOS?.some(.windows))
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .disabled(disabled)
+            }
         } header: {
             Text("Keyboard")
         } footer: {
-            bullets(
-                "Backlight and battery saving are stored on the keyboard.",
-                "Battery saving turns the backlight off when charge is critically low.",
-                "OS layout is stored on the keyboard for the current Easy-Switch channel.",
-                "Quit Logi Options+ if HID++ stays disconnected."
-            )
+            Text("Quit Logi Options+ if HID++ stays disconnected.")
         }
     }
 
@@ -2165,16 +1818,48 @@ struct DeviceProfilePane: View {
 }
 
 /// Device name with the hardware's UTF-8 byte limit (Chinese characters are 3 bytes each).
+/// Commits on Return or focus loss; Escape reverts.
 private struct DeviceNameField: View {
     let name: String
     let byteLimit: Int?
-    let onRename: (String) -> Void
+    let noun: String
+    let status: FriendlyNameWrite?
+    let onCommit: (String) -> Void
 
     @State private var text = ""
+    @State private var committed: String?
+    @FocusState private var focused: Bool
+
+    private var statusText: String? {
+        switch status {
+        case .waiting: "Saves to the \(noun) when connected."
+        case .saving: "Saving to the \(noun)…"
+        case .saved: "Saved to the \(noun)."
+        case .failed: "Couldn’t save to the \(noun). Press Return to retry."
+        case nil: nil
+        }
+    }
+
+    private func commit() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unchanged = trimmed == name || trimmed == committed
+        guard !unchanged || status == .failed else { return }
+        committed = trimmed
+        onCommit(trimmed)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("Name", text: $text)
+            TextField(text: $text) {
+                SettingsRowLabel("Name", statusText)
+            }
+            .focused($focused)
+            .onSubmit(commit)
+            .onExitCommand {
+                text = name
+                committed = nil
+                focused = false
+            }
             if let byteLimit {
                 Text("\(text.utf8.count)/\(byteLimit)")
                     .font(.caption)
@@ -2184,18 +1869,19 @@ private struct DeviceNameField: View {
             }
         }
         .onAppear { text = name }
+        .onDisappear(perform: commit)
         .onChange(of: name) { _, newName in
-            if newName != text.trimmingCharacters(in: .whitespacesAndNewlines) {
+            let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !focused || typed == committed {
                 text = newName
             }
+        }
+        .onChange(of: focused) { _, isFocused in
+            if !isFocused { commit() }
         }
         .onChange(of: text) { _, newText in
             if let byteLimit, newText.utf8.count > byteLimit {
                 text = MXFriendlyNameHIDPP.clipped(newText, maxBytes: byteLimit)
-                return
-            }
-            if newText.trimmingCharacters(in: .whitespacesAndNewlines) != name {
-                onRename(newText)
             }
         }
     }

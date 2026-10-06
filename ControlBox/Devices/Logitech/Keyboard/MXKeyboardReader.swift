@@ -737,13 +737,19 @@ final class MXKeyboardReader {
         loadEasySwitchHosts()
     }
 
-    func setFriendlyName(_ name: String) {
+    func setFriendlyName(_ name: String, completion: @escaping (Bool) -> Void) {
         lock.lock()
         let ready = snapshot.hidppReady
         lock.unlock()
-        guard ready else { return }
+        guard ready else {
+            completion(false)
+            return
+        }
         lookup(MXFriendlyNameHIDPP.featureID) { [weak self] index in
-            guard let self, let index else { return }
+            guard let self, let index else {
+                completion(false)
+                return
+            }
             MXFriendlyNameHIDPP.set(
                 name: name,
                 featureIndex: index,
@@ -753,8 +759,9 @@ final class MXKeyboardReader {
                         return
                     }
                     self.request(featureIndex: feature, function: function, params: params, completion: completion)
-                }
-            ) { _ in }
+                },
+                completion: completion
+            )
         }
     }
 

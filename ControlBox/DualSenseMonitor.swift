@@ -41,7 +41,8 @@ final class DualSenseMonitor {
         !accessibilityTrusted || !inputMonitoringTrusted
     }
     private var suppressedDeviceKeys: Set<String> = []
-    private var friendlyNameWriteWork: DispatchWorkItem?
+    private var pendingFriendlyNames: [String: String] = [:]
+    var friendlyNameWrites: [String: FriendlyNameWrite] = [:]
 
     var selectedDevice: ConnectedBluetoothDevice? {
         if let selectedDeviceID, let match = connectedDevices.first(where: { $0.id == selectedDeviceID }) {
@@ -932,21 +933,79 @@ final class DualSenseMonitor {
         return nil
     }
 
-    func renameSelectedDevice(_ name: String) {
+    func renameDevice(_ id: String, to name: String) {
+        guard let record = deviceRecord(for: id) else { return }
         var trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let limit = selectedFriendlyNameLimit {
+        if let limit = friendlyNameLimit(for: record) {
             trimmed = MXFriendlyNameHIDPP.clipped(trimmed, maxBytes: limit)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        updateSelectedRecord { record in
+        updateRecord(id) { record in
             record.customName = trimmed.isEmpty ? nil : trimmed
         }
-        friendlyNameWriteWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.writeSelectedFriendlyName(trimmed)
+        guard record.isMXMaster || record.isMXKeyboard else { return }
+        pendingFriendlyNames[id] = trimmed
+        writePendingFriendlyName(id)
+    }
+
+    private func friendlyNameLimit(for record: DeviceRecord) -> Int? {
+        if record.isMXKeyboard {
+            return liveKeyboard(for: record)?.friendlyNameMaxLength
         }
-        friendlyNameWriteWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+        if record.isMXMaster { return reader(for: record)?.current.friendlyNameMaxLength }
+        return nil
+    }
+
+    private func liveKeyboard(for record: DeviceRecord) -> MXKeyboardSnapshot? {
+        let live = keyboard.snapshot
+        let matches = isLiveKeyboardDevice(
+            kind: record.kind,
+            address: record.address,
+            name: record.name,
+            live: live,
+            unitID: record.unitID,
+            wpid: record.wirelessProductID,
+            connection: record.logitechKey.connection
+        )
+        return matches ? live : nil
+    }
+
+    /// Device name writes wait until that device's HID++ `0x0007` is probed, then go to
+    /// that record's reader, never whichever device is selected by then.
+    private func writePendingFriendlyName(_ id: String) {
+        guard let name = pendingFriendlyNames[id], let record = deviceRecord(for: id) else { return }
+        let write: (@escaping (Bool) -> Void) -> Void
+        if record.isMXKeyboard, let live = liveKeyboard(for: record),
+           live.hidppReady, live.friendlyNameMaxLength != nil {
+            write = { [keyboard] done in keyboard.setFriendlyName(name, completion: done) }
+        } else if record.isMXMaster, let reader = reader(for: record),
+                  reader.current.friendlyNameMaxLength != nil {
+            write = { done in reader.setFriendlyName(name, completion: done) }
+        } else {
+            friendlyNameWrites[id] = .waiting
+            return
+        }
+        friendlyNameWrites[id] = .saving
+        write { [weak self] ok in
+            DispatchQueue.main.async {
+                guard let self, self.pendingFriendlyNames[id] == name else { return }
+                self.pendingFriendlyNames.removeValue(forKey: id)
+                self.friendlyNameWrites[id] = ok ? .saved : .failed
+                guard ok else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    if self?.friendlyNameWrites[id] == .saved {
+                        self?.friendlyNameWrites[id] = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func retryWaitingFriendlyNames() {
+        guard !pendingFriendlyNames.isEmpty else { return }
+        for id in pendingFriendlyNames.keys where friendlyNameWrites[id] == .waiting {
+            writePendingFriendlyName(id)
+        }
     }
 
     func reloadEasySwitch(isKeyboard: Bool) {
@@ -956,17 +1015,6 @@ final class DualSenseMonitor {
         }
         guard let record = selectedRecord, let reader = reader(for: record) else { return }
         reader.reloadEasySwitchHosts()
-    }
-
-    private func writeSelectedFriendlyName(_ name: String) {
-        guard let record = selectedRecord else { return }
-        if record.isMXKeyboard {
-            keyboard.setFriendlyName(name)
-            return
-        }
-        if record.isMXMaster, let reader = reader(for: record) {
-            reader.setFriendlyName(name)
-        }
     }
 
     func updateSelectedSummary(_ summary: String) {
@@ -1210,6 +1258,7 @@ final class DualSenseMonitor {
         }
         captureMXMasters()
         captureKeyboard()
+        retryWaitingFriendlyNames()
         if appleTVShouldCapture {
             let device = connectedDevices.first(where: {
                 $0.deviceKind == .appleTVRemote && $0.isConnected

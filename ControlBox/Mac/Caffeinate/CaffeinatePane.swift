@@ -9,12 +9,6 @@ struct CaffeinatePane: View {
             Form {
                 Section {
                     Toggle("Show in menu bar", isOn: $settings.caffeinateMenuBarEnabled)
-                } footer: {
-                    footerBullets(
-                        "Separate extra. The Control Box icon stays.",
-                        "Click for how long to keep this Mac awake.",
-                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
-                    )
                 }
 
                 Section {
@@ -62,8 +56,7 @@ struct CaffeinatePane: View {
     private var footer: Text {
         footerBullets(
             "Stops idle sleep and keeps the display on.",
-            "Closing the lid can still sleep a MacBook.",
-            "Off when Control Box quits."
+            "Closing the lid can still sleep a MacBook."
         )
     }
 }

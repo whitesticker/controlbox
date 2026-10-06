@@ -148,5 +148,44 @@ func footerBullets(_ lines: String...) -> Text {
 }
 
 func footerBullets(_ lines: [String]) -> Text {
-    Text(lines.map { "• \($0)" }.joined(separator: "\n"))
+    if lines.count == 1 {
+        return Text(lines[0])
+    }
+    return Text(lines.map { "• \($0)" }.joined(separator: "\n"))
+}
+
+/// Row title with a secondary label under it. Notes about one row go here, not in the section footer.
+struct SettingsRowLabel: View {
+    private let title: String
+    private let subtitle: String?
+
+    init(_ title: String, _ subtitle: String?) {
+        self.title = title
+        self.subtitle = subtitle
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+extension View {
+    /// Caption under a row that has no label of its own, such as a button.
+    func rowCaption(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            self
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }

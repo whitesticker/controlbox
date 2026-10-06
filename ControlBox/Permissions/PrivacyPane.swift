@@ -7,21 +7,17 @@ struct PrivacyPane: View {
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("Status") {
+                    LabeledContent {
                         HStack(spacing: 8) {
                             Circle()
                                 .fill(monitor.allPermissionsGranted ? Palette.good : Palette.bad)
                                 .frame(width: 8, height: 8)
                             Text(monitor.allPermissionsGranted ? "All granted" : "Action needed")
                         }
-                    }
-                } footer: {
-                    if monitor.allPermissionsGranted {
-                        Text("Accessibility and Input Monitoring are on.")
-                    } else {
-                        footerBullets(
-                            "Accessibility and Input Monitoring are required for most features.",
-                            "Relaunch after granting those two."
+                    } label: {
+                        SettingsRowLabel(
+                            "Status",
+                            monitor.allPermissionsGranted ? nil : "Relaunch after granting."
                         )
                     }
                 }
@@ -29,6 +25,7 @@ struct PrivacyPane: View {
                 Section {
                     permissionRow(
                         title: "Accessibility",
+                        subtitle: "Devices, Window Management, Display Arrangement, Dock Previews.",
                         allowed: monitor.accessibilityTrusted
                     )
                     if !monitor.accessibilityTrusted {
@@ -39,18 +36,12 @@ struct PrivacyPane: View {
                             monitor.openAccessibilitySettings()
                         }
                     }
-                } footer: {
-                    footerBullets(
-                        "Devices: keys, clicks, gestures, and volume.",
-                        "Window Management.",
-                        "Display Arrangement shortcut.",
-                        "Dock Previews: which Dock icon the pointer is on."
-                    )
                 }
 
                 Section {
                     permissionRow(
                         title: "Input Monitoring",
+                        subtitle: "Pointer & Scroll wheel speed and Caps Lock.",
                         allowed: monitor.inputMonitoringTrusted
                     )
                     if !monitor.inputMonitoringTrusted {
@@ -61,11 +52,6 @@ struct PrivacyPane: View {
                             monitor.openInputMonitoringSettings()
                         }
                     }
-                } footer: {
-                    footerBullets(
-                        "Pointer & Scroll: wheel speed and direction.",
-                        "Caps Lock as a modifier."
-                    )
                 }
 
                 Section {
@@ -73,23 +59,19 @@ struct PrivacyPane: View {
                     if monitor.backgroundNeedsApproval {
                         permissionRow(
                             title: "Background",
+                            subtitle: "Turn on Allow in the Background for Control Box.",
                             allowed: false
                         )
                         Button("Open Login Items & Background Settings") {
                             monitor.openBackgroundSettings()
                         }
                     }
-                } footer: {
-                    footerBullets(
-                        "Starts Control Box at login.",
-                        "Listed under System Settings → General → Login Items & Extensions.",
-                        "You may also need Allow in the Background."
-                    )
                 }
 
                 Section {
                     permissionRow(
                         title: "System Audio Recording",
+                        subtitle: "Sound per-app volume.",
                         allowed: monitor.screenCaptureTrusted
                     )
                     if !monitor.screenCaptureTrusted {
@@ -100,16 +82,12 @@ struct PrivacyPane: View {
                             monitor.openScreenCaptureSettings()
                         }
                     }
-                } footer: {
-                    footerBullets(
-                        "Sound: per-app volume only.",
-                        "Not Screen Recording. Devices do not use this."
-                    )
                 }
 
                 Section {
                     permissionRow(
                         title: "Screen Recording",
+                        subtitle: "Dock Preview thumbnails.",
                         allowed: monitor.screenRecordingTrusted
                     )
                     if !monitor.screenRecordingTrusted {
@@ -120,12 +98,6 @@ struct PrivacyPane: View {
                             monitor.openScreenRecordingSettings()
                         }
                     }
-                } footer: {
-                    footerBullets(
-                        "Dock Previews: live thumbnails.",
-                        "Titles still work without it.",
-                        "Not the System Audio Recording grant used by Sound."
-                    )
                 }
 
                 if monitor.needsRelaunchForPermissions {
@@ -133,12 +105,6 @@ struct PrivacyPane: View {
                         Button("Relaunch Control Box") {
                             monitor.relaunchApp()
                         }
-                    } footer: {
-                        footerBullets(
-                            "Relaunch so this copy picks up new grants.",
-                            "Debug builds keep the same Apple Development identity.",
-                            "Remove leftover ad-hoc Control Box rows if macOS lists more than one."
-                        )
                     }
                 }
             }
@@ -154,14 +120,16 @@ struct PrivacyPane: View {
         )
     }
 
-    private func permissionRow(title: String, allowed: Bool) -> some View {
-        LabeledContent(title) {
+    private func permissionRow(title: String, subtitle: String, allowed: Bool) -> some View {
+        LabeledContent {
             HStack(spacing: 8) {
                 Circle()
                     .fill(allowed ? Palette.good : Palette.bad)
                     .frame(width: 8, height: 8)
                 Text(allowed ? "Allowed" : "Not allowed")
             }
+        } label: {
+            SettingsRowLabel(title, subtitle)
         }
     }
 }

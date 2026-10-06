@@ -10,23 +10,18 @@ struct DockPreviewPane: View {
                 Section {
                     Toggle("Show window previews on the Dock", isOn: enabledBinding)
                 } footer: {
-                    footer
+                    Text("Accessibility required.")
                 }
 
                 Section {
                     Toggle("Show window previews in the app switcher", isOn: switcherBinding)
                     SettingsSlider(
                         "Preview size",
+                        description: "Switcher only",
                         value: switcherScaleBinding,
                         in: Double(DockPreview.minCardScale)...Double(DockPreview.maxSwitcherCardScale),
                         enabled: catalog.switcherEnabled,
                         valueText: switcherScaleText
-                    )
-                } footer: {
-                    footerBullets(
-                        "Same cards while Command-Tab is up, without titles or HUD.",
-                        "Click a card to open that window.",
-                        "Preview size is only for the switcher. Off until this toggle is on."
                     )
                 }
 
@@ -44,11 +39,6 @@ struct DockPreviewPane: View {
                         in: Double(DockPreview.minCardScale)...Double(DockPreview.maxCardScale),
                         enabled: catalog.enabled,
                         valueText: scaleText
-                    )
-                } footer: {
-                    footerBullets(
-                        "Hover delay is the first wait; moving to another icon updates immediately.",
-                        "Dock preview size defaults to 130%."
                     )
                 }
 
@@ -69,23 +59,13 @@ struct DockPreviewPane: View {
                             catalog.openScreenRecordingSettings()
                         }
                     } footer: {
-                        footerBullets(
-                            "Live thumbnails need Screen Recording.",
-                            "Without it, windows still list by title.",
-                            "Not the same grant as System Audio Recording on Sound."
-                        )
+                        Text("Live thumbnails need Screen Recording.")
                     }
                 }
 
                 Section {
                     Toggle(isOn: cardSwitchBinding) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Switch to Space")
-                            Text("A card on another Space slides that display to it.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        SettingsRowLabel("Switch to Space", "A card on another Space slides that display to it.")
                     }
                     HStack {
                         Text("When already in front")
@@ -105,13 +85,10 @@ struct DockPreviewPane: View {
 
                 Section {
                     Toggle(isOn: switcherSelectBinding) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Switch to Space")
-                            Text("Pick an app in Command-Tab that has no window on a current Space: go to the Space that has one, on this display or another.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        SettingsRowLabel(
+                            "Switch to Space",
+                            "Command-Tab to an app with no window here goes to its Space."
+                        )
                     }
                 } header: {
                     Text("App switcher select")
@@ -191,18 +168,4 @@ struct DockPreviewPane: View {
         "\(Int((catalog.switcherCardScale * 100).rounded()))%"
     }
 
-    private var footer: Text {
-        if catalog.enabled {
-            return footerBullets(
-                "Hover a Dock icon that has windows to preview them. Apps with none stay native.",
-                "Click a card to focus. HUD: close, minimize/restore, quit. Other Spaces always show quit.",
-                "Hides while a Dock right-click menu is open.",
-                "Accessibility must be on. Native Dock clicks still work."
-            )
-        }
-        return footerBullets(
-            "Off until this is on.",
-            "Then hover a Dock icon to see that app’s windows, including minimized and other Spaces."
-        )
-    }
 }

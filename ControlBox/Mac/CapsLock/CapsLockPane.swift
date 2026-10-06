@@ -9,7 +9,12 @@ struct CapsLockPane: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Use Caps Lock as a modifier", isOn: enabledBinding)
+                    Toggle(isOn: enabledBinding) {
+                        SettingsRowLabel(
+                            "Use Caps Lock as a modifier",
+                            "Hold for the modifiers below; it no longer toggles capitals."
+                        )
+                    }
                     ModifierChordPicker(
                         title: "Caps Lock acts as",
                         flags: flagsBinding,
@@ -28,7 +33,7 @@ struct CapsLockPane: View {
                             .foregroundStyle(.red)
                     }
                 } footer: {
-                    footer
+                    Text("Input Monitoring must be on.")
                 }
             }
             .formStyle(.grouped)
@@ -47,15 +52,6 @@ struct CapsLockPane: View {
         Binding(
             get: { catalog.flags },
             set: { catalog.setFlags($0) }
-        )
-    }
-
-    private var footer: Text {
-        footerBullets(
-            "Caps Lock no longer toggles capitals.",
-            "Hold it for the modifiers below (default: Control).",
-            "Other apps do not see Caps Lock or a Hyper key.",
-            "Input Monitoring must be on."
         )
     }
 }

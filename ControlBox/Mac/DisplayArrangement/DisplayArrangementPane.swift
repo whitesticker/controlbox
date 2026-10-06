@@ -26,11 +26,6 @@ struct DisplayArrangementPane: View {
                         editor = catalog.newEditorSession()
                     }
                     .disabled(catalog.live.screens.count < 2)
-                } footer: {
-                    footerBullets(
-                        "Save Current captures this layout.",
-                        "New Arrangement is an editor; screens do not move until you apply."
-                    )
                 }
 
                 if let applyMessage = catalog.applyMessage {
@@ -41,7 +36,12 @@ struct DisplayArrangementPane: View {
                 }
 
                 Section {
-                    Toggle("Keyboard shortcut", isOn: shortcutEnabledBinding)
+                    Toggle(isOn: shortcutEnabledBinding) {
+                        SettingsRowLabel(
+                            "Keyboard shortcut",
+                            "Hold at least three modifiers, then 1–9 to apply, or arrows to cycle."
+                        )
+                    }
                     ModifierChordPicker(
                         title: "Shortcut keys",
                         flags: shortcutFlagsBinding,
@@ -57,12 +57,7 @@ struct DisplayArrangementPane: View {
                 } header: {
                     Text("Shortcut")
                 } footer: {
-                    footerBullets(
-                        "Hold at least three modifiers, then 1–9 to apply, or arrows to cycle.",
-                        "Accessibility required.",
-                        "Cannot match Window Management move, resize, or throw.",
-                        "If Organize uses the same modifiers, it cannot use 1–9 or arrows."
-                    )
+                    Text("Accessibility required.")
                 }
 
                 if catalog.store.presets.isEmpty && catalog.live.screens.count < 2 {

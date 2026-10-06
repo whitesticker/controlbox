@@ -8,16 +8,13 @@ struct PointerScrollPane: View {
         NavigationStack {
             Form {
                 Section {
-                    SettingsSlider("Pointer speed", value: pointerSpeedBinding)
+                    SettingsSlider(
+                        "Pointer speed",
+                        caption: "Mice only; trackpads use System Settings.",
+                        value: pointerSpeedBinding
+                    )
                 } header: {
                     Text("Pointer")
-                } footer: {
-                    footerBullets(
-                        "Scales cursor motion from every USB and Bluetooth mouse.",
-                        "Trackpads stay on System Settings.",
-                        "MX also gets a HID++ pointer scale so a DPI change does not change cursor feel.",
-                        "DualSense and Siri Remote keep their own sliders on the device page."
-                    )
                 }
 
                 Section {
@@ -31,14 +28,7 @@ struct PointerScrollPane: View {
                 } header: {
                     Text("Scroll")
                 } footer: {
-                    footerBullets(
-                        "Wheel speed scales vertical and horizontal mouse-wheel events.",
-                        "An MX thumb wheel in a scroll mode uses the Thumb wheel slider on Calibration.",
-                        "Trackpad and Magic Mouse gestures stay native.",
-                        "Smooth scrolling eases MX thumb-wheel travel in every thumb mode, and turns on the MX high-res main wheel.",
-                        "Accessibility is required for wheel speed.",
-                        "DPI is on Calibration."
-                    )
+                    Text("MX DPI and thumb-wheel speed are on Mouse Settings.")
                 }
             }
             .formStyle(.grouped)

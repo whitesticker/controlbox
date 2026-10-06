@@ -10,12 +10,6 @@ struct SoundPane: View {
             Form {
                 Section {
                     Toggle("Show in menu bar", isOn: $settings.soundMenuBarEnabled)
-                } footer: {
-                    footerBullets(
-                        "Separate extra. The Control Box icon stays.",
-                        "Click for output and per-app volume.",
-                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
-                    )
                 }
 
                 Section {
@@ -40,11 +34,11 @@ struct SoundPane: View {
                             .foregroundStyle(.secondary)
                     } else {
                         if !catalog.conflictingMixers.isEmpty {
-                            Text("Quit \(catalog.conflictingMixers.joined(separator: ", ")) first. Only one app can tap a process at a time, so these sliders do nothing while that mixer is open.")
+                            Text("Quit \(catalog.conflictingMixers.joined(separator: ", ")) first; only one app can tap a process at a time.")
                                 .foregroundStyle(.secondary)
                         }
                         if !catalog.hasCaptureAccess {
-                            Text("Grant System Audio Recording for Control Box. Screen Recording is not required.")
+                            Text("Grant System Audio Recording. Screen Recording is not needed.")
                                 .foregroundStyle(.secondary)
                             Button("Request System Audio Recording…") {
                                 catalog.requestCaptureAccess()
@@ -54,7 +48,7 @@ struct SoundPane: View {
                             }
                         }
                         if catalog.apps.isEmpty {
-                            Text("Play something, then move that app’s slider. It stays in this list after that.")
+                            Text("Play something, then move its slider to keep it here.")
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(catalog.apps) { app in
@@ -73,10 +67,7 @@ struct SoundPane: View {
                 } header: {
                     Text("Apps")
                 } footer: {
-                    footerBullets(
-                        "Moving a slider keeps that app here.",
-                        "The saved level applies the next time it plays."
-                    )
+                    Text("Saved levels apply the next time an app plays.")
                 }
             }
             .formStyle(.grouped)

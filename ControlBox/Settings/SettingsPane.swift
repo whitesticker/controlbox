@@ -9,20 +9,17 @@ struct SettingsPane: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Hide Dock icon", isOn: $settings.hideDockIcon)
-                } footer: {
-                    footerBullets(
-                        "Stays in the menu bar.",
-                        "Command-Q closes the window; the app keeps running.",
-                        "Quit from the Control Box menu bar extra."
-                    )
+                    Toggle(isOn: $settings.hideDockIcon) {
+                        SettingsRowLabel(
+                            "Hide Dock icon",
+                            "Stays in the menu bar."
+                        )
+                    }
                 }
 
                 Section {
                     LabeledContent("Version", value: version)
                     Link("Website", destination: website)
-                } footer: {
-                    Text("Install instructions, screenshots, and source.")
                 }
             }
             .formStyle(.grouped)

@@ -11,12 +11,6 @@ struct DisplaysPane: View {
             Form {
                 Section {
                     Toggle("Show in menu bar", isOn: $settings.brightnessMenuBarEnabled)
-                } footer: {
-                    footerBullets(
-                        "Separate extra. The Control Box icon stays.",
-                        "Click for brightness sliders.",
-                        "Hide from Menu Bar turns this extra off; it does not quit Control Box."
-                    )
                 }
 
                 if catalog.displays.isEmpty {
@@ -66,13 +60,13 @@ struct DisplaysPane: View {
     @ViewBuilder
     private var unifiedSection: some View {
         Section {
-            Toggle("One slider for all displays", isOn: unifiedEnabledBinding)
-                .disabled(!catalog.canUnify && !catalog.unifiedEnabled)
+            Toggle(isOn: unifiedEnabledBinding) {
+                SettingsRowLabel("One slider for all displays", unifiedSubtitle)
+            }
+            .disabled(!catalog.canUnify && !catalog.unifiedEnabled)
             if catalog.unifiedEnabled {
                 SettingsSlider("Brightness", value: unifiedBrightnessBinding)
             }
-        } footer: {
-            unifiedFooter
         }
     }
 
@@ -90,15 +84,11 @@ struct DisplaysPane: View {
         )
     }
 
-    private var unifiedFooter: Text {
+    private var unifiedSubtitle: String {
         if catalog.canUnify {
-            return footerBullets(
-                "Remembers each panel’s mix relative to the brightest.",
-                "0% is all dark; 100% raises the brightest to full and scales the rest.",
-                "Off to set each display again."
-            )
+            return "Keeps each panel’s relative mix."
         }
-        return Text("Needs two brightness-adjustable displays.")
+        return "Needs two brightness-adjustable displays."
     }
 
     private func brightnessBinding(_ display: AttachedDisplay) -> Binding<Double> {
@@ -126,7 +116,7 @@ struct DisplaysPane: View {
         if display.canAdjustBrightness || display.canAdjustContrast || display.isBuiltIn {
             return display.detail
         }
-        return "\(display.detail). HDMI on some Apple silicon Macs cannot do DDC; USB-C / DisplayPort usually can."
+        return "\(display.detail). HDMI may not support DDC; try USB-C or DisplayPort."
     }
 }
 
@@ -150,10 +140,7 @@ private struct DisplayEngineSettings: View {
         } header: {
             Text("Hardware Control")
         } footer: {
-            footerBullets(
-                "Press Shift during launch for Safe mode: nothing is read from or written to displays.",
-                "Sync works best with “Change for all screens” below."
-            )
+            Text("Hold Shift at launch for Safe mode (no display reads or writes).")
         }
 
         Section {
@@ -167,25 +154,31 @@ private struct DisplayEngineSettings: View {
                 Text("Use window focus to determine which display to control").tag(MultiKeyboardBrightness.focusInsteadOfMouse.rawValue)
             }
             Toggle("Use fine OSD scale for brightness and contrast", isOn: boolBinding(.useFineScaleBrightness))
-            Toggle("Do not use alternative brightness keys", isOn: boolBinding(.disableAltBrightnessKeys, after: { app.updateMediaKeyTap() }))
-            Picker("Volume keys", selection: intBinding(.keyboardVolume, after: { app.updateMenusAndKeys() })) {
+            Toggle(isOn: boolBinding(.disableAltBrightnessKeys, after: { app.updateMediaKeyTap() })) {
+                SettingsRowLabel(
+                    "Do not use alternative brightness keys",
+                    "F14/F15: Scroll Lock and Pause on PC keyboards."
+                )
+            }
+            Picker(selection: intBinding(.keyboardVolume, after: { app.updateMenusAndKeys() })) {
                 Text("Standard keyboard volume and mute keys").tag(KeyboardVolume.media.rawValue)
                 Text("Disable keyboard").tag(KeyboardVolume.disabled.rawValue)
+            } label: {
+                SettingsRowLabel(
+                    "Volume keys",
+                    "Only when the audio output has no volume of its own."
+                )
             }
-            Picker("Volume keys control", selection: intBinding(.multiKeyboardVolume, after: { app.updateMediaKeyTap() })) {
+            Picker(selection: intBinding(.multiKeyboardVolume, after: { app.updateMediaKeyTap() })) {
                 Text("Depends on mouse pointer position").tag(MultiKeyboardVolume.mouse.rawValue)
                 Text("Change volume for all screens").tag(MultiKeyboardVolume.allScreens.rawValue)
                 Text("Use audio device name to determine which display to control").tag(MultiKeyboardVolume.audioDeviceNameMatching.rawValue)
+            } label: {
+                Text("Volume keys control")
             }
             Toggle("Use fine OSD scale for volume", isOn: boolBinding(.useFineScaleVolume))
         } header: {
             Text("Keyboard")
-        } footer: {
-            footerBullets(
-                "Alternative keys are the F14/F15 (Scroll Lock and Pause on PC keyboards, brightness keys on some Logitech keyboards).",
-                "Volume keys only reach a display when the selected audio output has no native volume control.",
-                "You can override audio device name under a display’s Advanced settings if needed."
-            )
         }
     }
 

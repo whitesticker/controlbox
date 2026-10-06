@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ModifierChordPicker: View {
     var title: String
+    var subtitle: String? = nil
     @Binding var flags: UInt64
     var minimumCount: Int = 0
     var occupied: [(name: String, flags: CGEventFlags)] = []
@@ -13,7 +14,7 @@ struct ModifierChordPicker: View {
 
     var body: some View {
         HStack {
-            Text(title)
+            SettingsRowLabel(title, subtitle)
             Spacer()
             chip("⌃", .maskControl)
             chip("⇧", .maskShift)

@@ -9,8 +9,10 @@ struct NightShiftPane: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("Adjust Night Shift from this curve", isOn: enabledBinding)
-                        .disabled(!catalog.isSupported)
+                    Toggle(isOn: enabledBinding) {
+                        SettingsRowLabel("Adjust Night Shift from this curve", enabledSubtitle)
+                    }
+                    .disabled(!catalog.isSupported)
                     TimelineView(.periodic(from: .now, by: 15)) { timeline in
                         LabeledContent("Now") {
                             Text(nowSummary(at: timeline.date))
@@ -18,8 +20,6 @@ struct NightShiftPane: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                } footer: {
-                    footer
                 }
 
                 Section {
@@ -64,20 +64,23 @@ struct NightShiftPane: View {
                 } header: {
                     Text("Yellowness")
                 } footer: {
-                    footerBullets(
-                        "X is time of day; Y is warmth (cool at the bottom, max yellow at the top).",
-                        "The top is warmer than System Settings More Warm.",
-                        "Add Point and Remove Point edit knots. Drag a knot to change time and warmth."
-                    )
+                    Text("Drag a knot to change its time and warmth.")
                 }
 
                 Section {
-                    Toggle("Schedule Light and Dark", isOn: appearanceEnabledBinding)
-                        .disabled(!catalog.isSupported)
+                    Toggle(isOn: appearanceEnabledBinding) {
+                        SettingsRowLabel(
+                            "Schedule Light and Dark",
+                            "Off keeps the current look."
+                        )
+                    }
+                    .disabled(!catalog.isSupported)
                     if catalog.appearanceSchedule.enabled {
-                        Picker("When", selection: appearanceModeBinding) {
+                        Picker(selection: appearanceModeBinding) {
                             Text("Sunset to sunrise").tag(AppearanceScheduleMode.sunset)
                             Text("Custom hours").tag(AppearanceScheduleMode.custom)
+                        } label: {
+                            Text("When")
                         }
                         .disabled(!catalog.isSupported)
                         if catalog.appearanceSchedule.mode == .custom {
@@ -108,17 +111,16 @@ struct NightShiftPane: View {
                     }
                 } header: {
                     Text("Appearance")
-                } footer: {
-                    footerBullets(
-                        "Apple Auto follows our all-day Night Shift window, so Control Box flips Light/Dark instead.",
-                        "Sunset uses this Mac’s time zone. Custom hours wrap past midnight.",
-                        "Off freezes the look that is on screen. Turning Night Shift off restores Apple Auto."
-                    )
                 }
 
                 Section {
-                    Toggle("Also adjust external brightness", isOn: brightnessFollowBinding)
-                        .disabled(!catalog.isSupported)
+                    Toggle(isOn: brightnessFollowBinding) {
+                        SettingsRowLabel(
+                            "Also adjust external brightness",
+                            "Warmer dims external monitors; built-in is left alone."
+                        )
+                    }
+                    .disabled(!catalog.isSupported)
                     if catalog.adjustExternalBrightness {
                         SettingsSlider(
                             "Swing",
@@ -130,11 +132,6 @@ struct NightShiftPane: View {
                     }
                 } header: {
                     Text("External brightness")
-                } footer: {
-                    footerBullets(
-                        "Warm curve dims external monitors; cool brightens them.",
-                        "Built-in panel is left alone. Default ±10%."
-                    )
                 }
             }
             .formStyle(.grouped)
@@ -215,19 +212,13 @@ struct NightShiftPane: View {
         return "\(NightShiftCurve.timeLabel(minutes: NightShiftCurve.minutes(from: date))) · \(percent)% · \(kelvin) K"
     }
 
-    private var footer: Text {
+    private var enabledSubtitle: String? {
         if !catalog.isSupported {
-            return Text("Night Shift is not available on this Mac.")
+            return "Night Shift is not available on this Mac."
         }
         if catalog.enabled {
-            return footerBullets(
-                "Control Box owns system Night Shift.",
-                "System Settings / Control Center changes are undone until you turn this off."
-            )
+            return "Control Box owns Night Shift; System Settings changes are undone."
         }
-        return footerBullets(
-            "Off until this is on.",
-            "Then Control Box owns system Night Shift from the curve."
-        )
+        return nil
     }
 }

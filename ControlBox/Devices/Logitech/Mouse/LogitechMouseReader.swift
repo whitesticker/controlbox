@@ -2487,15 +2487,21 @@ final class LogitechMouseReader {
         loadEasySwitchHosts()
     }
 
-    func setFriendlyName(_ name: String) {
-        guard ready else { return }
+    func setFriendlyName(_ name: String, completion: @escaping (Bool) -> Void) {
+        guard ready else {
+            completion(false)
+            return
+        }
         lookupFeature(
             MXFriendlyNameHIDPP.featureID,
             countsTowardTimeouts: false,
             allowShortReport: false,
             dropsPipeOnError: false
         ) { [weak self] index in
-            guard let self, let index else { return }
+            guard let self, let index else {
+                completion(false)
+                return
+            }
             MXFriendlyNameHIDPP.set(
                 name: name,
                 featureIndex: index,
@@ -2513,8 +2519,9 @@ final class LogitechMouseReader {
                         dropsPipeOnError: false,
                         completion: completion
                     )
-                }
-            ) { _ in }
+                },
+                completion: completion
+            )
         }
     }
 

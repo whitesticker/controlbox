@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsSlider: View {
     private let title: String
     private let detail: String?
+    private let caption: String?
     @Binding private var value: Double
     private var range: ClosedRange<Double>
     private var step: Double?
@@ -14,6 +15,7 @@ struct SettingsSlider: View {
     init(
         _ title: String,
         description: String? = nil,
+        caption: String? = nil,
         value: Binding<Double>,
         in range: ClosedRange<Double> = 0...1,
         step: Double? = nil,
@@ -23,6 +25,7 @@ struct SettingsSlider: View {
     ) {
         self.title = title
         self.detail = description
+        self.caption = caption
         self._value = value
         self.range = range
         self.step = step
@@ -32,14 +35,22 @@ struct SettingsSlider: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            label
-            LinearTickSlider(value: $value, in: range, step: step)
-                .frame(maxWidth: .infinity)
-            Text(displayedValue)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .frame(minWidth: 52, alignment: .trailing)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 12) {
+                label
+                LinearTickSlider(value: $value, in: range, step: step)
+                    .frame(maxWidth: .infinity)
+                Text(displayedValue)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(minWidth: 52, alignment: .trailing)
+            }
+            if let caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
@@ -48,6 +59,7 @@ struct SettingsSlider: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
         .accessibilityValue(displayedValue)
+        .accessibilityHint(caption ?? "")
         .accessibilityAdjustableAction { direction in
             let span = range.upperBound - range.lowerBound
             let delta = step ?? span / 20

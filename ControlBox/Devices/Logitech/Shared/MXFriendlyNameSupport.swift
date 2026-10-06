@@ -1,5 +1,13 @@
 import Foundation
 
+/// Where a committed device name is on its way to the device's own storage.
+enum FriendlyNameWrite: Equatable {
+    case waiting
+    case saving
+    case saved
+    case failed
+}
+
 /// HID++ `0x0007` Device Friendly Name. Stored on the mouse or keyboard.
 /// `0x0005` is the factory model name and is read-only.
 enum MXFriendlyNameHIDPP {

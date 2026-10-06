@@ -59,7 +59,7 @@ final class MXKeyboardSession: DeviceFamilySession {
         reader.reloadEasySwitchHosts()
     }
 
-    func setFriendlyName(_ name: String) {
-        reader.setFriendlyName(name)
+    func setFriendlyName(_ name: String, completion: @escaping (Bool) -> Void) {
+        reader.setFriendlyName(name, completion: completion)
     }
 }
