@@ -37,6 +37,9 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [bolt-pair-mouse-asks-keyboard-code.md](bolt-pair-mouse-asks-keyboard-code.md) | Bolt pairing a mouse asks for a typed keyboard code |
 | [two-same-model-mice-one-row.md](two-same-model-mice-one-row.md) | Two MX Master 3S share one sidebar row |
 | [mappings-lost-after-mac-sleep.md](mappings-lost-after-mac-sleep.md) | Mouse mappings stop after Mac sleep / wake |
+| [bolt-name-non-ascii.md](bolt-name-non-ascii.md) | Bolt page shows a Chinese device name as "3"; rename byte limit |
+| [monitor-ignores-ddc-reads.md](monitor-ignores-ddc-reads.md) | External monitor brightness does nothing (monitor ignores DDC reads) |
+| [clicks-dead-system-wide.md](clicks-dead-system-wide.md) | Clicks stop working from every device (a held Magic Mouse, not Control Box) |
 | [haptic-swipe-scales-with-dpi.md](haptic-swipe-scales-with-dpi.md) | High DPI makes hold-to-swipe much faster than 1000 DPI |
 | [dockswipe-down-skips-app-expose.md](dockswipe-down-skips-app-expose.md) | Swipe down never opens App Exposé |
 | [haptic-tap-starts-swipe.md](haptic-tap-starts-swipe.md) | A tap also peeks Spaces or Mission Control |
