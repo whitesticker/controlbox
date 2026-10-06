@@ -284,7 +284,9 @@ struct NightShiftCurveView: View {
         }
 
         func x(forMinutes minutes: Double) -> CGFloat {
-            plot.minX + CGFloat(NightShiftCurve.wrap(minutes) / NightShiftCurve.minutesPerDay) * plot.width
+            let day = NightShiftCurve.minutesPerDay
+            let clamped = minutes == day ? day : NightShiftCurve.wrap(minutes)
+            return plot.minX + CGFloat(clamped / day) * plot.width
         }
 
         func y(forWarmth warmth: Double) -> CGFloat {
