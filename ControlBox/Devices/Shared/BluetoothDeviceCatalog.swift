@@ -607,9 +607,9 @@ private struct HIDNameIndex {
             ])
         }
         matching.append(contentsOf: LogitechHIDPPDiscovery.hidManagerMatches())
+        // Enumerate only. Matching alone lists devices and properties; opening every
+        // mouse and keyboard collection on each refresh leaked Mach ports.
         IOHIDManagerSetDeviceMatchingMultiple(manager, matching as CFArray)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        defer { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
 
         var records: [HIDRecord] = []
         var logitechHIDPPProductIDs = Set<Int>()

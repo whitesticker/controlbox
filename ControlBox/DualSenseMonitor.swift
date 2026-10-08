@@ -1076,8 +1076,10 @@ final class DualSenseMonitor {
         } catch {
             openBackgroundSettings()
         }
-        refreshPermissions()
-        if SMAppService.mainApp.status == .requiresApproval {
+        refreshTrust()
+        let status = SMAppService.mainApp.status
+        applyLoginItemStatus(status)
+        if status == .requiresApproval {
             openBackgroundSettings()
         }
     }
@@ -1092,7 +1094,8 @@ final class DualSenseMonitor {
         } catch {
             openBackgroundSettings()
         }
-        refreshPermissions()
+        refreshTrust()
+        applyLoginItemStatus(SMAppService.mainApp.status)
     }
 
     func openBackgroundSettings() {
@@ -1110,6 +1113,38 @@ final class DualSenseMonitor {
     }
 
     func refreshPermissions() {
+        refreshTrust()
+        refreshLoginItemStatus()
+    }
+
+    /// `SMAppService.status` is a synchronous round trip to smd (~50 ms each on this Mac).
+    /// The main thread also runs the key, click, and scroll taps, so read it in the
+    /// background and never from the 120 Hz poll. Login items only change via a
+    /// toggle here or System Settings, and returning from Settings fires didBecomeActive.
+    private func refreshLoginItemStatus() {
+        Task.detached(priority: .utility) { [weak self] in
+            let status = SMAppService.mainApp.status
+            await self?.applyLoginItemStatus(status)
+        }
+    }
+
+    private func applyLoginItemStatus(_ status: SMAppService.Status) {
+        let background = status == .enabled
+        if backgroundAllowed != background {
+            backgroundAllowed = background
+        }
+        let login = status != .notRegistered
+        if launchAtLoginOn != login {
+            launchAtLoginOn = login
+        }
+        let needsApproval = status == .requiresApproval
+        if backgroundNeedsApproval != needsApproval {
+            backgroundNeedsApproval = needsApproval
+        }
+    }
+
+    /// TCC preflights only; cheap enough for the 2 s poll.
+    private func refreshTrust() {
         lastTrustProbe = Date()
         let accessibility = controlEngine.isAccessibilityTrusted
         if accessibilityTrusted != accessibility {
@@ -1118,18 +1153,6 @@ final class DualSenseMonitor {
         let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
         if inputMonitoringTrusted != inputMonitoring {
             inputMonitoringTrusted = inputMonitoring
-        }
-        let background = SMAppService.mainApp.status == .enabled
-        if backgroundAllowed != background {
-            backgroundAllowed = background
-        }
-        let login = SMAppService.mainApp.status != .notRegistered
-        if launchAtLoginOn != login {
-            launchAtLoginOn = login
-        }
-        let needsApproval = SMAppService.mainApp.status == .requiresApproval
-        if backgroundNeedsApproval != needsApproval {
-            backgroundNeedsApproval = needsApproval
         }
         let screenCapture = AppVolumeMixer.hasCaptureAccess
         if screenCaptureTrusted != screenCapture {
@@ -1235,7 +1258,7 @@ final class DualSenseMonitor {
             lastDeviceProbe = Date()
         }
         if Date().timeIntervalSince(lastTrustProbe) > 2 {
-            refreshPermissions()
+            refreshTrust()
         }
 
         let livePads = gamepads.pollAll()

@@ -84,5 +84,6 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [modifier-chip-tint.md](modifier-chip-tint.md) | Modifier chips do not look selected on older macOS |
 | [apple-tv-battery-registry-cpu.md](apple-tv-battery-registry-cpu.md) | Idle Control Box pegs a CPU core when the Apple TV remote is attached |
 | [poll-timer-cpu.md](poll-timer-cpu.md) | After the battery walk, idle Debug still sits at 10–20% CPU |
+| [main-thread-stalls-lag-whole-mac.md](main-thread-stalls-lag-whole-mac.md) | After a day up, typing, pointer, and scroll lag across the whole Mac |
 | [polling-loops.md](polling-loops.md) | Inventory of timers and system-API polls (start here when idle CPU or a loop looks wrong) |
 | [generic-gamepad.md](generic-gamepad.md) | Non-Sony controller is "Not supported yet"; plan for a `GamepadSession` base with DualSense as a subclass, plus its Calibration page |

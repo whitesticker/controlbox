@@ -4,10 +4,10 @@ import IOKit.storage
 
 // MARK: - DiskMonitor
 //
-// Samples two independent things per tick:
+// Samples two independent things:
 //   1. Volume capacity (name/mount point/total/free/used/internal) via
-//      FileManager's volume resource keys — a cheap, synchronous filesystem
-//      query, no deltas involved.
+//      FileManager's volume resource keys, every 30 s. The "important usage"
+//      key is a CacheDelete round trip, not a cheap filesystem query.
 //   2. Aggregate disk I/O throughput (bytes/sec read & write) via IOKit,
 //      by summing the cumulative "Statistics" byte counters exposed by
 //      every IOBlockStorageDriver in the I/O Registry, then differencing
@@ -25,13 +25,23 @@ final class DiskMonitor {
     /// rates from the byte-count deltas.
     private var previousDate: Date?
 
+    /// `volumeAvailableCapacityForImportantUsage` asks `deleted` to total every
+    /// CacheDelete service's purgeable space, so capacity is refreshed slowly.
+    private var cachedVolumes: [DiskVolumeSample] = []
+    private var volumesDate: Date?
+    private let volumeInterval: TimeInterval = 30
+
     init() {}
 
     // MARK: Public API
 
     func sample() -> DiskSample {
         var result = DiskSample()
-        result.volumes = fetchVolumes()
+        if volumesDate.map({ Date().timeIntervalSince($0) >= volumeInterval }) ?? true {
+            cachedVolumes = fetchVolumes()
+            volumesDate = Date()
+        }
+        result.volumes = cachedVolumes
 
         let (totalRead, totalWrite) = fetchCumulativeIOBytes()
         result.totalRead = totalRead

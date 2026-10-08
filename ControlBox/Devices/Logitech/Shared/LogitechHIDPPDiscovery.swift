@@ -91,8 +91,6 @@ enum LogitechHIDPPDiscovery {
             kIOHIDDeviceUsagePageKey as String: 0x01,
             kIOHIDDeviceUsageKey as String: 0x02
         ] as CFDictionary)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        defer { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
         guard let copied = IOHIDManagerCopyDevices(manager) else { return [] }
         var productIDs = Set<Int>()
         for case let device as IOHIDDevice in (copied as NSSet) {
