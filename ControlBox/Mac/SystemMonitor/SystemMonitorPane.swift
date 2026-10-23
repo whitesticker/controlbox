@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SystemMonitorPane: View {
     @Bindable var monitor: DualSenseMonitor
     @ObservedObject private var store = PreferencesStore.shared
     @State private var addingLauncherApp = false
+    @State private var draggingRow: MetricRow?
 
     var body: some View {
         NavigationStack {
@@ -47,9 +49,15 @@ struct SystemMonitorPane: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                         }
-                    }
-                    .onMove { indices, newOffset in
-                        store.move(fromOffsets: indices, toOffset: newOffset)
+                        .contentShape(Rectangle())
+                        .onDrag {
+                            draggingRow = row
+                            return NSItemProvider(object: row.rawValue as NSString)
+                        }
+                        .onDrop(
+                            of: [UTType.text],
+                            delegate: DashboardRowDropDelegate(target: row, store: store, dragging: $draggingRow)
+                        )
                     }
                 } header: {
                     Text("Dashboard rows")
@@ -71,7 +79,7 @@ struct SystemMonitorPane: View {
                 } header: {
                     Text("History")
                 } footer: {
-                    Text("Hover the graph at the top of a detail submenu to open its history. The time range is also the 5m / 1h / 24h control in that submenu, and your last pick is kept. History is kept in memory for up to 24 hours and starts over when Control Box quits.")
+                    Text("Move into a detail submenu to open its history beside it; on Sensors, hover a category. The time range is also the 5m / 1h / 24h control in that submenu, and your last pick is kept. History is kept in memory for up to 24 hours and starts over when Control Box quits.")
                 }
 
                 Section {
@@ -107,5 +115,32 @@ struct SystemMonitorPane: View {
                 )
             }
         }
+    }
+}
+
+/// Moves the dragged row as soon as it is over another, so the rows slide
+/// aside during the drag (same as the Quick launch tiles). `.onMove` does
+/// not start a drag inside this `Form` on macOS.
+private struct DashboardRowDropDelegate: DropDelegate {
+    let target: MetricRow
+    let store: PreferencesStore
+    @Binding var dragging: MetricRow?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target,
+              let from = store.rowOrder.firstIndex(of: dragging),
+              let to = store.rowOrder.firstIndex(of: target) else { return }
+        withAnimation(.snappy) {
+            store.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
     }
 }

@@ -98,6 +98,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct ControlBoxApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        Self.useOverlayScrollers()
+    }
+
+    /// Scroll bars show only while scrolling, in every window and menu, even
+    /// when a mouse makes macOS prefer always-visible (legacy) scrollers.
+    /// Same as launching with `-AppleShowScrollBars WhenScrolling`: the
+    /// argument domain outranks the global setting and is never saved, so
+    /// System Settings is untouched and other apps are unaffected. Must run
+    /// before the first scroll view exists.
+    private static func useOverlayScrollers() {
+        let defaults = UserDefaults.standard
+        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments["AppleShowScrollBars"] = "WhenScrolling"
+        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+
     var body: some Scene {
         Window("Control Box", id: "main") {
             ContentView(

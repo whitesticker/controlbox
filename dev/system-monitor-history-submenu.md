@@ -29,3 +29,7 @@ Now the dropdown and its submenus are panels, not NSMenu (see [system-monitor-me
 - Do not move history back to a cascading third-level submenu.
 - Do not rely on `NSMenu.userInterfaceLayoutDirection` to pick a submenu's side.
 - Do not open history in a timer-driven custom window: clicks in a window outside the menu end menu tracking.
+
+## Sensors: one row per category
+
+The Sensors stats panel used to list every sensor (a 7-column tile grid per temperature group, 420 pt wide), and hovering a section charted it. It is now one row per category with one value: Power (system watts), Fans (fastest), and each temperature group (hottest sensor, heat-colored, with the sensor count). The history panel opens only when a row is hovered, not when the pointer enters the panel (`DetailSubmenu(focus:)` wires `HistoryFocus.onHover` to `showHistory`). It charts that category and lists every sensor of it under the chart in a 3-column grid (`SensorsHistoryDetail`, the `HistoryColumn` footer). The charted row stays highlighted while the history panel is open (`HistoryFocus.isActive`).

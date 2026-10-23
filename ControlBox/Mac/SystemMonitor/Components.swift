@@ -196,6 +196,18 @@ struct SlotList<Item, Row: View>: View {
 struct TopProcessList: View {
     var label: String = "Top processes"
     var format: (Double) -> String
+    /// Shows a process's `split` as two columns instead of `value`.
+    var split: Split?
+
+    struct Split {
+        /// Mark and color for `IORate.read`, then for `IORate.write`.
+        var read: (mark: String, color: Color)
+        var write: (mark: String, color: Color)
+        /// Display order; network shows upload (write) first, like the menu bar.
+        var writeFirst = false
+        /// Fits the mark plus "999.9 KB/s" in `DashStyle.valueFont`.
+        var columnWidth: CGFloat = 72
+    }
 
     @EnvironmentObject private var feed: TopProcessFeed
 
@@ -224,12 +236,34 @@ struct TopProcessList: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Text(format(proc.value))
-                        .font(DashStyle.valueFont)
-                        .monospacedDigit()
+                    if let split, let rate = proc.split {
+                        let columns = [(split.read, rate.read), (split.write, rate.write)]
+                        ForEach(Array((split.writeFirst ? columns.reversed() : columns).enumerated()), id: \.offset) { _, column in
+                            splitColumn(column.0, value: column.1, width: split.columnWidth)
+                        }
+                    } else {
+                        Text(format(proc.value))
+                            .font(DashStyle.valueFont)
+                            .monospacedDigit()
+                    }
                 }
             }
         }
+    }
+
+    private func splitColumn(_ style: (mark: String, color: Color), value: Double, width: CGFloat) -> some View {
+        HStack(spacing: 2) {
+            Text(style.mark)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(style.color)
+            Spacer(minLength: 0)
+            Text(format(value))
+                .font(DashStyle.valueFont)
+                .monospacedDigit()
+                .foregroundColor(value > 0 ? .primary : .secondary)
+                .lineLimit(1)
+        }
+        .frame(width: width)
     }
 }
 

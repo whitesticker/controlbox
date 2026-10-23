@@ -40,22 +40,34 @@ final class HistoryFeed: ObservableObject {
 }
 
 /// Which metric a submenu's one history panel charts, picked by hovering a
-/// section of its stats panel (Sensors: power, fans, or one temperature
-/// group). Separate from `HistoryFeed` so the stats panel re-renders only
-/// when the pick changes, not on every history refresh.
+/// row of its stats panel (Sensors: power, fans, or one temperature group).
+/// The owning `DetailSubmenu` opens the history panel on the first hover
+/// (`onHover`) and clears `isActive` when it closes. Separate from
+/// `HistoryFeed` so the stats panel re-renders only when the pick changes,
+/// not on every history refresh.
 final class HistoryFocus: ObservableObject {
     @Published private(set) var metric: HistoryMetric
+    /// The history panel is showing `metric`.
+    @Published private(set) var isActive = false
     let feed: HistoryFeed
+    var onHover: (() -> Void)?
 
     init(_ metric: HistoryMetric) {
         self.metric = metric
         feed = HistoryFeed(metric: metric)
     }
 
-    func select(_ metric: HistoryMetric) {
-        guard metric != self.metric else { return }
-        self.metric = metric
-        feed.metric = metric
+    func hover(_ metric: HistoryMetric) {
+        if metric != self.metric {
+            self.metric = metric
+            feed.metric = metric
+        }
+        if !isActive { isActive = true }
+        onHover?()
+    }
+
+    func deactivate() {
+        if isActive { isActive = false }
     }
 }
 
@@ -76,14 +88,28 @@ struct HistoryPanelHost: View {
 }
 
 /// The history panels beside one detail submenu, stacked. A panel after the
-/// first hides while it has no data (fans on a fanless Mac).
+/// first hides while it has no data (fans on a fanless Mac). `footer` sits
+/// under the charts at the same width (Sensors: every sensor of the
+/// charted category).
 struct HistoryColumn: View {
     let feeds: [HistoryFeed]
+    var footer: AnyView?
+    @ObservedObject private var preferences = PreferencesStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(feeds.indices, id: \.self) { index in
                 HistoryColumnPanel(feed: feeds[index], hidesWhenEmpty: index > 0)
+            }
+            if let footer {
+                let design = preferences.historyDesign
+                VStack(alignment: .leading, spacing: design.padding) {
+                    Divider()
+                    footer
+                }
+                .padding([.horizontal, .bottom], design.padding)
+                .frame(width: design.panelWidth, alignment: .leading)
+                .padding(.horizontal, 5)
             }
         }
     }

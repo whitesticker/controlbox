@@ -376,7 +376,7 @@ struct SensorsDetailStandalone: View {
     @ObservedObject var focus: HistoryFocus
 
     var body: some View {
-        SensorsDetail(sensors: monitor.snapshot.sensors, focused: focus.metric) { focus.select($0) }
+        SensorsDetail(sensors: monitor.snapshot.sensors, focused: focus.isActive ? focus.metric : nil) { focus.hover($0) }
     }
 }
 
@@ -544,15 +544,21 @@ final class DetailSubmenu {
     private let historyHostingView: MenuHostingView?
     private let topProcesses: TopProcessFeed?
     private let historyFeeds: [HistoryFeed]
+    private let historyFocus: HistoryFocus?
     private var opensLeft = false
 
     /// Gap between panels, and how far above its row the submenu's top sits.
     private static let gap: CGFloat = 2
     private static let topInset: CGFloat = 5
 
+    /// With `focus`, its feed is the history panel and the panel opens when
+    /// a stats row is hovered (`HistoryFocus.hover`), not on entering the
+    /// stats panel. `historyFooter` goes under the charts.
     init<Content: View>(
         topProcesses kind: TopProcessKind? = nil,
         history feeds: [HistoryFeed] = [],
+        focus: HistoryFocus? = nil,
+        historyFooter: AnyView? = nil,
         width: CGFloat = 260,
         @ViewBuilder content: () -> Content
     ) {
@@ -563,13 +569,14 @@ final class DetailSubmenu {
         hostingView = MenuHostingView(content: detail, initialSize: NSSize(width: width, height: 600))
         panel = MenuPanel(content: hostingView)
 
-        historyFeeds = feeds
+        historyFeeds = feeds + (focus.map { [$0.feed] } ?? [])
+        historyFocus = focus
         if historyFeeds.isEmpty {
             historyHostingView = nil
             historyPanel = nil
         } else {
             let history = MenuHostingView(
-                content: HistoryColumn(feeds: historyFeeds),
+                content: HistoryColumn(feeds: historyFeeds, footer: historyFooter),
                 initialSize: NSSize(width: PreferencesStore.shared.historyDesign.panelWidth + 10, height: 340)
             )
             historyHostingView = history
@@ -585,7 +592,11 @@ final class DetailSubmenu {
             guard let self, historyPanel?.isVisible == true else { return }
             placeHistory()
         }
-        panel.onPointerEnter = { [weak self] in self?.showHistory() }
+        if let focus {
+            focus.onHover = { [weak self] in self?.showHistory() }
+        } else {
+            panel.onPointerEnter = { [weak self] in self?.showHistory() }
+        }
     }
 
     func owns(_ window: NSWindow?) -> Bool {
@@ -630,6 +641,7 @@ final class DetailSubmenu {
     }
 
     func hideHistory() {
+        historyFocus?.deactivate()
         guard let historyPanel, historyPanel.isVisible else { return }
         historyPanel.orderOut(nil)
         historyHostingView?.isTracking = false

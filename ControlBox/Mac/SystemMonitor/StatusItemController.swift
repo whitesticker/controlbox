@@ -50,16 +50,27 @@ final class StatusItemController: NSObject {
         rowViews[.memory] = detailRow(MemoryRow().environmentObject(monitor), topProcesses: .memory, history: [.memory]) {
             MemoryDetailStandalone().environmentObject(monitor)
         }
-        rowViews[.network] = detailRow(NetworkRow().environmentObject(monitor), topProcesses: .network, history: [.network]) {
+        rowViews[.network] = detailRow(
+            NetworkRow().environmentObject(monitor),
+            topProcesses: .network,
+            history: [.network],
+            width: NetworkDetail.width
+        ) {
             NetworkDetailStandalone().environmentObject(monitor)
         }
-        rowViews[.disk] = detailRow(DiskRow().environmentObject(monitor), topProcesses: .disk, history: [.disk]) {
+        rowViews[.disk] = detailRow(
+            DiskRow().environmentObject(monitor),
+            topProcesses: .disk,
+            history: [.disk],
+            width: DiskDetail.width
+        ) {
             DiskDetailStandalone().environmentObject(monitor)
         }
         let sensorsFocus = HistoryFocus(.sensorGroup(.cpu))
         rowViews[.sensors] = detailRow(
             SensorsRow().environmentObject(monitor),
-            historyFeeds: [sensorsFocus.feed],
+            historyFocus: sensorsFocus,
+            historyFooter: AnyView(SensorsHistoryDetail(focus: sensorsFocus).environmentObject(monitor)),
             width: SensorsDetail.width
         ) {
             SensorsDetailStandalone(focus: sensorsFocus).environmentObject(monitor)
@@ -109,13 +120,20 @@ final class StatusItemController: NSObject {
         _ view: V,
         topProcesses: TopProcessKind? = nil,
         history: [HistoryMetric] = [],
-        historyFeeds: [HistoryFeed] = [],
+        historyFocus: HistoryFocus? = nil,
+        historyFooter: AnyView? = nil,
         width: CGFloat = 260,
         @ViewBuilder detail: @escaping () -> D
     ) -> MenuPanelRow {
         let row = row(view)
-        let feeds = history.map(HistoryFeed.init(metric:)) + historyFeeds
-        let submenu = DetailSubmenu(topProcesses: topProcesses, history: feeds, width: width, content: detail)
+        let submenu = DetailSubmenu(
+            topProcesses: topProcesses,
+            history: history.map(HistoryFeed.init(metric:)),
+            focus: historyFocus,
+            historyFooter: historyFooter,
+            width: width,
+            content: detail
+        )
         row.onHover = { [weak self, weak row] in self?.hover(submenu, row: row) }
         return row
     }

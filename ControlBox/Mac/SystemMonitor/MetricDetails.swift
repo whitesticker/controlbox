@@ -194,24 +194,25 @@ struct NetworkDetail: View {
     let network: NetworkSample
     @ObservedObject private var publicIP = PublicIPLookup.shared
 
-    /// Addressed interfaces first, then Wi-Fi / Ethernet even when
-    /// disconnected, so idle tunnels are what folds into "+N more".
+    /// Active (has an IPv4 address) only, primary first. The monitor keeps
+    /// the idle ones because their traffic still counts toward the totals.
     private var listedInterfaces: [NetworkInterfaceSample] {
         func rank(_ iface: NetworkInterfaceSample) -> Int {
-            if !iface.ipv4.isEmpty { return 0 }
-            return Self.isPhysical(iface) ? 1 : 2
+            iface.name == network.primaryInterface ? 0 : 1
         }
-        return network.interfaces.enumerated()
+        return network.interfaces
+            .filter { !$0.ipv4.isEmpty }
+            .enumerated()
             .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
             .map(\.element)
     }
 
-    private static func isPhysical(_ iface: NetworkInterfaceSample) -> Bool {
-        iface.kind == .wifi || iface.kind == .ethernet
-    }
+    private static let maxInterfaceSlots = 6
+    /// Room for the two speed columns in Top processes.
+    static let width: CGFloat = 310
 
     var body: some View {
-        DetailPanel {
+        DetailPanel(width: Self.width) {
             StatRow(label: "Download", value: Fmt.speed(network.downBytesPerSec))
             StatRow(label: "Upload", value: Fmt.speed(network.upBytesPerSec))
             Divider()
@@ -223,7 +224,14 @@ struct NetworkDetail: View {
             StatRow(label: "Total ↑ (boot)", value: Fmt.bytes(network.totalUp))
             Divider()
             Text("Interfaces").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-            SlotList(items: listedInterfaces, slots: 6, slotHeight: 26, spacing: 2) { iface in
+            let interfaces = listedInterfaces
+            SlotList(
+                items: interfaces,
+                slots: min(max(interfaces.count, 1), Self.maxInterfaceSlots),
+                slotHeight: 26,
+                spacing: 2,
+                emptyText: "No active interfaces"
+            ) { iface in
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 4) {
                         Image(systemName: iface.kind.systemImage)
@@ -243,11 +251,7 @@ struct NetworkDetail: View {
                                 .background(Capsule().fill(Color.primary.opacity(0.08)))
                         }
                         Spacer()
-                        if iface.ipv4.isEmpty && Self.isPhysical(iface) {
-                            Text("Not connected").font(.system(size: 8.5)).foregroundColor(.secondary)
-                        } else {
-                            CopyableIPText(ip: iface.ipv4.isEmpty ? "—" : iface.ipv4)
-                        }
+                        CopyableIPText(ip: iface.ipv4)
                     }
                     .lineLimit(1)
                     Text("↓\(Fmt.speed(iface.downBytesPerSec)) ↑\(Fmt.speed(iface.upBytesPerSec))")
@@ -259,7 +263,8 @@ struct NetworkDetail: View {
             Divider()
             TopProcessList(
                 label: "Top processes (last 4 s)",
-                format: { Fmt.speed($0) }
+                format: { Fmt.speed($0) },
+                split: .init(read: ("↓", DashColors.download), write: ("↑", DashColors.upload), writeFirst: true)
             )
         }
         .onChange(of: "\(network.primaryInterface)|\(network.primaryIP)") { _, key in
@@ -332,9 +337,11 @@ struct VolumeRow: View {
 
 struct DiskDetail: View {
     let disk: DiskSample
+    /// Room for the two speed columns in Top processes.
+    static let width: CGFloat = 310
 
     var body: some View {
-        DetailPanel {
+        DetailPanel(width: Self.width) {
             StatRow(label: "Read", value: Fmt.speed(disk.readBytesPerSec))
             StatRow(label: "Write", value: Fmt.speed(disk.writeBytesPerSec))
             Divider()
@@ -345,27 +352,136 @@ struct DiskDetail: View {
             Divider()
             TopProcessList(
                 label: "Top processes (last 10 s)",
-                format: { Fmt.speed($0) }
+                format: { Fmt.speed($0) },
+                split: .init(read: ("R", DashColors.diskRead), write: ("W", DashColors.diskWrite))
             )
         }
     }
 }
 
-/// Full sensor list (the compact row only shows CPU/GPU highlights),
-/// sectioned by `SensorGroup` in physical order, hottest first within each.
-/// Empty groups are hidden; the set of groups is fixed per Mac, so the
-/// submenu keeps one height. Safe on demand; some Macs expose ~220 SMC keys.
-///
-/// Each section (power, fans, one temperature group) is a hover target:
-/// hovering it calls `onFocus`, and the history panel charts that section.
-/// The section being charted keeps a highlight until another is hovered.
+/// One row per sensor category: system power, fans, then each temperature
+/// group in physical order, each with one value (watts, fastest fan,
+/// hottest sensor). Hovering a row opens the history panel on that
+/// category, with every sensor of it listed under the chart
+/// (`SensorsHistoryDetail`). The charted row keeps a highlight while the
+/// history panel is open. Empty groups are hidden; the set of groups is
+/// fixed per Mac, so the submenu keeps one height.
 struct SensorsDetail: View {
-    static let width: CGFloat = 420
+    static let width: CGFloat = 250
     let sensors: SensorSample
     var focused: HistoryMetric?
     var onFocus: ((HistoryMetric) -> Void)?
 
-    private var groups: [(group: SensorGroup, temps: [TemperatureSample])] {
+    var body: some View {
+        let groups = SensorReadings.groups(sensors)
+        let hasPower = sensors.systemPower > 0
+        DetailPanel(width: Self.width) {
+            if sensors.fans.isEmpty && groups.isEmpty && !hasPower {
+                Text("No sensor data").font(DashStyle.labelFont).foregroundColor(.secondary)
+            }
+            if hasPower {
+                row(.power, count: nil, value: Fmt.watts(sensors.systemPower), color: .primary)
+            }
+            if let fastest = sensors.fans.map(\.rpm).max() {
+                row(.fans, count: sensors.fans.count, value: Fmt.rpm(fastest), color: .primary)
+            }
+            if (hasPower || !sensors.fans.isEmpty) && !groups.isEmpty {
+                Divider().padding(.vertical, 2)
+            }
+            ForEach(groups, id: \.group) { entry in
+                if let hottest = entry.temps.first {
+                    row(
+                        .sensorGroup(entry.group),
+                        count: entry.temps.count,
+                        value: Fmt.temp(hottest.celsius),
+                        color: SensorReadings.heatColor(hottest.celsius)
+                    )
+                }
+            }
+        }
+    }
+
+    private func row(_ metric: HistoryMetric, count: Int?, value: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: metric.systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 14)
+            Text(metric.title)
+                .font(DashStyle.labelFont)
+                .lineLimit(1)
+            if let count {
+                Text("\(count)")
+                    .font(.system(size: 8.5))
+                    .foregroundColor(.secondary)
+            }
+            Spacer(minLength: 6)
+            Text(value)
+                .font(DashStyle.valueFont)
+                .monospacedDigit()
+                .foregroundColor(color)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.primary.opacity(focused == metric ? 0.08 : 0))
+        )
+        .padding(.horizontal, -6)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { onFocus?(metric) }
+        }
+    }
+}
+
+/// Under the Sensors history chart: every sensor of the charted category.
+struct SensorsHistoryDetail: View {
+    @EnvironmentObject var monitor: SystemMonitor
+    @ObservedObject var focus: HistoryFocus
+
+    var body: some View {
+        let sensors = monitor.snapshot.sensors
+        VStack(alignment: .leading, spacing: 4) {
+            switch focus.metric {
+            case .power:
+                header("Sensors")
+                StatRow(label: "System total", value: Fmt.watts(sensors.systemPower))
+            case .fans:
+                header("Fans (\(sensors.fans.count))")
+                ForEach(Array(sensors.fans.enumerated()), id: \.offset) { _, fan in
+                    StatRow(label: fan.label, value: Fmt.rpm(fan.rpm))
+                    if fan.maxRPM > 0 {
+                        Text("Range \(Fmt.rpmNumber(fan.minRPM))–\(Fmt.rpmNumber(fan.maxRPM)) rpm")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            case .sensorGroup(let group):
+                let temps = SensorReadings.groups(sensors).first { $0.group == group }?.temps ?? []
+                header("\(group.title) sensors (\(temps.count))")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 3) {
+                    ForEach(Array(temps.enumerated()), id: \.offset) { _, temp in
+                        SensorTile(temp: temp)
+                    }
+                }
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    private func header(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(.secondary)
+    }
+}
+
+/// Temperature readings grouped the way the Sensors submenu shows them.
+enum SensorReadings {
+    /// Non-empty groups in physical order, hottest sensor first in each.
+    static func groups(_ sensors: SensorSample) -> [(group: SensorGroup, temps: [TemperatureSample])] {
         let byGroup = Dictionary(grouping: sensors.temperatures) { SensorGroup.of($0.label) }
         return SensorGroup.allCases.compactMap { group in
             guard let temps = byGroup[group], !temps.isEmpty else { return nil }
@@ -373,109 +489,37 @@ struct SensorsDetail: View {
         }
     }
 
-    private func heatColor(_ celsius: Double) -> Color {
+    static func heatColor(_ celsius: Double) -> Color {
         if celsius < 45 { return DashColors.statusGood }
         if celsius < 65 { return DashColors.statusWarning }
         return DashColors.statusCritical
     }
+}
+
+/// Name and temperature on one line, tinted by heat; "°" only, since the
+/// header already says what is measured.
+struct SensorTile: View {
+    let temp: TemperatureSample
 
     var body: some View {
-        let groups = groups
-        let hasPower = sensors.systemPower > 0
-        DetailPanel(width: Self.width) {
-            if sensors.fans.isEmpty && groups.isEmpty && !hasPower {
-                Text("No sensor data").font(DashStyle.labelFont).foregroundColor(.secondary)
-            }
-            if hasPower {
-                section(.power) {
-                    Text("Power").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                    StatRow(label: "System total", value: Fmt.watts(sensors.systemPower))
-                }
-            }
-            if !sensors.fans.isEmpty {
-                if hasPower {
-                    Divider()
-                }
-                section(.fans) {
-                    Text("Fans").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                    ForEach(Array(sensors.fans.enumerated()), id: \.offset) { _, f in
-                        StatRow(label: f.label, value: Fmt.rpm(f.rpm))
-                    }
-                }
-            }
-            ForEach(Array(groups.enumerated()), id: \.offset) { index, entry in
-                if index > 0 || !sensors.fans.isEmpty || hasPower {
-                    Divider()
-                }
-                section(.sensorGroup(entry.group)) {
-                    groupHeader(entry.group, temps: entry.temps)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 3) {
-                        ForEach(Array(entry.temps.enumerated()), id: \.offset) { _, t in
-                            tile(t)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// The highlight and hover area reach 4 pt past the content, so the
-    /// layout is the same as without sections.
-    private func section<Content: View>(
-        _ metric: HistoryMetric,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Color.primary.opacity(focused == metric ? 0.07 : 0))
-                .padding(-4)
-        )
-        .contentShape(Rectangle().inset(by: -4))
-        .onHover { inside in
-            if inside { onFocus?(metric) }
-        }
-    }
-
-    private func groupHeader(_ group: SensorGroup, temps: [TemperatureSample]) -> some View {
-        HStack {
-            Text("\(group.title) (\(temps.count))")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.secondary)
-            Spacer()
-            if let hottest = temps.first {
-                Text("max \(Fmt.temp(hottest.celsius))")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(heatColor(hottest.celsius))
-                    .monospacedDigit()
-            }
-        }
-    }
-
-    /// Name and temperature on one line; "°" only, since the group header
-    /// already says "°C".
-    private func tile(_ t: TemperatureSample) -> some View {
         HStack(spacing: 3) {
-            Text(SensorNames.shortName(for: t.label))
-                .font(.system(size: 8))
+            Text(SensorNames.shortName(for: temp.label))
+                .font(.system(size: 8.5))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 0)
-            Text(String(format: "%.0f°", t.celsius))
-                .font(.system(size: 9.5, weight: .semibold))
+            Text(String(format: "%.0f°", temp.celsius))
+                .font(.system(size: 10, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
         }
         .padding(.vertical, 2)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 5)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(heatColor(t.celsius).opacity(0.22))
+                .fill(SensorReadings.heatColor(temp.celsius).opacity(0.22))
         )
     }
 }

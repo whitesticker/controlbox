@@ -22,6 +22,8 @@ Every list shows five rows, refreshes every 2 s while its submenu is shown, and 
 
 Battery shows the Energy list on Macs without a battery too.
 
+Disk and Network rank by the total but show both halves per row (`TopProcess.split`): Disk as R / W, Network as ↑ upload / ↓ download, in the history colors (blue read and download, red write and upload). Those two submenus are 310 pt wide so the two speed columns (72 pt each, fits "999.9 KB/s") leave room for the name.
+
 ## Notes
 
 - `top`'s first sample walks every process's memory map: ~0.75 s of system time. Later samples are ~0.12 s. So `TopStream` keeps one `top -l 0 -s 2` running per streamed list instead of spawning per refresh, and `TopProcessFeed` leaves it running 10 s after its submenu hides so sweeping across rows does not pay the first sample each pass. `top` flushes each sample to the pipe and dies on SIGPIPE if Control Box goes away. The first `power` sample is all zeros and is dropped; our own `top` processes are filtered out of the list.

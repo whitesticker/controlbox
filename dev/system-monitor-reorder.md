@@ -10,8 +10,11 @@ System Monitor settings show a drag handle and say “Drag to reorder,” but ro
 
 ## What we changed
 
-Use a `List` with `.onMove`, same as `PreferencesView` in [top](https://github.com/whitesticker/top).
+First: a `List` with `.onMove`, same as `PreferencesView` in [top](https://github.com/whitesticker/top). The pane later went back to one grouped `Form` (Menu Bar Icon, History, and Quick launch sections), and dragging rows stopped again.
+
+Now: each row has `.onDrag` plus a `DashboardRowDropDelegate` that moves the dragged row in `dropEntered` with `withAnimation(.snappy)`, so the other rows slide aside while dragging. This is the same pattern as the Quick launch tiles and Menu Bar Icon tiles on the same pane, which do drag inside the `Form`. The old “rows did not slide aside” problem came from moving only in `performDrop`.
 
 ## Do not
 
-Put this reorder list back in a `Form`, or replace `.onMove` with item-provider drag-and-drop.
+- Put `.onMove` back on these rows inside the `Form`.
+- Move rows only in `performDrop`; move in `dropEntered` so the rows slide.

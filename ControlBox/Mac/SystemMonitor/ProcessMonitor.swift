@@ -36,6 +36,14 @@ final class ProcessMonitor {
         var pid: pid_t
         var name: String
         var value: Double
+        /// Disk read / write, network download / upload (bytes per second);
+        /// `value` is their sum. Nil for single-figure kinds.
+        var split: IORate?
+    }
+
+    struct IORate: Sendable {
+        var read: Double
+        var write: Double
     }
 
     struct PSRow: Equatable {
@@ -68,13 +76,14 @@ final class ProcessMonitor {
     /// Walks the ranked list until `count` names resolve, so a process that
     /// exits mid-sample does not shorten the list.
     private func named(
-        _ ranked: [(pid: pid_t, value: Double)],
-        count: Int
+        _ ranked: [RateWindow.Rate],
+        count: Int,
+        fallbackNames: [pid_t: String] = [:]
     ) -> [TopProcess] {
         var result: [TopProcess] = []
         for entry in ranked {
-            guard let name = Self.processName(pid: entry.pid) else { continue }
-            result.append(TopProcess(pid: entry.pid, name: name, value: entry.value))
+            guard let name = Self.processName(pid: entry.pid) ?? fallbackNames[entry.pid] else { continue }
+            result.append(TopProcess(pid: entry.pid, name: name, value: entry.total, split: entry.split))
             if result.count == count { break }
         }
         return result
@@ -121,8 +130,8 @@ final class ProcessMonitor {
         return named(disk.add(allDiskIOBytes()), count: count)
     }
 
-    private func allDiskIOBytes() -> [pid_t: UInt64] {
-        var result: [pid_t: UInt64] = [:]
+    private func allDiskIOBytes() -> [pid_t: RateWindow.Bytes] {
+        var result: [pid_t: RateWindow.Bytes] = [:]
         for pid in allPIDs() {
             guard let bytes = diskIOBytes(pid: pid) else { continue }
             result[pid] = bytes
@@ -132,7 +141,7 @@ final class ProcessMonitor {
 
     // MARK: - Network (best-effort via `nettop`)
 
-    /// Current speed (bytes in + out per second over the last ~4 s), not
+    /// Current speed (download / upload per second over the last ~4 s), not
     /// lifetime totals. A process whose total drops (sockets closed) counts
     /// as idle for that window.
     func topNetworkProcesses(count: Int = 5) -> [TopProcess] {
@@ -140,22 +149,18 @@ final class ProcessMonitor {
             _ = network.add(nettopBytes())
             Thread.sleep(forTimeInterval: 1)
         }
-        let ranked = network.add(nettopBytes())
-        return ranked.prefix(count).compactMap { entry in
-            guard let name = Self.processName(pid: entry.pid) ?? networkNames[entry.pid] else { return nil }
-            return TopProcess(pid: entry.pid, name: name, value: entry.value)
-        }
+        return named(network.add(nettopBytes()), count: count, fallbackNames: networkNames)
     }
 
     /// `-n` matters: without it nettop resolves addresses and every call
     /// takes ~5 s instead of ~17 ms.
-    private func nettopBytes() -> [pid_t: UInt64] {
+    private func nettopBytes() -> [pid_t: RateWindow.Bytes] {
         guard let output = Self.run("/usr/bin/nettop", ["-P", "-x", "-n", "-l", "1", "-J", "bytes_in,bytes_out"]) else {
             return [:]
         }
         let rows = Self.parseNettop(output)
         networkNames = rows.mapValues(\.name)
-        return rows.mapValues(\.bytes)
+        return rows.mapValues { RateWindow.Bytes(read: $0.bytesIn, write: $0.bytesOut) }
     }
 
     /// Reads stdout to EOF before waiting: output past the 64 KiB pipe buffer
@@ -184,16 +189,16 @@ final class ProcessMonitor {
     // NOT CSV -- it's whitespace-column-aligned text -- an earlier version
     // assumed a "time,bytes_in,bytes_out" CSV header that never actually
     // appears, so every call silently returned an empty list.
-    /// Cumulative bytes in + out per pid. nettop names are cut at 15
+    /// Cumulative bytes in and out per pid. nettop names are cut at 15
     /// characters, so they are only the fallback for `proc_name`.
-    static func parseNettop(_ output: String) -> [pid_t: (name: String, bytes: UInt64)] {
+    static func parseNettop(_ output: String) -> [pid_t: (name: String, bytesIn: UInt64, bytesOut: UInt64)] {
         let lines = output.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         func isHeader(_ line: String) -> Bool {
             line.contains("bytes_in") && line.contains("bytes_out")
         }
         guard let headerIndex = lines.firstIndex(where: isHeader) else { return [:] }
 
-        var rows: [pid_t: (name: String, bytes: UInt64)] = [:]
+        var rows: [pid_t: (name: String, bytesIn: UInt64, bytesOut: UInt64)] = [:]
         for line in lines[(headerIndex + 1)...] {
             if isHeader(line) { break }
             // The process field is "name.pid" and can itself contain
@@ -210,7 +215,7 @@ final class ProcessMonitor {
             guard nameParts.count > 1, let pid = pid_t(nameParts.removeLast()), pid > 0 else { continue }
             let name = nameParts.joined(separator: ".")
             guard !name.isEmpty else { continue }
-            rows[pid] = (name, bytesIn + bytesOut)
+            rows[pid] = (name, bytesIn, bytesOut)
         }
         return rows
     }
@@ -251,7 +256,7 @@ final class ProcessMonitor {
         return String(cString: nameBuf)
     }
 
-    private func diskIOBytes(pid: pid_t) -> UInt64? {
+    private func diskIOBytes(pid: pid_t) -> RateWindow.Bytes? {
         // `rusage_info_t` is `UnsafeMutableRawPointer?` and the C signature
         // is nominally "pointer to that" (a double pointer) -- but the real
         // ABI (matching how Apple's own examples call this) is that the
@@ -270,7 +275,7 @@ final class ProcessMonitor {
             }
         }
         guard result == 0 else { return nil }
-        return info.ri_diskio_bytesread + info.ri_diskio_byteswritten
+        return RateWindow.Bytes(read: info.ri_diskio_bytesread, write: info.ri_diskio_byteswritten)
     }
 }
 
@@ -278,8 +283,20 @@ final class ProcessMonitor {
 /// newest reading at least `span` old, so with 2 s refreshes the window is
 /// `span` once warm.
 private struct RateWindow {
+    /// Disk read / written, or network in / out.
+    struct Bytes {
+        var read: UInt64
+        var write: UInt64
+    }
+
+    struct Rate {
+        var pid: pid_t
+        var split: ProcessMonitor.IORate
+        var total: Double { split.read + split.write }
+    }
+
     let span: TimeInterval
-    private var readings: [(date: Date, bytes: [pid_t: UInt64])] = []
+    private var readings: [(date: Date, bytes: [pid_t: Bytes])] = []
 
     init(span: TimeInterval) {
         self.span = span
@@ -291,8 +308,8 @@ private struct RateWindow {
         readings = []
     }
 
-    /// Bytes per second since the base reading, highest first.
-    mutating func add(_ bytes: [pid_t: UInt64]) -> [(pid: pid_t, value: Double)] {
+    /// Bytes per second since the base reading, highest total first.
+    mutating func add(_ bytes: [pid_t: Bytes]) -> [Rate] {
         let now = Date()
         readings.append((now, bytes))
         while readings.count > 2, now.timeIntervalSince(readings[1].date) >= span {
@@ -301,11 +318,17 @@ private struct RateWindow {
         let base = readings[0]
         let elapsed = now.timeIntervalSince(base.date)
         guard elapsed > 0 else { return [] }
-        return bytes.compactMap { pid, current -> (pid: pid_t, value: Double)? in
-            guard let previous = base.bytes[pid], current > previous else { return nil }
-            return (pid, Double(current - previous) / elapsed)
+        return bytes.compactMap { pid, current -> Rate? in
+            guard let previous = base.bytes[pid],
+                  current.read >= previous.read, current.write >= previous.write,
+                  current.read + current.write > previous.read + previous.write else { return nil }
+            let split = ProcessMonitor.IORate(
+                read: Double(current.read - previous.read) / elapsed,
+                write: Double(current.write - previous.write) / elapsed
+            )
+            return Rate(pid: pid, split: split)
         }
-        .sorted { $0.value > $1.value }
+        .sorted { $0.total > $1.total }
     }
 }
 
