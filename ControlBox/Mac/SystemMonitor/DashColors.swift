@@ -9,12 +9,13 @@ enum DashColors {
     static let statusWarning: Color = .yellow
     static let statusCritical: Color = .red
 
-    static let download = accent
-    static let upload: Color = .orange
+    /// In/out pairs: blue for in (download, read), red for out (upload, write).
+    static let download: Color = .blue
+    static let upload: Color = .red
     static let cpuLine: Color = .blue
     static let gpuLine: Color = .purple
-    static let diskRead: Color = .green
-    static let diskWrite: Color = .pink
+    static let diskRead: Color = .blue
+    static let diskWrite: Color = .red
 
     static let cardBackground: Color = Color.primary.opacity(0.05)
 }

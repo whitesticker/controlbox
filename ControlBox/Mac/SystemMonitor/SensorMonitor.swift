@@ -48,6 +48,67 @@ enum SensorNames {
         if key.hasPrefix("Tg") || key.hasPrefix("TG") { return "GPU (\(key))" }
         return key
     }
+
+    /// For a tile that already sits under its `SensorGroup` heading: the
+    /// documented name, else the raw key (no repeated category).
+    static func shortName(for key: String) -> String {
+        known[key] ?? key
+    }
+}
+
+// MARK: - Physical grouping
+
+/// Where a temperature sensor sits, for the Sensors submenu's sections.
+/// Matched on the key's first two characters, case-sensitive (`TP*` is
+/// power delivery, `Tp*` is CPU). Confidence varies: `Tp`/`Tg`/`Ta` corners
+/// and `TB*T` are documented by open-source monitors; `Tf` is on-die but
+/// unmapped for M1/M2 (CPU/GPU cores on M3); power delivery and enclosure
+/// `TS`/`Ts` are read from the key names. Anything unclaimed is Other.
+enum SensorGroup: CaseIterable {
+    case cpu, gpu, soc, memoryStorage, power, enclosure, batteryWireless, other
+
+    var title: String {
+        switch self {
+        case .cpu: return "CPU"
+        case .gpu: return "GPU"
+        case .soc: return "SoC (other on-chip)"
+        case .memoryStorage: return "Memory & storage"
+        case .power: return "Power delivery"
+        case .enclosure: return "Enclosure & airflow"
+        case .batteryWireless: return "Battery & wireless"
+        case .other: return "Other"
+        }
+    }
+
+    /// Legend name in the history panel.
+    var shortTitle: String {
+        switch self {
+        case .cpu: return "CPU"
+        case .gpu: return "GPU"
+        case .soc: return "SoC"
+        case .memoryStorage: return "Memory"
+        case .power: return "Power"
+        case .enclosure: return "Enclosure"
+        case .batteryWireless: return "Battery"
+        case .other: return "Other"
+        }
+    }
+
+    static func of(_ key: String) -> SensorGroup {
+        // Intel heatsink, not the Apple Silicon SSD (`TH0a` / `TH0b` / `TH0x`).
+        if key == "TH0P" { return .other }
+        switch key.prefix(2) {
+        case "Tp", "Te", "TC", "Tc": return .cpu
+        case "Tg", "TG": return .gpu
+        case "Tf": return .soc
+        case "TH", "TM", "Tm": return .memoryStorage
+        case "TP", "TR", "TV": return .power
+        case "Ta", "TA", "TS", "Ts": return .enclosure
+        case "TB": return key.hasSuffix("T") ? .batteryWireless : .other
+        case "TW": return .batteryWireless
+        default: return .other
+        }
+    }
 }
 
 // MARK: - SMC (Apple System Management Controller) access
@@ -412,11 +473,13 @@ final class SensorMonitor {
                 guard let bytes = readKeyBytes(key: key, info: info) else { continue }
                 guard let value = decode(bytes: bytes, dataType: info.dataType) else { continue }
 
-                // Plausibility filter: real die/board temperatures fall
-                // roughly in 5...130 C. This filters out non-temperature
-                // "T"-prefixed keys (thresholds, flags, etc.) that don't
-                // decode to sane values.
-                guard value >= 5, value <= 130 else { continue }
+                // Plausibility filter: real die/board temperatures in a
+                // running Mac fall roughly in 15...130 C. This filters out
+                // non-temperature "T"-prefixed keys (thresholds, flags,
+                // counters) that don't decode to sane values. A 5 C floor
+                // let through eight such keys at 5-11 C on an M2 Max
+                // (`Ta0D`/`Ta0H`/`Ta0L`/`Ta0W`, `Tf01`/`Tf11`/`Tf21`/`Tf31`).
+                guard value >= 15, value <= 130 else { continue }
 
                 result.temperatures.append(TemperatureSample(label: name, celsius: value))
 
@@ -479,6 +542,14 @@ final class SensorMonitor {
 
                 result.fans.append(FanSample(label: label, rpm: rpm, minRPM: minRPM, maxRPM: maxRPM))
             }
+        }
+
+        // --- Power -------------------------------------------------------
+        // `PSTR` is system total power ("flt ", watts) on Apple Silicon; on
+        // a desktop it equals DC input (`PDTR`). The battery's V x A in
+        // `PowerMonitor` is 0 on a desktop and on a full laptop on AC.
+        if let watts = readDouble(key: fourCC("PSTR")), watts > 0, watts < 2000 {
+            result.systemPower = watts
         }
 
         return result

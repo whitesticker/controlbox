@@ -57,14 +57,86 @@ final class PreferencesStore: ObservableObject {
     @Published var menuBarEnabled: Bool {
         didSet { save() }
     }
+    /// Bundle IDs for the quick-launch row at the bottom of the menu, in
+    /// order, at most `maxLauncherApps`. Empty hides the row.
+    @Published private(set) var launcherApps: [String] {
+        didSet { save() }
+    }
+    /// What the menu bar extra shows, left to right (pane → Menu Bar Icon).
+    /// Empty shows a plain gauge icon.
+    @Published private(set) var menuBarItems: [MenuBarItem] {
+        didSet { save() }
+    }
+
+    // History submenu (System Monitor → History). The range is also the
+    // 5m / 1h / 24h control inside the menu, so the last pick sticks.
+    @Published var historyStyle: HistoryStyle {
+        didSet { save() }
+    }
+    @Published var historyRange: HistoryRange {
+        didSet { save() }
+    }
+    @Published var historyReadout: HistoryReadout {
+        didSet { save() }
+    }
+    @Published var historyCompressSpikes: Bool {
+        didSet { save() }
+    }
+    @Published var historyShowStats: Bool {
+        didSet { save() }
+    }
+    @Published private(set) var historyBarSeconds: [HistoryRange: TimeInterval] {
+        didSet { save() }
+    }
+    /// Layout from the hidden Design lab; not a user setting.
+    @Published var historyDesign: HistoryDesign {
+        didSet { save() }
+    }
+
+    static let maxLauncherApps = 8
+    static let defaultLauncherApps = [
+        Bundle.main.bundleIdentifier ?? "com.whitesticker.controlbox",
+        "com.apple.ActivityMonitor",
+        "com.apple.SystemProfiler",
+        "com.apple.Terminal",
+        "com.apple.Console",
+    ]
 
     private let orderKey = "com.local.top.rowOrder"
     private let hiddenKey = "com.local.top.hiddenRows"
     private let enabledKey = "com.local.top.menuBarEnabled"
+    private let launcherKey = "com.local.top.launcherApps"
+    private let menuBarItemsKey = "com.local.top.menuBarItems"
+    private let historyStyleKey = "com.local.top.history.style"
+    private let historyRangeKey = "com.local.top.history.range"
+    private let historyReadoutKey = "com.local.top.history.readout"
+    private let historyCompressKey = "com.local.top.history.compressSpikes"
+    private let historyStatsKey = "com.local.top.history.showStats"
+    private let historyBarsKey = "com.local.top.history.barSeconds"
+    private static let historyDesignKey = "com.local.top.history.design"
 
     private init() {
         let defaults = UserDefaults.standard
         menuBarEnabled = defaults.object(forKey: enabledKey) as? Bool ?? false
+        launcherApps = Array(
+            (defaults.stringArray(forKey: launcherKey) ?? Self.defaultLauncherApps).prefix(Self.maxLauncherApps)
+        )
+        menuBarItems = defaults.stringArray(forKey: menuBarItemsKey).map { saved in
+            var seen: Set<MenuBarItem> = []
+            return saved.compactMap(MenuBarItem.init(rawValue:)).filter { seen.insert($0).inserted }
+        } ?? MenuBarItem.defaultShown
+
+        historyStyle = defaults.string(forKey: historyStyleKey).flatMap(HistoryStyle.init(rawValue:)) ?? .candles
+        historyRange = defaults.string(forKey: historyRangeKey).flatMap(HistoryRange.init(rawValue:)) ?? .oneHour
+        historyReadout = defaults.string(forKey: historyReadoutKey).flatMap(HistoryReadout.init(rawValue:)) ?? .both
+        historyCompressSpikes = defaults.object(forKey: historyCompressKey) as? Bool ?? true
+        historyShowStats = defaults.object(forKey: historyStatsKey) as? Bool ?? true
+        let savedBars = defaults.dictionary(forKey: historyBarsKey) as? [String: Double] ?? [:]
+        historyBarSeconds = Dictionary(uniqueKeysWithValues: HistoryRange.allCases.map { range in
+            let saved = savedBars[range.rawValue].flatMap { range.barChoices.contains($0) ? $0 : nil }
+            return (range, saved ?? range.defaultBarSeconds)
+        })
+        historyDesign = Self.loadHistoryDesign()
 
         if let saved = defaults.stringArray(forKey: orderKey) {
             let parsed = saved.compactMap { MetricRow(rawValue: $0) }
@@ -103,9 +175,111 @@ final class PreferencesStore: ObservableObject {
         rowOrder.move(fromOffsets: fromOffsets, toOffset: toOffset)
     }
 
+    var canAddLauncherApp: Bool {
+        launcherApps.count < Self.maxLauncherApps
+    }
+
+    func addLauncherApp(_ bundleID: String) {
+        guard canAddLauncherApp, !launcherApps.contains(bundleID) else { return }
+        launcherApps.append(bundleID)
+    }
+
+    func removeLauncherApp(_ bundleID: String) {
+        launcherApps.removeAll { $0 == bundleID }
+    }
+
+    func moveLauncherApps(fromOffsets: IndexSet, toOffset: Int) {
+        launcherApps.move(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
+
+    func resetLauncherApps() {
+        launcherApps = Self.defaultLauncherApps
+    }
+
+    /// Puts `item` in the menu bar at `index` (moving it if already there).
+    func showMenuBarItem(_ item: MenuBarItem, at index: Int? = nil) {
+        var items = menuBarItems
+        if let from = items.firstIndex(of: item) {
+            items.remove(at: from)
+        }
+        items.insert(item, at: min(index ?? items.count, items.count))
+        if items != menuBarItems { menuBarItems = items }
+    }
+
+    func hideMenuBarItem(_ item: MenuBarItem) {
+        menuBarItems.removeAll { $0 == item }
+    }
+
+    func resetMenuBarItems() {
+        menuBarItems = MenuBarItem.defaultShown
+    }
+
+    func historyBarSeconds(for range: HistoryRange) -> TimeInterval {
+        historyBarSeconds[range] ?? range.defaultBarSeconds
+    }
+
+    func setHistoryBarSeconds(_ seconds: TimeInterval, for range: HistoryRange) {
+        historyBarSeconds[range] = seconds
+    }
+
+    var historySettings: HistorySettings {
+        HistorySettings(
+            style: historyStyle,
+            readout: historyReadout,
+            compressSpikes: historyCompressSpikes,
+            showStats: historyShowStats,
+            barSeconds: historyBarSeconds(for: historyRange)
+        )
+    }
+
+    var historyIsDefault: Bool {
+        historyStyle == .candles && historyRange == .oneHour && historyReadout == .both
+            && historyCompressSpikes && historyShowStats
+            && HistoryRange.allCases.allSatisfy { historyBarSeconds(for: $0) == $0.defaultBarSeconds }
+    }
+
+    func resetHistory() {
+        historyStyle = .candles
+        historyRange = .oneHour
+        historyReadout = .both
+        historyCompressSpikes = true
+        historyShowStats = true
+        historyBarSeconds = Dictionary(uniqueKeysWithValues: HistoryRange.allCases.map { ($0, $0.defaultBarSeconds) })
+    }
+
+    /// Saved keys over the tuned values, so a value added later keeps the
+    /// rest of a saved design instead of discarding it.
+    private static func loadHistoryDesign() -> HistoryDesign {
+        guard let saved = UserDefaults.standard.data(forKey: historyDesignKey),
+              let savedKeys = try? JSONSerialization.jsonObject(with: saved) as? [String: Any],
+              let tuned = try? JSONEncoder().encode(HistoryDesign.tuned),
+              var merged = try? JSONSerialization.jsonObject(with: tuned) as? [String: Any]
+        else { return .tuned }
+        merged.merge(savedKeys) { _, new in new }
+        guard let data = try? JSONSerialization.data(withJSONObject: merged),
+              let design = try? JSONDecoder().decode(HistoryDesign.self, from: data)
+        else { return .tuned }
+        return design
+    }
+
     private func save() {
-        UserDefaults.standard.set(rowOrder.map(\.rawValue), forKey: orderKey)
-        UserDefaults.standard.set(hiddenRows.map(\.rawValue), forKey: hiddenKey)
-        UserDefaults.standard.set(menuBarEnabled, forKey: enabledKey)
+        let defaults = UserDefaults.standard
+        if let design = try? JSONEncoder().encode(historyDesign) {
+            defaults.set(design, forKey: Self.historyDesignKey)
+        }
+        defaults.set(rowOrder.map(\.rawValue), forKey: orderKey)
+        defaults.set(hiddenRows.map(\.rawValue), forKey: hiddenKey)
+        defaults.set(menuBarEnabled, forKey: enabledKey)
+        defaults.set(launcherApps, forKey: launcherKey)
+        defaults.set(menuBarItems.map(\.rawValue), forKey: menuBarItemsKey)
+        defaults.set(historyStyle.rawValue, forKey: historyStyleKey)
+        defaults.set(historyRange.rawValue, forKey: historyRangeKey)
+        defaults.set(historyReadout.rawValue, forKey: historyReadoutKey)
+        defaults.set(historyCompressSpikes, forKey: historyCompressKey)
+        defaults.set(historyShowStats, forKey: historyStatsKey)
+        defaults.set(
+            Dictionary(uniqueKeysWithValues: historyBarSeconds.map { ($0.key.rawValue, $0.value) }),
+            forKey: historyBarsKey
+        )
     }
 }

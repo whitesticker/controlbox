@@ -85,10 +85,25 @@ enum Fmt {
         value <= 0 ? "—" : String(format: "%.0f rpm", value)
     }
 
+    /// `rpm` without the unit, for a label that already says "(rpm)".
+    static func rpmNumber(_ value: Double) -> String {
+        value <= 0 ? "—" : String(format: "%.0f", value)
+    }
+
     // "2:35" from minutes, or "—" when unknown.
     static func minutes(_ minutes: Int) -> String {
         guard minutes >= 0 else { return "—" }
         return String(format: "%d:%02d", minutes / 60, minutes % 60)
+    }
+
+    // "17d 18h", "3h 12m", "5m".
+    static func uptime(_ seconds: TimeInterval) -> String {
+        guard seconds > 0 else { return "—" }
+        let minutes = Int(seconds) / 60
+        let days = minutes / 1440, hours = minutes / 60 % 24, mins = minutes % 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(mins)m" }
+        return "\(mins)m"
     }
 
     // "3.4 W".

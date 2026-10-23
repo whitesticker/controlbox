@@ -2,194 +2,267 @@ import AppKit
 import SwiftUI
 import Combine
 
-// Owns the NSStatusItem: keeps the menu bar icon in sync with the latest
-// network speeds, and shows the dashboard as a genuine NSMenu (not an
-// NSPopover) -- one row per metric, each a real NSMenuItem with a native
-// `.submenu` for its detail view. See MenuRows.swift and MetricDetails.swift.
+// Owns the NSStatusItem: keeps the menu bar icon in sync with the items
+// chosen in the pane (MenuBarIcon.swift), and shows the dashboard as a dropdown `MenuPanel` (not an
+// NSMenu; see MenuPanel.swift) -- one row per metric, each with a detail
+// submenu panel beside it. See MenuRows.swift and MetricDetails.swift.
 //
-// The menu (and every row's NSHostingView) is built exactly once here and
-// reused for the extra's lifetime; it is never rebuilt on each click.
-// Rebuilding a SwiftUI-backed NSMenuItem repeatedly is a known source of
-// memory leaks (FB7539293). Metric rows are reorderable/hideable: each
-// row's NSMenuItem is built once, kept in `rowItems`, and `applyRowOrder()`
-// re-inserts those existing items. Does not quit Control Box.
-final class StatusItemController: NSObject, NSMenuDelegate {
+// Every row's NSHostingView and every submenu panel is built exactly once
+// here and reused for the extra's lifetime. Metric rows are
+// reorderable/hideable: `applyRowOrder()` re-stacks the existing row views.
+// Does not quit Control Box.
+final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let monitor: SystemMonitor
-    private let menu = NSMenu()
-    private var rowHostingViews: [NSHostingView<AnyView>] = []
-    private var detailSubmenus: [DetailSubmenu] = []
-    private var rowItems: [MetricRow: NSMenuItem] = [:]
-    private var rowInsertionIndex = 0
+    private let stack: MenuPanelStack
+    private let panel: MenuPanel
+    private var rowHostingViews: [MenuHostingView] = []
+    private var rowViews: [MetricRow: MenuPanelRow] = [:]
+    private var topViews: [NSView] = []
+    private var bottomViews: [NSView] = []
+    private var launcherRow: MenuPanelRow?
+    private var launcherHostingView: MenuHostingView?
+    private var openSubmenu: DetailSubmenu?
+    private var eventMonitors: [Any] = []
+    private var spaceObserver: NSObjectProtocol?
     private var cancellable: AnyCancellable?
     private var preferencesCancellable: AnyCancellable?
+    private var launcherCancellable: AnyCancellable?
+    private var iconKey: String?
 
     init(monitor: SystemMonitor) {
         self.monitor = monitor
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let stack = MenuPanelStack()
+        self.stack = stack
+        panel = MenuPanel(content: stack)
 
         super.init()
 
-        menu.delegate = self
+        topViews = [row(DateRow().environmentObject(monitor)), MenuPanelSeparator()]
 
-        // Leading separator absorbs NSMenu's own top-inset chrome (its
-        // rounded-corner chrome otherwise clips the top of the first row).
-        menu.addItem(.separator())
-        menu.addItem(plainRow(DateRow().environmentObject(monitor)))
-        menu.addItem(.separator())
-        // Metric rows are inserted here by applyRowOrder(); this index
-        // never moves since nothing before it ever changes.
-        rowInsertionIndex = menu.items.count
-
-        rowItems[.cpu] = detailRow(CPURow().environmentObject(monitor)) {
+        rowViews[.cpu] = detailRow(CPURow().environmentObject(monitor), topProcesses: .cpu, history: [.cpu]) {
             CPUDetailStandalone().environmentObject(monitor)
         }
-        rowItems[.gpu] = detailRow(GPURow().environmentObject(monitor)) {
+        rowViews[.gpu] = detailRow(GPURow().environmentObject(monitor), history: [.gpu]) {
             GPUDetailStandalone().environmentObject(monitor)
         }
-        rowItems[.memory] = detailRow(MemoryRow().environmentObject(monitor)) {
+        rowViews[.memory] = detailRow(MemoryRow().environmentObject(monitor), topProcesses: .memory, history: [.memory]) {
             MemoryDetailStandalone().environmentObject(monitor)
         }
-        rowItems[.network] = detailRow(NetworkRow().environmentObject(monitor)) {
+        rowViews[.network] = detailRow(NetworkRow().environmentObject(monitor), topProcesses: .network, history: [.network]) {
             NetworkDetailStandalone().environmentObject(monitor)
         }
-        rowItems[.disk] = detailRow(DiskRow().environmentObject(monitor)) {
+        rowViews[.disk] = detailRow(DiskRow().environmentObject(monitor), topProcesses: .disk, history: [.disk]) {
             DiskDetailStandalone().environmentObject(monitor)
         }
-        rowItems[.sensors] = detailRow(SensorsRow().environmentObject(monitor)) {
-            SensorsDetailStandalone().environmentObject(monitor)
+        let sensorsFocus = HistoryFocus(.sensorGroup(.cpu))
+        rowViews[.sensors] = detailRow(
+            SensorsRow().environmentObject(monitor),
+            historyFeeds: [sensorsFocus.feed],
+            width: SensorsDetail.width
+        ) {
+            SensorsDetailStandalone(focus: sensorsFocus).environmentObject(monitor)
         }
-        rowItems[.battery] = detailRow(PowerRow().environmentObject(monitor)) {
+        rowViews[.battery] = detailRow(PowerRow().environmentObject(monitor), topProcesses: .energy) {
             PowerDetailStandalone().environmentObject(monitor)
         }
 
-        menu.addItem(.separator())
-        let openItem = NSMenuItem(title: "Open Control Box…", action: #selector(openControlBox), keyEquivalent: "")
-        openItem.target = self
-        menu.addItem(openItem)
-
-        let hideItem = NSMenuItem(title: "Hide from Menu Bar", action: #selector(hideFromMenuBar), keyEquivalent: "")
-        hideItem.target = self
-        menu.addItem(hideItem)
+        let launcher = row(launcherContent(PreferencesStore.shared.launcherApps))
+        launcherRow = launcher
+        launcherHostingView = launcher.content as? MenuHostingView
+        let hide = row(MenuPanelActionRow(title: "Hide from Menu Bar") { [weak self] in self?.hideFromMenuBar() })
+        bottomViews = [launcher, MenuPanelSeparator(), hide]
 
         applyRowOrder()
         preferencesCancellable = PreferencesStore.shared.$rowOrder
             .combineLatest(PreferencesStore.shared.$hiddenRows)
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _ in self?.applyRowOrder() }
-
-        statusItem.menu = menu
+        launcherCancellable = PreferencesStore.shared.$launcherApps
+            .sink { [weak self] apps in self?.applyLauncherApps(apps) }
 
         if let button = statusItem.button {
             button.imagePosition = .imageOnly
+            button.target = self
+            button.action = #selector(togglePanel)
+            button.sendAction(on: [.leftMouseDown, .rightMouseDown])
         }
 
-        cancellable = monitor.$snapshot
-            .map(\.network)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] net in self?.updateIcon(net) }
-
-        updateIcon(monitor.snapshot.network)
+        cancellable = monitor.tickSnapshot
+            .combineLatest(PreferencesStore.shared.$menuBarItems)
+            .sink { [weak self] snapshot, items in self?.updateIcon(snapshot, items: items) }
     }
 
-    /// Builds a plain row (no submenu) -- used only for the date/time row.
-    private func plainRow<V: View>(_ view: V) -> NSMenuItem {
-        let hosting = NSHostingView(rootView: AnyView(view))
-        hosting.frame = NSRect(x: 0, y: 0, width: 300, height: 100)
-        warmUp(hosting)
+    /// A row with no submenu (date, quick launch, Hide). Hovering it closes
+    /// the open submenu, as in NSMenu.
+    private func row<V: View>(_ view: V) -> MenuPanelRow {
+        let hosting = MenuHostingView(content: view, initialSize: NSSize(width: menuRowWidth, height: 100))
+        hosting.onResize = { [weak self] in self?.relayout() }
         rowHostingViews.append(hosting)
-
-        let item = NSMenuItem()
-        item.view = hosting
-        return item
+        let row = MenuPanelRow(content: hosting)
+        row.onHover = { [weak self] in self?.hover(nil, row: nil) }
+        return row
     }
 
-    /// Builds a row with a native cascading `.submenu` for its detail view.
-    private func detailRow<V: View, D: View>(_ view: V, @ViewBuilder detail: @escaping () -> D) -> NSMenuItem {
-        let item = plainRow(view)
-        let submenu = DetailSubmenu(content: detail)
-        detailSubmenus.append(submenu)
-        item.submenu = submenu.menu
-        return item
+    private func detailRow<V: View, D: View>(
+        _ view: V,
+        topProcesses: TopProcessKind? = nil,
+        history: [HistoryMetric] = [],
+        historyFeeds: [HistoryFeed] = [],
+        width: CGFloat = 260,
+        @ViewBuilder detail: @escaping () -> D
+    ) -> MenuPanelRow {
+        let row = row(view)
+        let feeds = history.map(HistoryFeed.init(metric:)) + historyFeeds
+        let submenu = DetailSubmenu(topProcesses: topProcesses, history: feeds, width: width, content: detail)
+        row.onHover = { [weak self, weak row] in self?.hover(submenu, row: row) }
+        return row
     }
 
-    // Re-inserts the (already-built, never-recreated) metric row items into
-    // `menu` in whatever order/visibility Preferences currently specifies.
+    private func launcherContent(_ apps: [String]) -> QuickLauncherRow {
+        QuickLauncherRow(apps: apps) { [weak self] bundleID in
+            self?.close()
+            MainActor.assumeIsolated { QuickLauncher.launch(bundleID) }
+        }
+    }
+
+    private func applyLauncherApps(_ apps: [String]) {
+        launcherRow?.isHidden = apps.isEmpty
+        launcherHostingView?.setContent(launcherContent(apps))
+        relayout()
+    }
+
+    // Re-stacks the (already-built, never-recreated) metric rows in whatever
+    // order/visibility Preferences currently specifies.
     private func applyRowOrder() {
-        for item in rowItems.values where menu.items.contains(item) {
-            menu.removeItem(item)
-        }
-        for (offset, row) in PreferencesStore.shared.visibleRowsInOrder.enumerated() {
-            guard let item = rowItems[row] else { continue }
-            menu.insertItem(item, at: rowInsertionIndex + offset)
-        }
+        let rows = PreferencesStore.shared.visibleRowsInOrder.compactMap { rowViews[$0] }
+        stack.arranged = topViews + rows + bottomViews
+        relayout()
     }
 
-    // Forces one real SwiftUI layout pass immediately (via a throwaway
-    // offscreen window), so `fittingSize` is already trustworthy the very
-    // first time this menu opens -- without this, the first open or two
-    // can read a wrong (too-short) `fittingSize` in `menuWillOpen` and clip
-    // the row's content, since the view has never been part of any real
-    // window before that point.
-    private func warmUp(_ hosting: NSHostingView<AnyView>) {
-        let warmupWindow = NSWindow(
-            contentRect: hosting.frame,
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        warmupWindow.contentView = hosting
-        hosting.layoutSubtreeIfNeeded()
-        let fitting = hosting.fittingSize
-        if fitting.height > 0 {
-            hosting.frame = NSRect(origin: .zero, size: fitting)
-        }
-        warmupWindow.contentView = nil
+    private func relayout() {
+        stack.layoutArranged()
+        if panel.isVisible { panel.fitContent() }
     }
 
-    // Refines every row's frame to its real SwiftUI-measured size right
-    // before the menu displays. `layoutSubtreeIfNeeded()` matters here, not
-    // just at construction: several rows render entirely different content
-    // depending on live data (e.g. Battery's "no battery" one-liner vs. its
-    // full percentage+bar+stat-grid layout once real PowerMonitor data
-    // arrives; same for GPU's "n/a" fallback). `StatusItemController` is
-    // built *before* `monitor.start()` runs, so `warmUp()`'s very first
-    // measurement can bake in the shorter placeholder branch's size. Without
-    // forcing a fresh layout pass here too, `fittingSize` can keep reporting
-    // that stale (too-short) measurement for the first several opens, until
-    // SwiftUI's own async update pipeline happens to catch up on its own --
-    // matching the reported "battery tile doesn't load right the first
-    // couple times" bug. Forcing layout before every measurement, not just
-    // the first, makes every open correct instead of relying on that race.
-    func menuWillOpen(_ menu: NSMenu) {
-        for hosting in rowHostingViews {
-            hosting.layoutSubtreeIfNeeded()
-            let fitting = hosting.fittingSize
-            guard fitting.height > 0 else { continue }
-            hosting.frame = NSRect(origin: .zero, size: fitting)
-        }
+    // MARK: Open / close
+
+    @objc private func togglePanel() {
+        if panel.isVisible { close() } else { open() }
     }
 
-    private func updateIcon(_ net: NetworkSample) {
-        statusItem.button?.image = NetworkIconRenderer.render(
-            up: net.upBytesPerSec, down: net.downBytesPerSec)
+    /// Publishes current data first so rows measure against it, not the
+    /// placeholder branches (Battery's "no battery", GPU's "n/a") that were
+    /// live when the rows were built before `monitor.start()`.
+    private func open() {
+        guard let button = statusItem.button, let buttonWindow = button.window else { return }
+        monitor.setPresenting(true)
+        rowHostingViews.forEach { $0.isTracking = true }
+        stack.layoutArranged()
+
+        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let screen = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame ?? anchor
+        let width = stack.frame.width
+        let x = min(max(anchor.minX, screen.minX + 4), screen.maxX - width - 4)
+        panel.place(topLeft: NSPoint(x: x, y: min(anchor.minY - 1, screen.maxY)))
+        panel.makeKeyAndOrderFront(nil)
+        button.highlight(true)
+        installMonitors()
+    }
+
+    private func close() {
+        guard panel.isVisible else { return }
+        removeMonitors()
+        openSubmenu?.hide()
+        openSubmenu = nil
+        panel.orderOut(nil)
+        rowHostingViews.forEach { $0.isTracking = false }
+        monitor.setPresenting(false)
+        statusItem.button?.highlight(false)
+    }
+
+    /// Back on the row whose submenu is open closes only its history panel.
+    private func hover(_ submenu: DetailSubmenu?, row: MenuPanelRow?) {
+        guard panel.isVisible else { return }
+        guard openSubmenu !== submenu else {
+            submenu?.hideHistory()
+            return
+        }
+        let previous = openSubmenu
+        openSubmenu = submenu
+        if let submenu, let row {
+            let rowFrame = panel.convertToScreen(row.convert(row.bounds, to: nil))
+            submenu.show(beside: panel.frame, rowTop: rowFrame.maxY)
+        }
+        previous?.hide()
+    }
+
+    /// Closes on a click anywhere else (other apps, the menu bar, another
+    /// Control Box window), Escape, or a Space switch.
+    private func installMonitors() {
+        if let monitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
+            handler: { [weak self] _ in self?.close() }
+        ) {
+            eventMonitors.append(monitor)
+        }
+        if let monitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown],
+            handler: { [weak self] event in
+                guard let self else { return event }
+                if event.type == .keyDown {
+                    guard event.keyCode == 53 else { return event }
+                    close()
+                    return nil
+                }
+                let ours = event.window === panel
+                    || openSubmenu?.owns(event.window) == true
+                    || event.window === statusItem.button?.window
+                if !ours { close() }
+                return event
+            }
+        ) {
+            eventMonitors.append(monitor)
+        }
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in self?.close() }
+    }
+
+    private func removeMonitors() {
+        eventMonitors.forEach(NSEvent.removeMonitor)
+        eventMonitors = []
+        if let spaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver)
+        }
+        spaceObserver = nil
+    }
+
+    private func updateIcon(_ snapshot: SystemSnapshot?, items: [MenuBarItem]) {
+        let entries = items.map { (item: $0, text: $0.text(snapshot ?? SystemSnapshot())) }
+        let key = entries.map { "\($0.item.rawValue)=\($0.text)" }.joined(separator: "|")
+        guard key != iconKey else { return }
+        iconKey = key
+        statusItem.button?.image = MenuBarIconRenderer.render(entries)
     }
 
     func invalidate() {
+        close()
         cancellable?.cancel()
         cancellable = nil
         preferencesCancellable?.cancel()
         preferencesCancellable = nil
-        statusItem.menu = nil
+        launcherCancellable?.cancel()
+        launcherCancellable = nil
+        monitor.setPresenting(false)
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
-    @MainActor
-    @objc private func openControlBox() {
-        SystemMonitorNavigation.openSystemMonitorPane()
-    }
-
-    @objc private func hideFromMenuBar() {
+    private func hideFromMenuBar() {
+        close()
         PreferencesStore.shared.menuBarEnabled = false
     }
 }

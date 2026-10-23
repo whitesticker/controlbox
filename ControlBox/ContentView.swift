@@ -94,6 +94,7 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 16)
+                    .background(OverlayScrollers())
                 }
 
                 VStack(spacing: 0) {
@@ -131,7 +132,7 @@ struct ContentView: View {
             case .caffeinate:
                 CaffeinatePane(catalog: caffeinateCatalog)
             case .systemMonitor:
-                SystemMonitorPane()
+                SystemMonitorPane(monitor: monitor)
             case .pointerScroll:
                 PointerScrollPane(monitor: monitor)
             case .windowGrab:
@@ -848,6 +849,42 @@ private struct ValueRow: View {
             Text(value)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Palette.primaryText(colorScheme))
+        }
+    }
+}
+
+/// Put in a `ScrollView`'s content background: its scroll bar shows only
+/// while scrolling, even when a mouse makes macOS prefer always-visible
+/// (legacy) scrollers. AppKit resets `scrollerStyle` to the system
+/// preference whenever that preference changes, so it is re-applied then.
+private struct OverlayScrollers: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class Probe: NSView {
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+            guard window != nil, observer == nil else { return }
+            observer = NotificationCenter.default.addObserver(
+                forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                DispatchQueue.main.async { self?.apply() }
+            }
+        }
+
+        private func apply() {
+            guard let scrollView = enclosingScrollView else { return }
+            scrollView.scrollerStyle = .overlay
+            scrollView.autohidesScrollers = true
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
         }
     }
 }

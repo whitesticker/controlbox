@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import SystemConfiguration
 
 // Collects per-interface network throughput using 64-bit cumulative byte
 // counters from the routing socket interface list (NET_RT_IFLIST2), which
@@ -36,6 +37,11 @@ final class NetworkMonitor {
     // computation and just seed the counters).
     private var isFirstSample = true
 
+    /// System Settings' name and type per BSD name, re-read only when the
+    /// set of interfaces changes (a dongle, VPN, or hotspot comes or goes).
+    private var interfaceInfo: [String: (kind: NetworkInterfaceKind, name: String)] = [:]
+    private var interfaceInfoNames: Set<String> = []
+
     init() {}
 
     func sample() -> NetworkSample {
@@ -52,6 +58,11 @@ final class NetworkMonitor {
         // 1. Read cumulative 64-bit byte counters per interface from the
         //    routing socket interface list.
         let currentCounters = readInterfaceCounters()
+        let names = Set(currentCounters.keys)
+        if names != interfaceInfoNames {
+            interfaceInfo = Self.readInterfaceInfo()
+            interfaceInfoNames = names
+        }
 
         // 2. Read IPv4 addresses per interface via getifaddrs.
         let ipv4ByInterface = readIPv4Addresses()
@@ -90,16 +101,22 @@ final class NetworkMonitor {
 
             // Only include interfaces that have an IPv4 address or have
             // carried any traffic at all -- skip purely idle/unconfigured
-            // interfaces to keep the list relevant.
+            // interfaces to keep the list relevant. Wi-Fi and the built-in
+            // Ethernet port stay listed while disconnected, so the submenu
+            // can say so. (Thunderbolt ports and adapters are also typed
+            // Ethernet but are named "Thunderbolt 1" etc.)
             let hasTraffic = counters.inBytes > 0 || counters.outBytes > 0
-            guard !ip.isEmpty || hasTraffic else { continue }
+            let info = interfaceInfo[name]
+            let alwaysListed = info?.kind == .wifi || (info?.kind == .ethernet && info?.name == "Ethernet")
+            guard !ip.isEmpty || hasTraffic || alwaysListed else { continue }
 
             aggregateUpRate += upRate
             aggregateDownRate += downRate
 
             var ifaceSample = NetworkInterfaceSample()
             ifaceSample.name = name
-            ifaceSample.displayName = displayName(for: name)
+            ifaceSample.kind = interfaceInfo[name]?.kind ?? Self.kind(forBSDName: name)
+            ifaceSample.displayName = interfaceInfo[name]?.name ?? displayName(for: name)
             ifaceSample.upBytesPerSec = upRate
             ifaceSample.downBytesPerSec = downRate
             ifaceSample.ipv4 = ip
@@ -110,6 +127,8 @@ final class NetworkMonitor {
         //    the conventional en0-first ordering) with a non-loopback IPv4.
         if let primary = choosePrimaryInterface(from: interfaceSamples) {
             result.primaryInterface = primary.name
+            result.primaryDisplayName = primary.displayName
+            result.primaryKind = primary.kind
             result.primaryIP = primary.ipv4
         }
 
@@ -143,15 +162,52 @@ final class NetworkMonitor {
         return name.hasPrefix("lo")
     }
 
-    // Produces a friendlier label for common interface name prefixes.
-    // Falls back to the raw BSD name for anything unrecognized.
+    // Label for interfaces System Configuration does not list (tunnels,
+    // AWDL). Falls back to the raw BSD name for anything unrecognized.
     private func displayName(for name: String) -> String {
-        if name.hasPrefix("en") { return "Wi-Fi/Ethernet (\(name))" }
-        if name.hasPrefix("awdl") { return "AWDL (\(name))" }
-        if name.hasPrefix("utun") { return "VPN (\(name))" }
-        if name.hasPrefix("bridge") { return "Bridge (\(name))" }
-        if name.hasPrefix("pdp_ip") { return "Cellular (\(name))" }
-        return name
+        switch Self.kind(forBSDName: name) {
+        case .awdl: return "AWDL"
+        case .vpn: return "VPN"
+        case .bridge: return "Bridge"
+        case .cellular: return "Cellular"
+        case .wifi, .ethernet, .other: return name
+        }
+    }
+
+    private static func kind(forBSDName name: String) -> NetworkInterfaceKind {
+        if name.hasPrefix("awdl") || name.hasPrefix("llw") { return .awdl }
+        if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("ppp") { return .vpn }
+        if name.hasPrefix("bridge") { return .bridge }
+        if name.hasPrefix("pdp_ip") { return .cellular }
+        return .other
+    }
+
+    /// Type and localized name ("Wi-Fi", "Ethernet", "Thunderbolt Bridge")
+    /// of every interface System Settings knows, keyed by BSD name. `en0`
+    /// is Wi-Fi on a MacBook and Ethernet on a Mac Studio, so the BSD name
+    /// alone cannot tell them apart.
+    private static func readInterfaceInfo() -> [String: (kind: NetworkInterfaceKind, name: String)] {
+        guard let all = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] else { return [:] }
+        var info: [String: (kind: NetworkInterfaceKind, name: String)] = [:]
+        for interface in all {
+            guard let bsdName = SCNetworkInterfaceGetBSDName(interface) as String? else { continue }
+            let type = SCNetworkInterfaceGetInterfaceType(interface) as String? ?? ""
+            let kind: NetworkInterfaceKind
+            if type == kSCNetworkInterfaceTypeIEEE80211 as String {
+                kind = .wifi
+            } else if type == kSCNetworkInterfaceTypeEthernet as String {
+                kind = .ethernet
+            } else if type == "Bridge" {
+                kind = .bridge
+            } else if type == kSCNetworkInterfaceTypeWWAN as String {
+                kind = .cellular
+            } else {
+                kind = Self.kind(forBSDName: bsdName)
+            }
+            let name = SCNetworkInterfaceGetLocalizedDisplayName(interface) as String? ?? bsdName
+            info[bsdName] = (kind, name)
+        }
+        return info
     }
 
     // Chooses the primary interface as the first interface (by conventional

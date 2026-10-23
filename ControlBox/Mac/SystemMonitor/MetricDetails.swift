@@ -1,22 +1,26 @@
 import SwiftUI
 
 /// Cascading submenu content for each metric row. Compact cards live in
-/// MenuRows.swift; these are the expanded views behind `.submenu`.
+/// MenuRows.swift; these are the expanded views behind `.submenu`. Title and
+/// graph come from the history panel beside each (except Battery).
 
 struct CPUDetail: View {
     let cpu: CPUSample
-    let history: [Double]
+
+    private static let bootFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, h:mm a"
+        return formatter
+    }()
 
     var body: some View {
-        DetailPanel(title: "CPU", systemImage: "cpu") {
+        DetailPanel {
             HStack {
                 StatRow(label: "Total", value: Fmt.percent(cpu.totalUsage))
             }
             StatRow(label: "User", value: Fmt.percent(cpu.user))
             StatRow(label: "System", value: Fmt.percent(cpu.system))
             StatRow(label: "Idle", value: Fmt.percent(cpu.idle))
-            Sparkline(values: history, maxValue: 1.0, color: DashColors.cpuLine)
-                .frame(height: 40)
             if cpu.pCoreCount > 0 {
                 Divider()
                 StatRow(label: "Performance cores", value: "\(cpu.pCoreCount)")
@@ -44,8 +48,10 @@ struct CPUDetail: View {
             StatRow(label: "Load avg (5m)", value: String(format: "%.2f", cpu.load5))
             StatRow(label: "Load avg (15m)", value: String(format: "%.2f", cpu.load15))
             Divider()
+            StatRow(label: "Uptime", value: Fmt.uptime(cpu.uptime))
+            StatRow(label: "Booted", value: cpu.uptime > 0 ? Self.bootFormatter.string(from: Date(timeIntervalSinceNow: -cpu.uptime)) : "—")
+            Divider()
             TopProcessList(
-                sample: { ProcessMonitor().topCPUProcesses() },
                 format: { String(format: "%.0f%%", $0) }
             )
         }
@@ -54,15 +60,12 @@ struct CPUDetail: View {
 
 struct GPUDetail: View {
     let gpu: GPUSample
-    let history: [Double]
 
     var body: some View {
-        DetailPanel(title: "GPU", systemImage: "cube.transparent") {
+        DetailPanel {
             if gpu.available {
                 StatRow(label: "Name", value: gpu.name.isEmpty ? "GPU" : gpu.name)
                 StatRow(label: "Utilization", value: Fmt.percent(gpu.utilization))
-                Sparkline(values: history, maxValue: 1.0, color: DashColors.gpuLine)
-                    .frame(height: 40)
             } else {
                 Text("No GPU data available").font(DashStyle.labelFont).foregroundColor(.secondary)
             }
@@ -70,72 +73,233 @@ struct GPUDetail: View {
     }
 }
 
+extension MemorySample {
+    /// The kernel's level, as Activity Monitor colors its pressure graph.
+    var pressureColor: Color {
+        switch pressureLevel {
+        case 4: return DashColors.statusCritical
+        case 2: return DashColors.statusWarning
+        default: return DashColors.statusGood
+        }
+    }
+
+    var pressureTitle: String {
+        switch pressureLevel {
+        case 4: return "Critical"
+        case 2: return "Warning"
+        default: return "Normal"
+        }
+    }
+}
+
 struct MemoryDetail: View {
     let memory: MemorySample
-    let history: [Double]
-    let pressureColor: Color
 
     var body: some View {
-        DetailPanel(title: "Memory", systemImage: "memorychip") {
-            StatRow(label: "Used", value: Fmt.bytesBinary(memory.used))
-            StatRow(label: "Total", value: Fmt.bytesBinary(memory.total))
-            StatRow(label: "Pressure", value: Fmt.percent(memory.pressure), valueColor: pressureColor)
-            Sparkline(values: history, maxValue: 1.0, color: pressureColor)
-                .frame(height: 40)
+        DetailPanel {
+            MemoryRing(memory: memory)
             Divider()
-            StatRow(label: "App", value: Fmt.bytesBinary(memory.app))
-            StatRow(label: "Wired", value: Fmt.bytesBinary(memory.wired))
-            StatRow(label: "Compressed", value: Fmt.bytesBinary(memory.compressed))
-            StatRow(label: "Cached", value: Fmt.bytesBinary(memory.cached))
-            StatRow(label: "Free", value: Fmt.bytesBinary(memory.free))
-            Divider()
-            StatRow(label: "Swap used", value: Fmt.bytesBinary(memory.swapUsed))
-            StatRow(label: "Swap total", value: Fmt.bytesBinary(memory.swapTotal))
+            StatRow(
+                label: "Pressure",
+                value: "\(Fmt.percent(memory.pressure)) · \(memory.pressureTitle)",
+                valueColor: memory.pressureColor
+            )
+            StatRow(label: "Swap used", value: "\(Fmt.bytesBinary(memory.swapUsed)) of \(Fmt.bytesBinary(memory.swapTotal))")
             Divider()
             TopProcessList(
-                sample: { ProcessMonitor().topMemoryProcesses() },
                 format: { Fmt.bytesBinary($0) }
             )
         }
     }
 }
 
-struct NetworkDetail: View {
-    let network: NetworkSample
+/// Where physical RAM is going, as a ring: App, Wired and Compressed are
+/// "used" (the center figure); Cached can be dropped at any time, and Free
+/// is unused. The ring is the sum of the five, which runs a little under
+/// total RAM (pages the kernel does not count in any of them).
+struct MemoryRing: View {
+    let memory: MemorySample
+
+    private var segments: [(label: String, bytes: UInt64, color: Color)] {
+        [
+            ("App", memory.app, .blue),
+            ("Wired", memory.wired, .orange),
+            ("Compressed", memory.compressed, .purple),
+            ("Cached", memory.cached, .teal),
+            ("Free", memory.free, Color.secondary.opacity(0.35)),
+        ]
+    }
 
     var body: some View {
-        DetailPanel(title: "Network", systemImage: "network") {
+        let segments = segments
+        let sum = Double(segments.reduce(0) { $0 + $1.bytes })
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 11)
+                if sum > 0 {
+                    ForEach(Array(arcs(segments, sum: sum).enumerated()), id: \.offset) { _, arc in
+                        Circle()
+                            .trim(from: arc.start, to: arc.end)
+                            .stroke(arc.color, style: StrokeStyle(lineWidth: 11, lineCap: .butt))
+                    }
+                    .rotationEffect(.degrees(-90))
+                }
+                VStack(spacing: 0) {
+                    Text(Fmt.bytesBinary(memory.used))
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                    Text("of \(Fmt.bytesBinary(memory.total))")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            .frame(width: 82, height: 82)
+            .padding(5.5)
+
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(segments, id: \.label) { segment in
+                    HStack(spacing: 5) {
+                        Circle().fill(segment.color).frame(width: 7, height: 7)
+                        Text(segment.label)
+                            .font(DashStyle.labelFont)
+                            .foregroundColor(.secondary)
+                        Spacer(minLength: 6)
+                        Text(Fmt.bytesBinary(segment.bytes))
+                            .font(DashStyle.valueFont)
+                            .monospacedDigit()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Clockwise from 12 o'clock with a hairline gap between segments.
+    private func arcs(
+        _ segments: [(label: String, bytes: UInt64, color: Color)],
+        sum: Double
+    ) -> [(start: CGFloat, end: CGFloat, color: Color)] {
+        var start = 0.0
+        return segments.compactMap { segment in
+            let fraction = Double(segment.bytes) / sum
+            defer { start += fraction }
+            guard fraction > 0.004 else { return nil }
+            return (CGFloat(start + 0.002), CGFloat(start + fraction - 0.002), segment.color)
+        }
+    }
+}
+
+struct NetworkDetail: View {
+    let network: NetworkSample
+    @ObservedObject private var publicIP = PublicIPLookup.shared
+
+    /// Addressed interfaces first, then Wi-Fi / Ethernet even when
+    /// disconnected, so idle tunnels are what folds into "+N more".
+    private var listedInterfaces: [NetworkInterfaceSample] {
+        func rank(_ iface: NetworkInterfaceSample) -> Int {
+            if !iface.ipv4.isEmpty { return 0 }
+            return Self.isPhysical(iface) ? 1 : 2
+        }
+        return network.interfaces.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+    }
+
+    private static func isPhysical(_ iface: NetworkInterfaceSample) -> Bool {
+        iface.kind == .wifi || iface.kind == .ethernet
+    }
+
+    var body: some View {
+        DetailPanel {
             StatRow(label: "Download", value: Fmt.speed(network.downBytesPerSec))
             StatRow(label: "Upload", value: Fmt.speed(network.upBytesPerSec))
+            Divider()
+            publicIPRow
             Divider()
             StatRow(label: "Session ↓", value: Fmt.bytes(network.sessionDown))
             StatRow(label: "Session ↑", value: Fmt.bytes(network.sessionUp))
             StatRow(label: "Total ↓ (boot)", value: Fmt.bytes(network.totalDown))
             StatRow(label: "Total ↑ (boot)", value: Fmt.bytes(network.totalUp))
-            if !network.interfaces.isEmpty {
-                Divider()
-                Text("Interfaces").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                ForEach(Array(network.interfaces.enumerated()), id: \.offset) { _, iface in
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Text(iface.name).font(.system(size: 10, weight: .medium))
-                            Spacer()
+            Divider()
+            Text("Interfaces").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
+            SlotList(items: listedInterfaces, slots: 6, slotHeight: 26, spacing: 2) { iface in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 4) {
+                        Image(systemName: iface.kind.systemImage)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 13)
+                        Text(iface.displayName).font(.system(size: 10, weight: .medium))
+                        if iface.displayName != iface.name {
+                            Text(iface.name).font(.system(size: 8.5)).foregroundColor(.secondary)
+                        }
+                        if iface.name == network.primaryInterface {
+                            Text("Primary")
+                                .font(.system(size: 7.5, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        }
+                        Spacer()
+                        if iface.ipv4.isEmpty && Self.isPhysical(iface) {
+                            Text("Not connected").font(.system(size: 8.5)).foregroundColor(.secondary)
+                        } else {
                             CopyableIPText(ip: iface.ipv4.isEmpty ? "—" : iface.ipv4)
                         }
-                        Text("↓\(Fmt.speed(iface.downBytesPerSec)) ↑\(Fmt.speed(iface.upBytesPerSec))")
-                            .font(.system(size: 8.5))
-                            .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 2)
+                    .lineLimit(1)
+                    Text("↓\(Fmt.speed(iface.downBytesPerSec)) ↑\(Fmt.speed(iface.upBytesPerSec))")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 17)
                 }
             }
             Divider()
             TopProcessList(
-                label: "Top processes (total data)",
-                sample: { ProcessMonitor().topNetworkProcesses() },
-                format: { Fmt.bytes($0) }
+                label: "Top processes (last 4 s)",
+                format: { Fmt.speed($0) }
             )
         }
+        .onChange(of: "\(network.primaryInterface)|\(network.primaryIP)") { _, key in
+            publicIP.networkChanged(key)
+        }
+    }
+
+    /// Looked up only on click (see `PublicIPLookup`).
+    private var publicIPRow: some View {
+        HStack(spacing: 4) {
+            Text("Public IP")
+                .font(DashStyle.labelFont)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            switch publicIP.state {
+            case .idle:
+                Button("Show") { publicIP.lookUp() }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 10, weight: .medium))
+            case .loading:
+                ProgressView().controlSize(.mini)
+            case .found(let ip):
+                CopyableIPText(ip: ip, font: DashStyle.valueFont)
+                refreshButton
+            case .failed:
+                Text("Couldn't reach ipv4.icanhazip.com")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                refreshButton
+            }
+        }
+        .frame(height: 16)
+    }
+
+    private var refreshButton: some View {
+        Button { publicIP.lookUp() } label: {
+            Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .semibold))
+        }
+        .buttonStyle(.borderless)
+        .help("Look up again")
     }
 }
 
@@ -168,42 +332,45 @@ struct VolumeRow: View {
 
 struct DiskDetail: View {
     let disk: DiskSample
-    let readHistory: [Double]
-    let writeHistory: [Double]
 
     var body: some View {
-        DetailPanel(title: "Disk", systemImage: "internaldrive") {
+        DetailPanel {
             StatRow(label: "Read", value: Fmt.speed(disk.readBytesPerSec))
             StatRow(label: "Write", value: Fmt.speed(disk.writeBytesPerSec))
-            HStack(spacing: 8) {
-                Sparkline(values: readHistory, color: DashColors.diskRead).frame(height: 30)
-                Sparkline(values: writeHistory, color: DashColors.diskWrite).frame(height: 30)
-            }
-            if disk.volumes.isEmpty {
-                Text("No volumes found").font(DashStyle.labelFont).foregroundColor(.secondary)
-            } else {
-                Divider()
-                Text("Volumes (\(disk.volumes.count))").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                ForEach(Array(disk.volumes.enumerated()), id: \.offset) { _, vol in
-                    VolumeRow(volume: vol)
-                }
+            Divider()
+            Text("Volumes (\(disk.volumes.count))").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
+            SlotList(items: disk.volumes, slots: 4, slotHeight: 16, emptyText: "No volumes found") { vol in
+                VolumeRow(volume: vol)
             }
             Divider()
             TopProcessList(
-                sample: { ProcessMonitor().topDiskProcesses() },
+                label: "Top processes (last 10 s)",
                 format: { Fmt.speed($0) }
             )
         }
     }
 }
 
-/// Full sensor list (the compact row only shows CPU/GPU highlights). Safe
-/// on demand; some Macs expose ~186 SMC keys.
+/// Full sensor list (the compact row only shows CPU/GPU highlights),
+/// sectioned by `SensorGroup` in physical order, hottest first within each.
+/// Empty groups are hidden; the set of groups is fixed per Mac, so the
+/// submenu keeps one height. Safe on demand; some Macs expose ~220 SMC keys.
+///
+/// Each section (power, fans, one temperature group) is a hover target:
+/// hovering it calls `onFocus`, and the history panel charts that section.
+/// The section being charted keeps a highlight until another is hovered.
 struct SensorsDetail: View {
+    static let width: CGFloat = 420
     let sensors: SensorSample
+    var focused: HistoryMetric?
+    var onFocus: ((HistoryMetric) -> Void)?
 
-    private var sortedTemps: [TemperatureSample] {
-        sensors.temperatures.sorted { $0.celsius > $1.celsius }
+    private var groups: [(group: SensorGroup, temps: [TemperatureSample])] {
+        let byGroup = Dictionary(grouping: sensors.temperatures) { SensorGroup.of($0.label) }
+        return SensorGroup.allCases.compactMap { group in
+            guard let temps = byGroup[group], !temps.isEmpty else { return nil }
+            return (group, temps.sorted { $0.celsius > $1.celsius })
+        }
     }
 
     private func heatColor(_ celsius: Double) -> Color {
@@ -213,45 +380,109 @@ struct SensorsDetail: View {
     }
 
     var body: some View {
-        DetailPanel(title: "Sensors", systemImage: "thermometer.medium", width: 420) {
-            if sensors.fans.isEmpty && sortedTemps.isEmpty {
+        let groups = groups
+        let hasPower = sensors.systemPower > 0
+        DetailPanel(width: Self.width) {
+            if sensors.fans.isEmpty && groups.isEmpty && !hasPower {
                 Text("No sensor data").font(DashStyle.labelFont).foregroundColor(.secondary)
             }
-            if !sensors.fans.isEmpty {
-                Text("Fans").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                ForEach(Array(sensors.fans.enumerated()), id: \.offset) { _, f in
-                    StatRow(label: f.label, value: Fmt.rpm(f.rpm))
+            if hasPower {
+                section(.power) {
+                    Text("Power").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
+                    StatRow(label: "System total", value: Fmt.watts(sensors.systemPower))
                 }
-                Divider()
             }
-            if !sortedTemps.isEmpty {
-                Text("Temperatures (\(sortedTemps.count))").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 8), spacing: 4) {
-                    ForEach(Array(sortedTemps.enumerated()), id: \.offset) { _, t in
-                        VStack(spacing: 1) {
-                            Text(SensorNames.displayName(for: t.label))
-                                .font(.system(size: 7.5))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                            Text(Fmt.temp(t.celsius))
-                                .font(.system(size: 10.5, weight: .semibold))
-                                .monospacedDigit()
+            if !sensors.fans.isEmpty {
+                if hasPower {
+                    Divider()
+                }
+                section(.fans) {
+                    Text("Fans").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
+                    ForEach(Array(sensors.fans.enumerated()), id: \.offset) { _, f in
+                        StatRow(label: f.label, value: Fmt.rpm(f.rpm))
+                    }
+                }
+            }
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, entry in
+                if index > 0 || !sensors.fans.isEmpty || hasPower {
+                    Divider()
+                }
+                section(.sensorGroup(entry.group)) {
+                    groupHeader(entry.group, temps: entry.temps)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 3) {
+                        ForEach(Array(entry.temps.enumerated()), id: \.offset) { _, t in
+                            tile(t)
                         }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 2)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(heatColor(t.celsius).opacity(0.22))
-                        )
                     }
                 }
             }
         }
     }
+
+    /// The highlight and hover area reach 4 pt past the content, so the
+    /// layout is the same as without sections.
+    private func section<Content: View>(
+        _ metric: HistoryMetric,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.primary.opacity(focused == metric ? 0.07 : 0))
+                .padding(-4)
+        )
+        .contentShape(Rectangle().inset(by: -4))
+        .onHover { inside in
+            if inside { onFocus?(metric) }
+        }
+    }
+
+    private func groupHeader(_ group: SensorGroup, temps: [TemperatureSample]) -> some View {
+        HStack {
+            Text("\(group.title) (\(temps.count))")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.secondary)
+            Spacer()
+            if let hottest = temps.first {
+                Text("max \(Fmt.temp(hottest.celsius))")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(heatColor(hottest.celsius))
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    /// Name and temperature on one line; "°" only, since the group header
+    /// already says "°C".
+    private func tile(_ t: TemperatureSample) -> some View {
+        HStack(spacing: 3) {
+            Text(SensorNames.shortName(for: t.label))
+                .font(.system(size: 8))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            Text(String(format: "%.0f°", t.celsius))
+                .font(.system(size: 9.5, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(heatColor(t.celsius).opacity(0.22))
+        )
+    }
 }
 
+/// One equal-width column in the Sensors row. One line, scaled down if the
+/// value is too wide: wrapping "1005 rpm" onto two lines changed the row's
+/// height, and every live resize made the whole menu jump.
 struct HighlightStat: View {
     let label: String
     let value: String
@@ -261,11 +492,14 @@ struct HighlightStat: View {
             Text(label)
                 .font(.system(size: 8.5))
                 .foregroundColor(.secondary)
+                .lineLimit(1)
             Text(value)
                 .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
-        .padding(.trailing, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -284,17 +518,14 @@ struct PowerDetail: View {
                 StatRow(label: "Health", value: Fmt.percent(power.health))
                 StatRow(label: "Power draw", value: Fmt.watts(power.powerWatts))
                 StatRow(label: "Battery temp", value: Fmt.temp(power.temperature))
-                Divider()
-                // macOS has no public per-process energy-impact API; CPU
-                // usage is the closest proxy for battery drain.
-                TopProcessList(
-                    label: "Heaviest CPU users (energy proxy)",
-                    sample: { ProcessMonitor().topCPUProcesses() },
-                    format: { String(format: "%.0f%%", $0) }
-                )
             } else {
                 Text("On AC power / no battery").font(DashStyle.labelFont).foregroundColor(.secondary)
             }
+            Divider()
+            TopProcessList(
+                label: "Energy impact",
+                format: { String(format: "%.1f", $0) }
+            )
         }
     }
 }

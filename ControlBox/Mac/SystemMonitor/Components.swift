@@ -14,30 +14,33 @@ enum DashStyle {
 /// Consistent chrome for a section's expanded detail popover: title header
 /// plus scrollable content (detail lists, like all sensors or all disk
 /// volumes, can be arbitrarily long, unlike the fixed-size main dashboard).
+/// `title` is nil when the history panel beside it already shows it.
 struct DetailPanel<Content: View>: View {
-    let title: String
-    let systemImage: String
+    var title: String? = nil
+    var systemImage: String = ""
     var width: CGFloat = 260
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+            if let title {
+                HStack(spacing: 5) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                }
             }
-            // No internal ScrollView/maxHeight: this is now a real NSMenu
-            // submenu (see DetailSubmenu), not a fixed-size popover, so it
-            // should just grow to fit its content the same way the main
-            // menu does -- a capped-height ScrollView here just forced an
-            // extra scroll gesture inside an already-scrollable menu.
+            // No internal ScrollView/maxHeight: the submenu panel (see
+            // DetailSubmenu) grows to fit its content the same way the
+            // dropdown does.
             VStack(alignment: .leading, spacing: 4) {
                 content
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.top, title == nil ? 6 : 12)
+        .padding(.bottom, 12)
         .frame(width: width)
     }
 }
@@ -148,56 +151,84 @@ struct UsageBar: View {
 
 // MARK: - Stat row
 
-/// "Who's using the most of this resource right now" -- a ranked top-5
-/// list with app icons (Activity-Monitor-style), loaded on demand while the
-/// detail popover is visible (`.task` cancels automatically if the popover
-/// closes before it finishes), since `ProcessMonitor`'s sampling is too
-/// expensive to run continuously in the background.
-struct TopProcessList: View {
-    var label: String = "Top processes"
-    var sample: @Sendable () -> [ProcessMonitor.TopProcess]
-    var format: (Double) -> String
-
-    @State private var processes: [ProcessMonitor.TopProcess] = []
-    @State private var loaded = false
+/// Exactly `slots` fixed-height lines, whatever `items.count` is, so a list
+/// whose length changes with live data keeps one height. More items than
+/// slots: the last slot reads "+N more". No items: slot 0 shows `emptyText`.
+/// Unused slots stay blank, so slack only ever sits below the list.
+struct SlotList<Item, Row: View>: View {
+    var items: [Item]
+    var slots: Int
+    var slotHeight: CGFloat
+    var spacing: CGFloat = 4
+    var emptyText: String = "—"
+    @ViewBuilder var row: (Item) -> Row
 
     var body: some View {
-        let sample = sample
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-            if !loaded {
-                Text("…").font(DashStyle.labelFont).foregroundColor(.secondary)
-            } else if processes.isEmpty {
-                Text("—").font(DashStyle.labelFont).foregroundColor(.secondary)
-            } else {
-                ForEach(processes) { proc in
-                    HStack(spacing: 6) {
-                        if let icon = ProcessMonitor.icon(for: proc.pid) {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 14, height: 14)
-                        } else {
-                            Image(systemName: "gearshape")
-                                .frame(width: 14, height: 14)
-                                .foregroundColor(.secondary)
-                        }
-                        Text(proc.name)
+        let overflow = items.count > slots
+        let shown = overflow ? slots - 1 : items.count
+        return VStack(alignment: .leading, spacing: spacing) {
+            ForEach(0..<slots, id: \.self) { slot in
+                Group {
+                    if slot < shown {
+                        row(items[slot])
+                    } else if overflow, slot == slots - 1 {
+                        Text("+\(items.count - shown) more")
                             .font(DashStyle.labelFont)
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer(minLength: 8)
-                        Text(format(proc.value))
-                            .font(DashStyle.valueFont)
-                            .monospacedDigit()
+                            .foregroundColor(.secondary)
+                    } else if slot == 0, items.isEmpty {
+                        Text(emptyText)
+                            .font(DashStyle.labelFont)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Color.clear
                     }
                 }
+                .frame(maxWidth: .infinity, minHeight: slotHeight, maxHeight: slotHeight, alignment: .leading)
             }
         }
-        .task {
-            let result = await Task.detached(priority: .utility, operation: sample).value
-            processes = result
-            loaded = true
+    }
+}
+
+/// "Who's using the most of this resource right now" -- a ranked top-5
+/// list with app icons (Activity-Monitor-style), fed by the enclosing
+/// `DetailSubmenu`'s `TopProcessFeed` while that submenu is open. Five
+/// fixed slots whether the feed is loading, empty, or returned fewer rows.
+struct TopProcessList: View {
+    var label: String = "Top processes"
+    var format: (Double) -> String
+
+    @EnvironmentObject private var feed: TopProcessFeed
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
+            SlotList(
+                items: feed.processes,
+                slots: TopProcessFeed.slotCount,
+                slotHeight: 16,
+                emptyText: feed.loaded ? "—" : "…"
+            ) { proc in
+                HStack(spacing: 6) {
+                    if let icon = feed.icons[proc.pid] {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "gearshape")
+                            .frame(width: 14, height: 14)
+                            .foregroundColor(.secondary)
+                    }
+                    Text(proc.name)
+                        .font(DashStyle.labelFont)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    Text(format(proc.value))
+                        .font(DashStyle.valueFont)
+                        .monospacedDigit()
+                }
+            }
         }
     }
 }

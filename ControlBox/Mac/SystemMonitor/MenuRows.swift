@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-private let menuRowWidth: CGFloat = 300
+let menuRowWidth: CGFloat = 300
 
 /// One row's shell: an icon+title header (matching every other row), then
 /// arbitrary content underneath -- the same rich, multi-line content each
@@ -68,10 +68,14 @@ extension MenuRow where HeaderTrailing == EmptyView {
 struct DateRow: View {
     @EnvironmentObject var monitor: SystemMonitor
 
-    private var combinedString: String {
+    private static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h:mm:ss a · EEE, MMM d"
-        return f.string(from: monitor.snapshot.date)
+        return f
+    }()
+
+    private var combinedString: String {
+        Self.formatter.string(from: monitor.snapshot.date)
     }
 
     var body: some View {
@@ -127,10 +131,14 @@ struct CPURow: View {
                 .monospacedDigit()
             }
 
-            Text(String(format: "Load %.1f %.1f %.1f", cpu.load1, cpu.load5, cpu.load15))
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-                .monospacedDigit()
+            HStack {
+                Text(String(format: "Load %.1f %.1f %.1f", cpu.load1, cpu.load5, cpu.load15))
+                Spacer()
+                Text("Up \(Fmt.uptime(cpu.uptime))")
+            }
+            .font(.system(size: 9))
+            .foregroundColor(.secondary)
+            .monospacedDigit()
         }
     }
 }
@@ -138,7 +146,7 @@ struct CPURow: View {
 struct CPUDetailStandalone: View {
     @EnvironmentObject var monitor: SystemMonitor
     var body: some View {
-        CPUDetail(cpu: monitor.snapshot.cpu, history: monitor.cpuHistory)
+        CPUDetail(cpu: monitor.snapshot.cpu)
     }
 }
 
@@ -173,22 +181,16 @@ struct GPURow: View {
 struct GPUDetailStandalone: View {
     @EnvironmentObject var monitor: SystemMonitor
     var body: some View {
-        GPUDetail(gpu: monitor.snapshot.gpu, history: monitor.gpuHistory)
+        GPUDetail(gpu: monitor.snapshot.gpu)
     }
 }
 
 struct MemoryRow: View {
     @EnvironmentObject var monitor: SystemMonitor
 
-    private var pressureColor: Color {
-        let memory = monitor.snapshot.memory
-        if memory.pressure < 0.6 { return DashColors.statusGood }
-        if memory.pressure < 0.8 { return DashColors.statusWarning }
-        return DashColors.statusCritical
-    }
-
     var body: some View {
         let memory = monitor.snapshot.memory
+        let pressureColor = memory.pressureColor
         MenuRow(title: "Memory", systemImage: "memorychip") {
             Text(Fmt.percent(memory.pressure))
                 .font(.system(size: 13, weight: .semibold))
@@ -217,10 +219,7 @@ struct MemoryRow: View {
 struct MemoryDetailStandalone: View {
     @EnvironmentObject var monitor: SystemMonitor
     var body: some View {
-        let memory = monitor.snapshot.memory
-        let pressureColor: Color = memory.pressure < 0.6 ? DashColors.statusGood
-            : memory.pressure < 0.8 ? DashColors.statusWarning : DashColors.statusCritical
-        MemoryDetail(memory: memory, history: monitor.memHistory, pressureColor: pressureColor)
+        MemoryDetail(memory: monitor.snapshot.memory)
     }
 }
 
@@ -259,11 +258,18 @@ struct NetworkRow: View {
                 }
             }
 
-            CopyableIPText(
-                prefix: "\(network.primaryInterface.isEmpty ? "—" : network.primaryInterface) · ",
-                ip: network.primaryIP.isEmpty ? "—" : network.primaryIP,
-                font: .system(size: 9)
-            )
+            HStack(spacing: 3) {
+                Image(systemName: network.primaryKind.systemImage)
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundColor(.secondary)
+                CopyableIPText(
+                    prefix: network.primaryInterface.isEmpty ? "— · "
+                        : network.primaryDisplayName == network.primaryInterface ? "\(network.primaryInterface) · "
+                        : "\(network.primaryDisplayName) (\(network.primaryInterface)) · ",
+                    ip: network.primaryIP.isEmpty ? "—" : network.primaryIP,
+                    font: .system(size: 9)
+                )
+            }
             .lineLimit(1)
             .truncationMode(.middle)
 
@@ -292,14 +298,8 @@ struct DiskRow: View {
     var body: some View {
         let disk = monitor.snapshot.disk
         MenuRow(title: "Disk", systemImage: "internaldrive") {
-            if disk.volumes.isEmpty {
-                Text("No volumes found")
-                    .font(DashStyle.labelFont)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(Array(topVolumes.enumerated()), id: \.offset) { _, vol in
-                    VolumeRow(volume: vol)
-                }
+            SlotList(items: topVolumes, slots: 2, slotHeight: 15, emptyText: "No volumes found") { vol in
+                VolumeRow(volume: vol)
             }
 
             HStack(spacing: 4) {
@@ -329,11 +329,7 @@ struct DiskRow: View {
 struct DiskDetailStandalone: View {
     @EnvironmentObject var monitor: SystemMonitor
     var body: some View {
-        DiskDetail(
-            disk: monitor.snapshot.disk,
-            readHistory: monitor.diskReadHistory,
-            writeHistory: monitor.diskWriteHistory
-        )
+        DiskDetail(disk: monitor.snapshot.disk)
     }
 }
 
@@ -352,7 +348,7 @@ struct SensorsRow: View {
                     .font(DashStyle.labelFont)
                     .foregroundColor(.secondary)
             } else {
-                HStack {
+                HStack(spacing: 8) {
                     if sensors.cpuTemp > 0 {
                         HighlightStat(label: "CPU", value: Fmt.temp(sensors.cpuTemp))
                     }
@@ -360,9 +356,8 @@ struct SensorsRow: View {
                         HighlightStat(label: "GPU", value: Fmt.temp(sensors.gpuTemp))
                     }
                     ForEach(Array(sensors.fans.enumerated()), id: \.offset) { _, f in
-                        HighlightStat(label: f.label, value: Fmt.rpm(f.rpm))
+                        HighlightStat(label: "\(f.label) (rpm)", value: Fmt.rpmNumber(f.rpm))
                     }
-                    Spacer(minLength: 0)
                 }
 
                 if let hot = hottestOther(sensors) {
@@ -378,8 +373,10 @@ struct SensorsRow: View {
 
 struct SensorsDetailStandalone: View {
     @EnvironmentObject var monitor: SystemMonitor
+    @ObservedObject var focus: HistoryFocus
+
     var body: some View {
-        SensorsDetail(sensors: monitor.snapshot.sensors)
+        SensorsDetail(sensors: monitor.snapshot.sensors, focused: focus.metric) { focus.select($0) }
     }
 }
 
@@ -445,65 +442,206 @@ struct PowerDetailStandalone: View {
     }
 }
 
-// MARK: - Detail submenu
+// MARK: - Menu hosting view
 
-/// Owns one section's cascading detail submenu: a custom NSHostingView
-/// whose frame is refined to the SwiftUI content's real size right before
-/// display (`menuWillOpen`), exactly like the top-level menu's own sizing
-/// fix -- otherwise the content gets clipped top and bottom, since SwiftUI
-/// hasn't laid the view out yet at construction time. The leading
-/// separator absorbs NSMenu's own top-inset chrome for the same reason.
+/// SwiftUI content for one dropdown row or detail submenu (see MenuPanel.swift).
 ///
-/// `menuWillOpen` alone isn't quite enough, though: the very first (and
-/// sometimes second) time a given submenu actually opens, its hosting view
-/// has never been part of any real window before, so even `menuWillOpen`'s
-/// `fittingSize` read can come back wrong that one time -- matching the
-/// reported "crops top/bottom on the first click or two" bug. `warmUp()`
-/// forces one real layout pass at construction time (via a throwaway
-/// offscreen window) so `fittingSize` is already trustworthy before the
-/// menu is ever shown, not just from the second open onward.
-final class DetailSubmenu: NSObject, NSMenuDelegate {
-    let menu = NSMenu()
-    private let hostingView: NSHostingView<AnyView>
+/// - `warmUp()` runs one real layout pass in a throwaway offscreen window at
+///   construction. Without it the first open or two read a too-short
+///   `fittingSize` and clip the content.
+/// - Setting `isTracking` to true (when its panel opens) re-measures against
+///   current data before display.
+/// - While tracking, every SwiftUI-driven `layout()` schedules one
+///   re-measure, and `onResize` lets the owning panel follow: a volume
+///   mounting or the battery row loading while the panel is up grows or
+///   shrinks it instead of clipping or leaving a gap.
+/// - Content is pinned to the top, so a frame that is briefly taller than
+///   the content leaves the slack at the bottom, not split above and below.
+final class MenuHostingView: NSHostingView<AnyView> {
+    var isTracking = false {
+        didSet { if isTracking { fit() } }
+    }
+    var onResize: (() -> Void)?
+    private var fitPending = false
 
-    init<Content: View>(@ViewBuilder content: () -> Content) {
-        hostingView = NSHostingView(rootView: AnyView(content()))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 260, height: 600)
-        super.init()
+    init<Content: View>(content: Content, initialSize: NSSize) {
+        super.init(rootView: Self.pinned(content))
+        frame = NSRect(origin: .zero, size: initialSize)
         warmUp()
+    }
 
-        menu.delegate = self
-        menu.addItem(.separator())
-        let item = NSMenuItem()
-        item.view = hostingView
-        menu.addItem(item)
+    /// Swaps the SwiftUI content in place (same view, same panel).
+    func setContent<Content: View>(_ content: Content) {
+        rootView = Self.pinned(content)
+    }
+
+    private static func pinned<Content: View>(_ content: Content) -> AnyView {
+        AnyView(content.frame(maxHeight: .infinity, alignment: .top))
+    }
+
+    required init(rootView: AnyView) {
+        super.init(rootView: rootView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        guard isTracking, !fitPending else { return }
+        fitPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            fitPending = false
+            if isTracking { fit() }
+        }
+    }
+
+    private func fit() {
+        layoutSubtreeIfNeeded()
+        let fitting = fittingSize
+        guard fitting.height > 0,
+              abs(fitting.height - frame.height) > 0.5 || abs(fitting.width - frame.width) > 0.5
+        else { return }
+        setFrameSize(fitting)
+        onResize?()
     }
 
     private func warmUp() {
         let warmupWindow = NSWindow(
-            contentRect: hostingView.frame,
+            contentRect: frame,
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        warmupWindow.contentView = hostingView
-        hostingView.layoutSubtreeIfNeeded()
-        let fitting = hostingView.fittingSize
-        if fitting.height > 0 {
-            hostingView.frame = NSRect(origin: .zero, size: fitting)
-        }
+        warmupWindow.contentView = self
+        fit()
         warmupWindow.contentView = nil
     }
+}
 
-    func menuWillOpen(_ menu: NSMenu) {
-        // Force a fresh layout pass before measuring, not just at
-        // construction -- content that branches on live data (e.g. a
-        // detail view's "no data yet" vs. real fallback) can otherwise
-        // keep reporting a stale `fittingSize` for the first several opens.
-        // See StatusItemController.menuWillOpen for the full explanation.
-        hostingView.layoutSubtreeIfNeeded()
-        let fitting = hostingView.fittingSize
-        guard fitting.height > 0 else { return }
-        hostingView.frame = NSRect(origin: .zero, size: fitting)
+// MARK: - Detail submenu
+
+/// One section's detail submenu: a `MenuPanel` beside the dropdown, shown
+/// as soon as the pointer enters its row and hidden (not torn down) when
+/// another row takes over, so the next show is only a window order-in.
+///
+/// A submenu with a top-process list owns that list's `TopProcessFeed`, which
+/// samples only while this submenu is shown.
+///
+/// `history` feeds get a second panel (`HistoryColumn`) beyond the stats
+/// panel, on the side away from the dropdown, tops aligned. It opens when
+/// the pointer enters the stats panel and closes when the pointer is back on
+/// a dropdown row. Two panels rather than two columns in one: either side
+/// can be the taller one, and a shared panel left an empty block under the
+/// shorter.
+final class DetailSubmenu {
+    let panel: MenuPanel
+    private let hostingView: MenuHostingView
+    private let historyPanel: MenuPanel?
+    private let historyHostingView: MenuHostingView?
+    private let topProcesses: TopProcessFeed?
+    private let historyFeeds: [HistoryFeed]
+    private var opensLeft = false
+
+    /// Gap between panels, and how far above its row the submenu's top sits.
+    private static let gap: CGFloat = 2
+    private static let topInset: CGFloat = 5
+
+    init<Content: View>(
+        topProcesses kind: TopProcessKind? = nil,
+        history feeds: [HistoryFeed] = [],
+        width: CGFloat = 260,
+        @ViewBuilder content: () -> Content
+    ) {
+        let built = content()
+        let feed = kind.map(TopProcessFeed.init(kind:))
+        let detail = feed.map { AnyView(built.environmentObject($0)) } ?? AnyView(built)
+        topProcesses = feed
+        hostingView = MenuHostingView(content: detail, initialSize: NSSize(width: width, height: 600))
+        panel = MenuPanel(content: hostingView)
+
+        historyFeeds = feeds
+        if historyFeeds.isEmpty {
+            historyHostingView = nil
+            historyPanel = nil
+        } else {
+            let history = MenuHostingView(
+                content: HistoryColumn(feeds: historyFeeds),
+                initialSize: NSSize(width: PreferencesStore.shared.historyDesign.panelWidth + 10, height: 340)
+            )
+            historyHostingView = history
+            historyPanel = MenuPanel(content: history)
+        }
+
+        hostingView.onResize = { [weak self] in
+            guard let self, panel.isVisible else { return }
+            panel.fitContent(anchorRight: opensLeft)
+            placeHistory()
+        }
+        historyHostingView?.onResize = { [weak self] in
+            guard let self, historyPanel?.isVisible == true else { return }
+            placeHistory()
+        }
+        panel.onPointerEnter = { [weak self] in self?.showHistory() }
+    }
+
+    func owns(_ window: NSWindow?) -> Bool {
+        window != nil && (window === panel || window === historyPanel)
+    }
+
+    /// Opens on the side of `parent` away from the screen edge it is near,
+    /// falling back to the other side when the stats and history panels do
+    /// not fit there.
+    func show(beside parent: NSRect, rowTop: CGFloat) {
+        let screen = (NSScreen.screens.first { $0.frame.intersects(parent) } ?? NSScreen.main)?.visibleFrame ?? parent
+        topProcesses?.start()
+        hostingView.isTracking = true
+
+        let size = hostingView.frame.size
+        let historyWidth = historyHostingView.map { $0.frame.width + Self.gap } ?? 0
+        let needed = size.width + Self.gap + historyWidth
+        let roomLeft = parent.minX - needed >= screen.minX
+        let roomRight = parent.maxX + needed <= screen.maxX
+        opensLeft = parent.midX > screen.midX ? (roomLeft || !roomRight) : !roomRight
+
+        let x = opensLeft ? parent.minX - size.width - Self.gap : parent.maxX + Self.gap
+        let tallest = max(size.height, historyHostingView?.frame.height ?? 0)
+        let top = max(min(rowTop + Self.topInset, screen.maxY), screen.minY + tallest)
+        panel.place(topLeft: NSPoint(x: x, y: top))
+        panel.orderFront(nil)
+    }
+
+    func hide() {
+        hideHistory()
+        panel.orderOut(nil)
+        hostingView.isTracking = false
+        topProcesses?.stop()
+    }
+
+    private func showHistory() {
+        guard panel.isVisible, let historyPanel, !historyPanel.isVisible else { return }
+        historyFeeds.forEach { $0.start() }
+        historyHostingView?.isTracking = true
+        placeHistory()
+        historyPanel.orderFront(nil)
+    }
+
+    func hideHistory() {
+        guard let historyPanel, historyPanel.isVisible else { return }
+        historyPanel.orderOut(nil)
+        historyHostingView?.isTracking = false
+        historyFeeds.forEach { $0.stop() }
+    }
+
+    /// Beyond the stats panel on the outer side, tops aligned.
+    private func placeHistory() {
+        guard let historyPanel, let historyHostingView else { return }
+        let width = historyHostingView.frame.width
+        let stats = panel.frame
+        let x = opensLeft ? stats.minX - Self.gap - width : stats.maxX + Self.gap
+        historyPanel.place(topLeft: NSPoint(x: x, y: stats.maxY))
     }
 }

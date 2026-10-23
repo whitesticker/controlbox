@@ -42,13 +42,24 @@ final class MemoryMonitor {
             result.free = free
             result.used = app + wired + compressed
 
-            // Pressure gauge: fraction of RAM that is NOT immediately
-            // reclaimable/free, clamped to 0...1.
+            // Fallback only: share of RAM that is not free or cached. That
+            // is "used", not pressure; the kernel figure below replaces it.
             if total > 0 {
                 let reclaimableOrFree = Double(free + result.cached)
                 let gauge = 1.0 - reclaimableOrFree / Double(total)
                 result.pressure = min(1.0, max(0.0, gauge))
             }
+        }
+
+        // Memory pressure: `kern.memorystatus_level` is the kernel's
+        // "system-wide memory free percentage" (what `memory_pressure`
+        // prints), counting what it can reclaim by purging, compressing,
+        // and swapping. Pressure is the rest.
+        var freeLevel: Int32 = 0
+        var freeLevelSize = MemoryLayout<Int32>.size
+        if sysctlbyname("kern.memorystatus_level", &freeLevel, &freeLevelSize, nil, 0) == 0,
+           (0...100).contains(freeLevel) {
+            result.pressure = 1 - Double(freeLevel) / 100
         }
 
         // Kernel-reported memory pressure level: 1 = normal, 2 = warning,

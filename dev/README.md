@@ -76,6 +76,12 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [device-settings-scroll-lag.md](device-settings-scroll-lag.md) | Device sidebar page stutters when scrolled, even disconnected |
 | [system-monitor-reorder.md](system-monitor-reorder.md) | System Monitor dashboard rows cannot be dragged in settings |
 | [system-monitor-arrow-jitter.md](system-monitor-arrow-jitter.md) | Menu bar ↑/↓ arrows slide when the speed digits change length |
+| [system-monitor-menu-bar-icon.md](system-monitor-menu-bar-icon.md) | System Monitor menu bar icon items are chosen in the pane (two drag rows), fixed width per item |
+| [system-monitor-memory-pressure.md](system-monitor-memory-pressure.md) | System Monitor memory pressure was RAM in use; now `kern.memorystatus_level`, colored by the kernel's pressure level |
+| [system-monitor-top-processes.md](system-monitor-top-processes.md) | System Monitor top-process lists: memory footprint and energy from a long-lived `top`, network as current speed via `nettop -n` |
+| [system-monitor-menu-lag-and-gaps.md](system-monitor-menu-lag-and-gaps.md) | System Monitor menu lags under load; detail submenus gap when Top processes changes count; NSMenu's submenu delay (dropdown is now panels) |
+| [system-monitor-sensor-groups.md](system-monitor-sensor-groups.md) | Which SMC key prefixes go in which Sensors submenu group |
+| [system-monitor-history-submenu.md](system-monitor-history-submenu.md) | History as a third-level submenu opened over the main menu; now a column inside the detail submenu (drawn with `Canvas`; see menu-lag note) |
 | [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |
 | [dock-window-preview.md](dock-window-preview.md) | Dock hover does not show window thumbnails |
 | [dock-preview-lists-window-chrome.md](dock-preview-lists-window-chrome.md) | Dock preview cards include inspectors and mini widgets |

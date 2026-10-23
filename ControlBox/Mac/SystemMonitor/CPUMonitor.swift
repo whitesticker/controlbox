@@ -103,6 +103,15 @@ final class CPUMonitor {
         return (l[0], l[1], l[2])
     }
 
+    /// `kern.boottime` does not change while the Mac runs (sleep included),
+    /// so it is read once.
+    private let bootTime: Date? = {
+        var boot = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &boot, &size, nil, 0) == 0, boot.tv_sec > 0 else { return nil }
+        return Date(timeIntervalSince1970: Double(boot.tv_sec) + Double(boot.tv_usec) / 1_000_000)
+    }()
+
     /// Computes a fresh CPUSample from the delta between this call's tick
     /// counts and the previous call's. On the first call (no previous
     /// reading) returns an idle-only sample.
@@ -115,6 +124,9 @@ final class CPUMonitor {
         result.load1 = l1
         result.load5 = l5
         result.load15 = l15
+        if let bootTime {
+            result.uptime = max(0, Date().timeIntervalSince(bootTime))
+        }
 
         guard let currentTicks = fetchCoreTicks(), !currentTicks.isEmpty else {
             // Kernel call failed; return safe defaults (idle=1, everything else 0).

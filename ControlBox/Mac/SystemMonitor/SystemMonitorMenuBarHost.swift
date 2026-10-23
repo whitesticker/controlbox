@@ -5,11 +5,6 @@ import Foundation
 /// Opens the System Monitor pane even if the main window is still being created.
 enum SystemMonitorNavigation {
     static var pendingOpen = false
-
-    @MainActor
-    static func openSystemMonitorPane() {
-        PaneNavigation.open(.systemMonitor)
-    }
 }
 
 /// Owns the System Monitor menu bar extra. Control Box already has a ring

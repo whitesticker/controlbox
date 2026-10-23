@@ -29,6 +29,7 @@ struct CPUSample: Codable {
     var load1: Double = 0            // 1-minute load average
     var load5: Double = 0
     var load15: Double = 0
+    var uptime: TimeInterval = 0     // seconds since boot, including sleep (like `uptime`)
 }
 
 // MARK: - GPU
@@ -47,16 +48,33 @@ struct MemorySample: Codable {
     var compressed: UInt64 = 0
     var free: UInt64 = 0
     var cached: UInt64 = 0          // cached files / purgeable
-    var pressure: Double = 0        // 0...1 memory pressure gauge
+    var pressure: Double = 0        // 0...1, 1 - kern.memorystatus_level (the kernel's free %)
     var pressureLevel: Int = 1      // 1 = normal, 2 = warning, 4 = critical
     var swapUsed: UInt64 = 0
     var swapTotal: UInt64 = 0
 }
 
 // MARK: - Network
+enum NetworkInterfaceKind: String, Codable {
+    case wifi, ethernet, bridge, vpn, awdl, cellular, other
+
+    var systemImage: String {
+        switch self {
+        case .wifi: return "wifi"
+        case .ethernet: return "cable.connector"
+        case .bridge: return "point.3.connected.trianglepath.dotted"
+        case .vpn: return "lock.shield"
+        case .awdl: return "dot.radiowaves.left.and.right"
+        case .cellular: return "antenna.radiowaves.left.and.right"
+        case .other: return "network"
+        }
+    }
+}
+
 struct NetworkInterfaceSample: Codable {
-    var name: String = ""
-    var displayName: String = ""
+    var name: String = ""            // BSD name, "en0"
+    var displayName: String = ""     // System Settings name, "Wi-Fi" / "Ethernet"
+    var kind: NetworkInterfaceKind = .other
     var upBytesPerSec: Double = 0
     var downBytesPerSec: Double = 0
     var ipv4: String = ""
@@ -70,6 +88,8 @@ struct NetworkSample: Codable {
     var sessionUp: UInt64 = 0            // cumulative bytes since app launch
     var sessionDown: UInt64 = 0
     var primaryInterface: String = ""
+    var primaryDisplayName: String = ""
+    var primaryKind: NetworkInterfaceKind = .other
     var primaryIP: String = ""
     var interfaces: [NetworkInterfaceSample] = []
 }
@@ -110,6 +130,7 @@ struct SensorSample: Codable {
     var fans: [FanSample] = []
     var cpuTemp: Double = 0           // best-effort representative CPU die temp, °C
     var gpuTemp: Double = 0           // best-effort representative GPU temp, °C
+    var systemPower: Double = 0       // SMC `PSTR`, watts; 0 when the Mac has no such key
 }
 
 // MARK: - Power / Battery
