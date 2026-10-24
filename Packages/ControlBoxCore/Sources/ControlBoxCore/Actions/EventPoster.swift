@@ -196,10 +196,10 @@ enum EventPoster {
         point: CGEventField,
         fixed: CGEventField
     ) {
-        let points = Int64(points)
-        event.setIntegerValueField(point, value: points)
-        event.setIntegerValueField(line, value: points / 10)
-        event.setIntegerValueField(fixed, value: points * (1 << 16) / 10)
+        // Setting the line field makes macOS rewrite point and fixed, so it goes first.
+        event.setIntegerValueField(line, value: Int64(points) / 10)
+        event.setIntegerValueField(point, value: Int64(points))
+        event.setDoubleValueField(fixed, value: Double(points) / 10)
     }
 
     /// Firefox often ignores continuous pixel scroll when the line field is 0.

@@ -26,6 +26,7 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [extra-buttons-missing-in-calibration.md](extra-buttons-missing-in-calibration.md) | Haptic / back / forward / gesture button do not light up |
 | [mx4-gesture-button-freezes-pointer.md](mx4-gesture-button-freezes-pointer.md) | MX4 gesture button swipe freezes the pointer or hitches |
 | [mx4-clicks-missing-in-calibration.md](mx4-clicks-missing-in-calibration.md) | MX4 left / right / wheel stay idle in Calibration |
+| [thumb-wheel-smooth-scroll-dead.md](thumb-wheel-smooth-scroll-dead.md) | Thumb wheel scroll does nothing with Smooth scrolling on; tabs still work |
 | [focused-host-still-injects.md](focused-host-still-injects.md) | Gestures still run the Mac while Control Box is focused |
 | [adhoc-signing-resets-tcc.md](adhoc-signing-resets-tcc.md) | Accessibility / Input Monitoring must be re-added every build |
 | [mx-master-3s-wrong-usage-page.md](mx-master-3s-wrong-usage-page.md) | 3S never attaches while Master 4 does |
