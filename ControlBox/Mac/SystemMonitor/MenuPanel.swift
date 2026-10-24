@@ -61,6 +61,12 @@ final class MenuPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
+    // While key, macOS 26 draws a square rim over a borderless glass window
+    // (a box around the rounded panel). SwiftUI's MenuBarExtraWindow
+    // overrides these same AppKit hooks. See dev/glass-panel-square-box.md.
+    @objc func _hasActiveAppearance() -> Bool { false }
+    @objc func _hasActiveControls() -> Bool { true }
+
     func place(topLeft: NSPoint) {
         let size = content.frame.size
         setFrame(NSRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height), display: false)

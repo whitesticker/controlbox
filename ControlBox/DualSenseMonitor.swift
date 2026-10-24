@@ -1430,7 +1430,7 @@ final class DualSenseMonitor {
         let canInject = record.controlEnabled
             && !ShortcutCapture.isActive
             && !calibrationWindowFocused
-            && (!NSApp.isActive || record.controlWhileFocused)
+            && (!hostIsFocused || record.controlWhileFocused)
         let wheelEngine = mxWheelEngine(for: record.id)
         if canInject, frame.scrollX != 0 {
             wheelEngine.process(
@@ -1448,7 +1448,7 @@ final class DualSenseMonitor {
         var buttonFrame = frame
         buttonFrame.scrollX = 0
         buttonFrame.scrollY = 0
-        engine.process(buttonFrame, hostIsActive: NSApp.isActive)
+        engine.process(buttonFrame, hostIsActive: hostIsFocused)
     }
 
     var controllingMXRecords: [DeviceRecord] {
@@ -1639,6 +1639,15 @@ final class DualSenseMonitor {
         )
     }
 
+    /// Control Box is the app the user is working in. Opening a menu bar
+    /// extra's window activates the app too; that alone does not count, or
+    /// devices would stop while Control Center is open.
+    private var hostIsFocused: Bool {
+        guard NSApp.isActive else { return false }
+        guard let key = NSApp.keyWindow else { return true }
+        return key.level < .popUpMenu
+    }
+
     private func ingestControl(_ frame: ControlFrame, record: DeviceRecord) {
         let engine = engine(for: record.id)
         engine.profile = record.usesAppProfiles ? liveAppProfile(for: record) : record.selectedProfile
@@ -1648,7 +1657,7 @@ final class DualSenseMonitor {
         if record.isMXMaster {
             return
         }
-        engine.process(frame, hostIsActive: NSApp.isActive)
+        engine.process(frame, hostIsActive: hostIsFocused)
     }
 
     private func engine(for deviceID: String) -> ControlEngine {

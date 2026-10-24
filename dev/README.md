@@ -83,6 +83,8 @@ HID primer and “should we drop HID++?” live in chat and `AGENTS.md`. This fo
 | [system-monitor-sensor-groups.md](system-monitor-sensor-groups.md) | Which SMC key prefixes go in which Sensors submenu group |
 | [system-monitor-history-submenu.md](system-monitor-history-submenu.md) | History as a third-level submenu opened over the main menu; now a column inside the detail submenu (drawn with `Canvas`; see menu-lag note) |
 | [menu-bar-extras-and-login.md](menu-bar-extras-and-login.md) | Launch at Login, Hide Dock / Command-Q, brightness and Sound extras |
+| [glass-panel-square-box.md](glass-panel-square-box.md) | Square box behind a glass menu panel while it is the key window |
+| [control-center-panel.md](control-center-panel.md) | The Control Box extra was only Open / Quit; now a Control Center–style panel, edited in its pane |
 | [dock-window-preview.md](dock-window-preview.md) | Dock hover does not show window thumbnails |
 | [dock-preview-lists-window-chrome.md](dock-preview-lists-window-chrome.md) | Dock preview cards include inspectors and mini widgets |
 | [dock-preview-other-space-icon.md](dock-preview-other-space-icon.md) | Other-Space Dock preview is only the app icon |

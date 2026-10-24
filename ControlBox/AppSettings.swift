@@ -18,21 +18,18 @@ final class AppSettings {
     var brightnessMenuBarEnabled: Bool {
         didSet {
             UserDefaults.standard.set(brightnessMenuBarEnabled, forKey: Keys.brightnessExtra)
-            MenuBarExtrasHost.shared.apply()
         }
     }
 
     var soundMenuBarEnabled: Bool {
         didSet {
             UserDefaults.standard.set(soundMenuBarEnabled, forKey: Keys.soundExtra)
-            MenuBarExtrasHost.shared.apply()
         }
     }
 
     var caffeinateMenuBarEnabled: Bool {
         didSet {
             UserDefaults.standard.set(caffeinateMenuBarEnabled, forKey: Keys.caffeinateExtra)
-            CaffeinateMenuBarHost.shared.apply()
         }
     }
 

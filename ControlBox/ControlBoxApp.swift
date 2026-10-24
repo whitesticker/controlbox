@@ -3,14 +3,30 @@ import ControlBoxCore
 import SwiftUI
 
 extension Notification.Name {
-    static let controlBoxReopenMainWindow = Notification.Name("controlBoxReopenMainWindow")
     static let controlBoxOpenPane = Notification.Name("controlBoxOpenPane")
     static let controlBoxOpenSystemMonitor = Notification.Name("controlBoxOpenSystemMonitor")
 }
 
 @MainActor
 enum WindowActions {
+    /// SwiftUI `openWindow`, captured when the main window first appears.
     static var openMain: ((String) -> Void)?
+
+    /// Opens (or raises) the main window. Falls back to the Window menu's
+    /// Control Box command, which holds its own `openWindow`.
+    static func showMain() {
+        if let openMain {
+            openMain("main")
+            return
+        }
+        NSApp.activate()
+        for menu in NSApp.mainMenu?.items.compactMap(\.submenu) ?? [] {
+            if let index = menu.items.firstIndex(where: { $0.title == "Control Box" && $0.keyEquivalent == "0" }) {
+                menu.performActionForItem(at: index)
+                return
+            }
+        }
+    }
 }
 
 @MainActor
@@ -34,8 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         displayCatalog.start()
         SystemMonitorMenuBarHost.shared.start()
-        MenuBarExtrasHost.shared.start(displays: displayCatalog, sound: soundCatalog)
-        CaffeinateMenuBarHost.shared.start(catalog: caffeinateCatalog)
+        soundCatalog.refresh()
         nightShiftCatalog.attachDisplays(displayCatalog)
         dockPreviewCatalog.attachSuppress {
             WindowGrab.isBusy || WindowShake.isBusy || AppSwitcherPreview.isBusy
@@ -59,8 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
         SystemMonitorMenuBarHost.shared.stop()
-        MenuBarExtrasHost.shared.stop()
-        CaffeinateMenuBarHost.shared.stop()
         caffeinateCatalog.invalidate()
         ArrangementHotkey.stop()
         nightShiftCatalog.invalidate()
@@ -80,8 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         let hasKeyWindow = NSApp.windows.contains { $0.isVisible && $0.canBecomeKey }
         if !hasKeyWindow {
-            NotificationCenter.default.post(name: .controlBoxReopenMainWindow, object: nil)
-            WindowActions.openMain?("main")
+            WindowActions.showMain()
         }
         NSApp.activate()
         return true
@@ -97,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct ControlBoxApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Bindable private var settings = AppSettings.shared
 
     init() {
         Self.useOverlayScrollers()
@@ -176,10 +189,36 @@ struct ControlBoxApp: App {
         .windowResizability(.contentMinSize)
 
         MenuBarExtra {
-            ControlBoxMenuBar()
+            ControlCenterPanelView(context: controlCenterContext)
         } label: {
-            MenuBarReopenHook()
+            Image(nsImage: MenuBarRingIcon.image)
+                .accessibilityLabel("Control Box")
         }
+        .menuBarExtraStyle(.window)
+
+        controlCenterExtra(.display, isInserted: $settings.brightnessMenuBarEnabled)
+        controlCenterExtra(.sound, isInserted: $settings.soundMenuBarEnabled)
+        controlCenterExtra(.caffeinate, isInserted: $settings.caffeinateMenuBarEnabled)
+    }
+
+    private var controlCenterContext: ControlCenterContext {
+        ControlCenterContext(
+            displays: appDelegate.displayCatalog,
+            sound: appDelegate.soundCatalog,
+            caffeinate: appDelegate.caffeinateCatalog,
+            nightShift: appDelegate.nightShiftCatalog,
+            arrangement: appDelegate.arrangementCatalog
+        )
+    }
+
+    /// A module's own extra (its pane's Show in Menu Bar): that module's detail view.
+    private func controlCenterExtra(_ module: ControlCenterModule, isInserted: Binding<Bool>) -> some Scene {
+        MenuBarExtra(isInserted: isInserted) {
+            ControlCenterExtraView(context: controlCenterContext, module: module)
+        } label: {
+            ControlCenterExtraLabel(context: controlCenterContext, module: module)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -193,26 +232,6 @@ private struct RegisterOpenWindow: ViewModifier {
                     openWindow(id: id)
                     NSApp.activate()
                 }
-            }
-    }
-}
-
-private struct MenuBarReopenHook: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Image(nsImage: MenuBarRingIcon.image)
-            .renderingMode(.template)
-            .accessibilityLabel("Control Box")
-            .onAppear {
-                WindowActions.openMain = { id in
-                    openWindow(id: id)
-                    NSApp.activate()
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .controlBoxReopenMainWindow)) { _ in
-                openWindow(id: "main")
-                NSApp.activate()
             }
     }
 }
@@ -233,22 +252,6 @@ private struct ControlBoxWindowCommands: Commands {
                 NSApp.activate()
             }
             .keyboardShortcut("0", modifiers: .command)
-        }
-    }
-}
-
-private struct ControlBoxMenuBar: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Open Control Box") {
-            openWindow(id: "main")
-            NSApp.activate()
-        }
-
-        Divider()
-        Button("Quit Control Box") {
-            AppQuit.quitNow()
         }
     }
 }

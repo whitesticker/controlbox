@@ -76,6 +76,7 @@ struct ContentView: View {
                         }
 
                         SidebarGroupHeader("App")
+                        macRow(.controlCenter)
                         sidebarButton(.permissions, tint: SidebarItem.permissions.tint) {
                             HStack(spacing: 8) {
                                 SettingsGlyph(
@@ -140,6 +141,14 @@ struct ContentView: View {
                 CapsLockPane(catalog: capsLockCatalog)
             case .dockPreview:
                 DockPreviewPane(catalog: dockPreviewCatalog)
+            case .controlCenter:
+                ControlCenterPane(context: ControlCenterContext(
+                    displays: displayCatalog,
+                    sound: soundCatalog,
+                    caffeinate: caffeinateCatalog,
+                    nightShift: nightShiftCatalog,
+                    arrangement: arrangementCatalog
+                ))
             case .permissions:
                 PrivacyPane(monitor: monitor)
             case .settings:

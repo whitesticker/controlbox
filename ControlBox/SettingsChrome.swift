@@ -11,6 +11,7 @@ enum SidebarItem: Hashable, Identifiable {
     case windowGrab
     case capsLock
     case dockPreview
+    case controlCenter
     case permissions
     case settings
     case device(String)
@@ -27,6 +28,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .windowGrab: return "mac.windowGrab"
         case .capsLock: return "mac.capsLock"
         case .dockPreview: return "mac.dockPreview"
+        case .controlCenter: return "app.controlCenter"
         case .permissions: return "app.permissions"
         case .settings: return "app.settings"
         case .device(let id): return "device.\(id)"
@@ -45,6 +47,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .windowGrab: return "Window Management"
         case .capsLock: return "Caps Lock"
         case .dockPreview: return "Dock Previews"
+        case .controlCenter: return "Control Center"
         case .permissions: return "Permissions"
         case .settings: return "Settings"
         case .device: return "Device"
@@ -63,6 +66,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .windowGrab: return "🧲"
         case .capsLock: return "⬆️"
         case .dockPreview: return "🔎"
+        case .controlCenter: return "🎛️"
         case .permissions: return "🔐"
         case .settings: return "⚙️"
         case .device: return "🎮"
@@ -81,6 +85,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .windowGrab: return Color(red: 0.95, green: 0.55, blue: 0.18)
         case .capsLock: return Color(red: 0.38, green: 0.36, blue: 0.58)
         case .dockPreview: return Color(red: 0.42, green: 0.36, blue: 0.86)
+        case .controlCenter: return Color(red: 0.30, green: 0.42, blue: 0.62)
         case .permissions: return Color(red: 0.22, green: 0.55, blue: 0.90)
         case .settings: return Color(red: 0.45, green: 0.47, blue: 0.52)
         case .device: return Color(red: 0.20, green: 0.48, blue: 0.96)
