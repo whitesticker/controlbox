@@ -1,6 +1,6 @@
 cask "controlbox" do
-  version "0.1.57"
-  sha256 "f0290a9d04e7c74638d9205bb6e361f6e406d8a8887cb5980c978ec70fdb0206"
+  version "0.1.58"
+  sha256 "45e21aaf8caeedb192af638564e7857010a5766e6d330d29960e178fcf18ed81"
 
   url "https://github.com/whitesticker/controlbox/releases/download/v#{version}/ControlBox-#{version}.zip"
   name "Control Box"
